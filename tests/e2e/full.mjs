@@ -428,6 +428,8 @@ await step("Documents", "Delete a document after confirming", owner, async () =>
   await owner.getByRole("menuitem", { name: "Delete" }).click();
   await owner.click('[role="dialog"] >> button:has-text("Delete document")');
   await toast(owner, "Document deleted");
+  // The list refreshes just after the toast.
+  await docRow(owner, "old-notes.txt").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
   expect((await owner.getByText("old-notes.txt").count()) === 0, "still listed");
 });
 

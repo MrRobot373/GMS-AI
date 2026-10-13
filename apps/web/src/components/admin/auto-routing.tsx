@@ -85,7 +85,7 @@ export function AutoRouting({ models }: { models: TieredModel[] }) {
               title="Unclear requests"
               control={
                 <div className="flex flex-col items-end gap-2">
-                  <Select value={s.judge} onChange={(e) => save.mutate({ judge: e.target.value as "rules" | "model" })} className="w-48" data-testid="auto-judge">
+                  <Select value={s.judge} onChange={(e) => save.mutate({ judge: e.target.value as "rules" | "model" })} className="w-48" aria-label="Unclear requests" data-testid="auto-judge">
                     <option value="model">Ask a judge model</option>
                     <option value="rules">Rules only</option>
                   </Select>

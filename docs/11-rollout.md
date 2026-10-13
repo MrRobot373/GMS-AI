@@ -139,8 +139,9 @@ What we have, and what's left before a customer pays for it.
 
 ### Nice to have
 
-An accessibility pass (keyboard and screen readers), more interface languages (Hindi first), SAML
-single sign-on.
+More interface languages (Hindi first), SAML single sign-on. Accessibility is checked on every push
+(WCAG 2.1 AA with axe-core, both themes, and the keyboard: [tests/e2e/README.md](../tests/e2e/README.md#accessibility));
+a screen-reader walk-through by a person (NVDA or VoiceOver) is still to do once before selling.
 
 ## Risks
 

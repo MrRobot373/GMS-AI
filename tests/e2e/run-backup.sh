@@ -27,7 +27,13 @@ TZ=Asia/Kolkata
 ENV
 mkdir -p "$T/backups"
 C=(docker compose -p aatmiq-backup-test -f "$ROOT/deploy/docker-compose.yml" -f "$ROOT/deploy/docker-compose.backup.yml" -f "$T/images.yml" --env-file "$T/.env")
-cleanup() { [ -n "${KEEP:-}" ] && { echo "Left running ($T)."; return; }; "${C[@]}" down -v >/dev/null 2>&1 || true; rm -rf "$T"; }
+# The backup container writes its files as root: they're removed from a container too.
+cleanup() {
+  [ -n "${KEEP:-}" ] && { echo "Left running ($T)."; return; }
+  "${C[@]}" down -v >/dev/null 2>&1 || true
+  docker run --rm --entrypoint rm -v "$T:/t" aatmiq-api:dev -rf /t/backups >/dev/null 2>&1 || true
+  rm -rf "$T" || true
+}
 trap cleanup EXIT
 
 pass=0 fail=0

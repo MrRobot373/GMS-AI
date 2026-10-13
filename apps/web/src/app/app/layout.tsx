@@ -39,7 +39,7 @@ function Shell({ children }: { children: ReactNode }) {
           </>
         )}
       </AnimatePresence>
-      <main className="relative flex min-w-0 flex-1 flex-col">
+      <main id="main" tabIndex={-1} className="relative flex min-w-0 flex-1 flex-col outline-none">
         <LicenseBanner />
         <TwoStepBanner />
         <EmailBanner />

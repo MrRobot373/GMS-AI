@@ -106,6 +106,13 @@ jobs:
         env:
           CHROMIUM_PATH: ${{ env.CHROME }}
           BROWSER_PATH: ${{ env.CHROME }}
+      - name: Accessibility (WCAG 2.1 AA on every page, both themes, and the keyboard)
+        if: always()
+        run: sudo -E env "PATH=$PATH" tests/e2e/run-work.sh
+        env:
+          E2E_SCRIPT: ${{ github.workspace }}/tests/e2e/a11y.mjs
+          LOG_DIR: ${{ github.workspace }}/tests/e2e/results-a11y
+          CHROMIUM_PATH: ${{ env.CHROME }}
       - name: Screenshots and logs
         if: failure()
         uses: actions/upload-artifact@v4

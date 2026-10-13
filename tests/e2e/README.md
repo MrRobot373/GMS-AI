@@ -59,6 +59,21 @@ then, with a grace period, people without it keep working with a reminder and a 
 E2E_SCRIPT=$PWD/tests/e2e/account.mjs tests/e2e/run-work.sh
 ```
 
+## Accessibility
+
+`a11y.mjs` runs axe-core (WCAG 2.1 A and AA) on every main page, the Settings tabs and the sign-in
+page, in the dark and the light theme, then checks the keyboard: the first Tab reaches *Skip to
+content* (in the app and the admin console), focus is visible, the model menu opens and closes by
+keyboard, and the Ctrl+K search keeps focus inside. Serious and critical findings fail it; all
+findings are listed in `results-a11y/report.md`.
+
+```bash
+E2E_SCRIPT=$PWD/tests/e2e/a11y.mjs tests/e2e/run-work.sh
+```
+
+What it can't check (it needs a person with a screen reader): whether the order and wording make
+sense when heard. Do that once per release with NVDA or VoiceOver on Chat, a task and Admin → Users.
+
 ## Desktop app
 
 `desktop.mjs` drives the real Electron app (`apps/desktop`, built first) against the stack
@@ -127,8 +142,8 @@ Logs and failure screenshots go to `results-licensing/`.
 
 ## Where they run
 
-Every push (`.github/workflows/ci.yml`): `full.mjs` and `work.mjs` on the source tree, and the API
-image's firewall. Every night (`.github/workflows/nightly.yml`, or by hand from the Actions tab):
+Every push (`.github/workflows/ci.yml`): `full.mjs`, `work.mjs` and `a11y.mjs` on the source tree,
+and the API image's firewall. Every night (`.github/workflows/nightly.yml`, or by hand from the Actions tab):
 `account.mjs`, `code.mjs` (with the IDE build, also with `IDE_URL`), `licensing.mjs`, the 25-person
 load test, and on the Compose stack built from the images `run-containers.sh`, `run-https.sh`,
 `run-backup.sh`, `run-firewall.sh` and `run-upgrade.sh` from the latest release. Each release

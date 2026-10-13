@@ -51,6 +51,7 @@ export function DailyColumns({ data, height = 180 }: { data: DailyPoint[]; heigh
                   key={d.date}
                   className="flex h-full flex-1 items-end justify-center"
                   onMouseEnter={() => setHover(i)}
+                  role="img"
                   aria-label={`${d.date}: ${v.toLocaleString()} tokens`}
                 >
                   <div

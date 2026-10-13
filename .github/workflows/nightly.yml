@@ -40,6 +40,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: sudo python3 -m pip install -q --break-system-packages python-docx openpyxl
+      - name: Names for the editors' users in terminals (as in the API image)
+        run: sudo apt-get update -q && sudo apt-get install -y -q libnss-wrapper
       - name: Let task users reach the checkout
         run: sudo chmod a+x /home/runner
       - run: pnpm install --frozen-lockfile
@@ -75,7 +77,8 @@ jobs:
           BROWSER_PATH: ${{ env.CHROME }}
       - name: Licensing and single sign-on
         if: always()
-        run: tests/e2e/run-licensing.sh
+        # As root like the other suites: Chrome doesn't start as the runner's user on this image.
+        run: sudo -E env "PATH=$PATH" tests/e2e/run-licensing.sh
         env:
           CHROMIUM_PATH: ${{ env.CHROME }}
       - name: 25 people for 3 minutes

@@ -146,7 +146,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <SidebarStateProvider>
         <AppFrame className="flex-col md:flex-row">
           <AdminNav />
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <main id="main" tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">
             <div className="hidden md:block">
               <TopBar title={<Crumbs />} />
             </div>
