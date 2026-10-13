@@ -16,3 +16,6 @@ playwright-report
 tests/models/results
 __pycache__/
 *.pyc
+
+# Redis snapshots from a local redis-server
+dump.rdb
