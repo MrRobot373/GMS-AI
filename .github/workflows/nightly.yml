@@ -1,0 +1,156 @@
+# Every night (and by hand: Actions → Nightly → Run workflow), the suites too slow for every push:
+#  - browser: account and sign-in security, Aatmiq Code (with the IDE build, on Aatmiq's host and on
+#    its own), licensing and single sign-on, and the 25-person load test (fails on any error);
+#  - stack: the Compose stack from the images: Work AI in containers, HTTPS through Caddy, backups
+#    and restore, the user firewall, and the upgrade test from the latest release.
+# A failure shows on the Actions tab and is emailed to whoever last changed this schedule.
+name: Nightly
+
+on:
+  schedule:
+    # 02:13 in India.
+    - cron: "43 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  PG: postgres://aatmiq:aatmiq@localhost:5432
+  CHROME: /usr/bin/google-chrome
+
+jobs:
+  browser:
+    name: Account, Code, licensing and load
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: aatmiq, POSTGRES_PASSWORD: aatmiq, POSTGRES_DB: aatmiq }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U aatmiq" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: sudo python3 -m pip install -q --break-system-packages python-docx openpyxl
+      - name: Let task users reach the checkout
+        run: sudo chmod a+x /home/runner
+      - run: pnpm install --frozen-lockfile
+      - run: npm install --prefix tests/e2e --no-audit --no-fund
+      - run: pnpm --filter @aatmiq/web build
+      - run: pnpm --filter @aatmiq/license-console build
+      - name: The IDE (Code-OSS with our branding and extensions)
+        run: pnpm --filter @aatmiq/code build
+      - name: Account suite (email, password reset, two-step sign-in, personal data)
+        if: always()
+        run: sudo -E env "PATH=$PATH" tests/e2e/run-work.sh
+        env:
+          E2E_SCRIPT: ${{ github.workspace }}/tests/e2e/account.mjs
+          LOG_DIR: ${{ github.workspace }}/tests/e2e/results-account
+          CHROMIUM_PATH: ${{ env.CHROME }}
+          BROWSER_PATH: ${{ env.CHROME }}
+      - name: Code suite (the IDE inside Aatmiq)
+        if: always()
+        run: sudo -E env "PATH=$PATH" tests/e2e/run-work.sh
+        env:
+          E2E_SCRIPT: ${{ github.workspace }}/tests/e2e/code.mjs
+          LOG_DIR: ${{ github.workspace }}/tests/e2e/results-code
+          CHROMIUM_PATH: ${{ env.CHROME }}
+          BROWSER_PATH: ${{ env.CHROME }}
+      - name: Code suite (the IDE on its own host)
+        if: always()
+        run: sudo -E env "PATH=$PATH" tests/e2e/run-work.sh
+        env:
+          E2E_SCRIPT: ${{ github.workspace }}/tests/e2e/code.mjs
+          IDE_URL: http://ide.localhost:3300
+          LOG_DIR: ${{ github.workspace }}/tests/e2e/results-code-ide
+          CHROMIUM_PATH: ${{ env.CHROME }}
+          BROWSER_PATH: ${{ env.CHROME }}
+      - name: Licensing and single sign-on
+        if: always()
+        run: tests/e2e/run-licensing.sh
+        env:
+          CHROMIUM_PATH: ${{ env.CHROME }}
+      - name: 25 people for 3 minutes
+        if: always()
+        run: sudo -E env "PATH=$PATH" tests/load/run-team.sh
+        env:
+          USERS: "25"
+          MINUTES: "3"
+          CODE_USERS: "5"
+          CHROMIUM_PATH: ${{ env.CHROME }}
+          BROWSER_PATH: ${{ env.CHROME }}
+      - name: Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-browser
+          path: |
+            tests/e2e/results*/
+            tests/load/results/
+          if-no-files-found: ignore
+
+  stack:
+    name: The Compose stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: aatmiq, POSTGRES_PASSWORD: aatmiq, POSTGRES_DB: aatmiq }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U aatmiq" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - name: Room for the images
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: npm install --prefix tests/e2e --no-audit --no-fund
+      - name: Build the images
+        run: |
+          docker build -f deploy/Dockerfile.api -t aatmiq-api:dev .
+          docker build -f deploy/Dockerfile.web -t aatmiq-web:dev .
+          docker pull caddy:2.11.3
+      - name: Work AI in containers
+        if: always()
+        run: tests/e2e/run-containers.sh
+        env:
+          CHROMIUM_PATH: ${{ env.CHROME }}
+      - name: HTTPS through Caddy
+        if: always()
+        run: tests/e2e/run-https.sh
+      - name: Backups and restore
+        if: always()
+        run: tests/e2e/run-backup.sh
+      - name: The user firewall
+        if: always()
+        run: API_IMAGE=aatmiq-api:dev tests/e2e/run-firewall.sh
+      - name: Upgrade from the latest release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""')"
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          if [ -n "$LATEST" ] && docker pull "ghcr.io/$OWNER/aatmiq-api:${LATEST#v}"; then
+            FROM_IMAGE="ghcr.io/$OWNER/aatmiq-api:${LATEST#v}" TO_IMAGE=aatmiq-api:dev tests/e2e/run-upgrade.sh
+          else
+            echo "No release yet: a restart onto the same data instead."
+            FROM_IMAGE=aatmiq-api:dev TO_IMAGE=aatmiq-api:dev tests/e2e/run-upgrade.sh
+          fi
+      - name: Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-stack
+          path: tests/e2e/results*/
+          if-no-files-found: ignore

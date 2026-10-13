@@ -123,7 +123,7 @@ What we have, and what's left before a customer pays for it.
 | Personal data | Download everything about a person (they or an admin), erase a person with their data, shared items to a colleague ([12-personal-data.md](12-personal-data.md)) |
 | Operations | One-command team install, HTTPS, nightly backups with a recorded status, restore, licensing; versioned releases with registry images, a changelog and an upgrade test from the previous release ([13-releases.md](13-releases.md)); an offline bundle for servers without internet ([10-team-server.md#offline](10-team-server.md#offline)) |
 | Isolation | Each task and IDE as its own user, tasks in containers, a firewall from private networks, an egress proxy |
-| Quality | 204 API tests (plus 3 against a real Ollama server), 24 runtime tests, 118 + 32 + 20 + 14 browser checks, an authorization sweep of every route, a 25-person load test; CI on every push builds the images and runs them |
+| Quality | Every night also the account, Code (with the IDE build), licensing, container-mode, HTTPS, backup, firewall and upgrade suites and the 25-person load test (`.github/workflows/nightly.yml`); 204 API tests (plus 3 against a real Ollama server), 24 runtime tests, 118 + 32 + 20 + 14 browser checks, an authorization sweep of every route, a 25-person load test; CI on every push builds the images and runs them |
 
 ### Before the first sale
 
@@ -139,8 +139,7 @@ What we have, and what's left before a customer pays for it.
 
 ### Nice to have
 
-Nightly CI runs of the slow suites (the IDE build, container mode, the HTTPS stack), an
-accessibility pass (keyboard and screen readers), more interface languages (Hindi first), SAML
+An accessibility pass (keyboard and screen readers), more interface languages (Hindi first), SAML
 single sign-on.
 
 ## Risks

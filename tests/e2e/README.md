@@ -124,3 +124,12 @@ CHROMIUM_PATH=/path/to/chrome tests/e2e/run-licensing.sh
 ```
 
 Logs and failure screenshots go to `results-licensing/`.
+
+## Where they run
+
+Every push (`.github/workflows/ci.yml`): `full.mjs` and `work.mjs` on the source tree, and the API
+image's firewall. Every night (`.github/workflows/nightly.yml`, or by hand from the Actions tab):
+`account.mjs`, `code.mjs` (with the IDE build, also with `IDE_URL`), `licensing.mjs`, the 25-person
+load test, and on the Compose stack built from the images `run-containers.sh`, `run-https.sh`,
+`run-backup.sh`, `run-firewall.sh` and `run-upgrade.sh` from the latest release. Each release
+(`.github/workflows/release.yml`): `run-upgrade.sh` from the previous release.
