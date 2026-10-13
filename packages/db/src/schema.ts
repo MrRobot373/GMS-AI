@@ -48,7 +48,7 @@ export const projectVisibilityEnum = pgEnum("project_visibility", ["private", "w
 export const projectRoleEnum = pgEnum("project_role", ["chat", "edit"]);
 /** How far a source can be trusted: the model is told, and answers say so. */
 export const sourceLabelEnum = pgEnum("source_label", ["confirmed", "assumption", "tbd"]);
-export const ssoTypeEnum = pgEnum("sso_type", ["google", "microsoft", "oidc"]);
+export const ssoTypeEnum = pgEnum("sso_type", ["google", "microsoft", "oidc", "saml"]);
 export const workTaskStatusEnum = pgEnum("work_task_status", ["queued", "running", "needs_approval", "completed", "failed", "cancelled"]);
 export const workApprovalStatusEnum = pgEnum("work_approval_status", ["pending", "approved", "rejected", "expired"]);
 export const skillScopeEnum = pgEnum("skill_scope", ["org", "personal"]);
@@ -461,12 +461,17 @@ export const ssoConnection = pgTable("sso_connection", {
   type: ssoTypeEnum("type").notNull(),
   /** Button label, e.g. "Google" or "Okta". */
   name: text("name").notNull(),
-  /** OpenID issuer URL (derived for Google and Microsoft). */
+  /** OpenID issuer URL (derived for Google and Microsoft); for SAML, the identity provider's entity ID. */
   issuer: text("issuer").notNull(),
   /** Microsoft Entra directory (tenant) id. */
   tenantId: text("tenant_id"),
-  clientId: text("client_id").notNull(),
-  clientSecretEnc: text("client_secret_enc").notNull(),
+  /** OpenID only. */
+  clientId: text("client_id"),
+  clientSecretEnc: text("client_secret_enc"),
+  /** SAML only: where people are sent to sign in (HTTP-Redirect binding). */
+  samlSsoUrl: text("saml_sso_url"),
+  /** SAML only: the identity provider's signing certificates (PEM; several while it rotates them). */
+  samlCerts: text("saml_certs").array(),
   /** Allowed email domains. Empty: any address the provider vouches for. */
   domains: text("domains").array().notNull().default(sql`'{}'::text[]`),
   /** Let people from these domains create an account on first sign-in (otherwise invitation only). */

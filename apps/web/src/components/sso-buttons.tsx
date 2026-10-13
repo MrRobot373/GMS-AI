@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 
 export interface SsoOption {
   id: string;
-  type: "google" | "microsoft" | "oidc";
+  type: "google" | "microsoft" | "oidc" | "saml";
   name: string;
 }
 

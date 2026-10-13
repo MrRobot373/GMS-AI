@@ -67,7 +67,7 @@ export async function authorizationUrl(
   const d = await discover(conn.issuer, fetchImpl);
   const u = new URL(d.authorization_endpoint);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("client_id", conn.clientId);
+  u.searchParams.set("client_id", conn.clientId ?? "");
   u.searchParams.set("redirect_uri", opts.redirectUri);
   u.searchParams.set("scope", "openid email profile");
   u.searchParams.set("state", opts.state);
@@ -95,13 +95,14 @@ export async function completeSignIn(
   fetchImpl: typeof fetch = fetch,
 ): Promise<SsoIdentity> {
   const d = await discover(conn.issuer, fetchImpl);
+  const clientId = conn.clientId ?? "";
   const body = new URLSearchParams({ grant_type: "authorization_code", code: opts.code, redirect_uri: opts.redirectUri, code_verifier: opts.verifier });
   const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
   const methods = d.token_endpoint_auth_methods_supported ?? ["client_secret_basic"];
   if (methods.includes("client_secret_basic")) {
-    headers.authorization = `Basic ${Buffer.from(`${encodeURIComponent(conn.clientId)}:${encodeURIComponent(clientSecret)}`).toString("base64")}`;
+    headers.authorization = `Basic ${Buffer.from(`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`).toString("base64")}`;
   } else {
-    body.set("client_id", conn.clientId);
+    body.set("client_id", clientId);
     body.set("client_secret", clientSecret);
   }
   const res = await fetchImpl(d.token_endpoint, { method: "POST", headers, body, signal: AbortSignal.timeout(15_000) });
@@ -115,7 +116,7 @@ export async function completeSignIn(
   }
   let claims: JWTPayload;
   try {
-    ({ payload: claims } = await jwtVerify(tok.id_token, jwks, { issuer: d.issuer, audience: conn.clientId, clockTolerance: 60 }));
+    ({ payload: claims } = await jwtVerify(tok.id_token, jwks, { issuer: d.issuer, audience: clientId, clockTolerance: 60 }));
   } catch (e) {
     throw new SsoError(`The provider's identity token couldn't be verified (${(e as Error).message}).`);
   }

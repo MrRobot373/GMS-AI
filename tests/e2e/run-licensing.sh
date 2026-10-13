@@ -2,7 +2,7 @@
 # Starts everything the licensing/SSO browser test needs, runs it, then stops it.
 #   license server :4100 + Super Admin console :3100
 #   a licensed Aatmiq (API :4000, web :3200; the web build proxies /api to :4000) using the license server's public key
-#   a mock OpenID provider :11600
+#   a mock OpenID provider :11600 and a mock SAML identity provider :11700
 # Needs: Postgres on localhost, apps built (pnpm --filter @aatmiq/web build, … license-console build).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -31,6 +31,8 @@ PUBKEY="$(psql "$PG/aatmiq_license_e2e" -Atc "select public_pem from signing_key
 
 start "cd '$ROOT/apps/license-console' && LICENSE_API_URL=http://localhost:4100 exec npx next start -p 3100" "$LOG/console.log"
 start "exec node '$ROOT/apps/api/test/mock-idp.mjs' 11600" "$LOG/idp.log"
+# On 127.0.0.1, another site than Aatmiq (localhost), as a real identity provider is.
+start "exec node '$ROOT/apps/api/test/mock-saml-idp.mjs' 11700 127.0.0.1" "$LOG/saml-idp.log"
 STORE="$(mktemp -d)"
 export PUBKEY
 start "cd '$ROOT/apps/api' && DATABASE_URL='$PG/aatmiq_lic_e2e' APP_SECRET=e2e-app-secret-e2e-app-secret-e2e-app APP_URL=http://localhost:3200 PORT=4000 \
@@ -40,5 +42,6 @@ start "cd '$ROOT/apps/web' && API_URL=http://localhost:4000 exec npx next start 
 wait_for http://localhost:3100/login
 wait_for http://localhost:3200/api/health
 wait_for http://127.0.0.1:11600/.well-known/openid-configuration
+wait_for http://127.0.0.1:11700/metadata
 
 node "${E2E_SCRIPT:-$ROOT/tests/e2e/licensing.mjs}"

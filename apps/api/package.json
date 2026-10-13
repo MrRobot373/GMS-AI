@@ -23,7 +23,9 @@
     "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.3.0",
     "@napi-rs/canvas": "^1.0.9",
+    "@node-saml/node-saml": "5.1.0",
     "@tesseract.js-data/eng": "^1.0.0",
+    "@xmldom/xmldom": "0.8.15",
     "better-auth": "^1.7.6",
     "bullmq": "^6.3.11",
     "cron-parser": "^5.10.1",
@@ -49,6 +51,7 @@
     "@types/nodemailer": "^8.0.2",
     "tsup": "^8.5.0",
     "tsx": "^4.20.6",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "xml-crypto": "6.3.3"
   }
 }

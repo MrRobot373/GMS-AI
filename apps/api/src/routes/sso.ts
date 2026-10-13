@@ -1,6 +1,6 @@
 import { account, and, asc, eq, gte, invitation, isNull, organization, sql, ssoConnection, user, workspace, workspaceMember } from "@aatmiq/db";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { PRODUCT_NAME } from "@aatmiq/shared";
 import { z } from "zod";
 import { ssoTicketId } from "../auth";
@@ -17,9 +17,12 @@ import {
   microsoftIssuer,
   newAuthRequest,
   SsoError,
+  type SsoIdentity,
 } from "../services/sso";
+import { acsUrl, certExpiry, fetchIdpMetadata, normalizeCerts, parseIdpMetadata, peekInResponseTo, samlComplete, samlStart, spEntityId, spMetadata } from "../services/saml";
 
 const STATE_COOKIE = "aatmiq_sso";
+const samlRequestId = (id: string) => `saml-request:${id}`;
 const STATE_TTL_MS = 10 * 60_000;
 
 const domainList = z
@@ -27,13 +30,21 @@ const domainList = z
   .max(50)
   .refine((ds) => ds.every((d) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)), "Enter domains like example.com");
 
+type SsoType = "google" | "microsoft" | "oidc" | "saml";
+
 const connectionInput = z.object({
-  type: z.enum(["google", "microsoft", "oidc"]),
+  /** SAML: the form picks the ID first, so the admin can enter our URLs at the provider before saving. */
+  id: z.string().uuid().optional(),
+  type: z.enum(["google", "microsoft", "oidc", "saml"]),
   name: z.string().trim().min(1).max(60).optional(),
-  issuer: z.string().trim().optional(),
+  /** OpenID: the issuer URL. SAML: the identity provider's entity ID. */
+  issuer: z.string().trim().max(1000).optional(),
   tenantId: z.string().trim().optional(),
-  clientId: z.string().trim().min(1).max(500),
-  clientSecret: z.string().trim().min(1).max(2000),
+  clientId: z.string().trim().min(1).max(500).optional(),
+  clientSecret: z.string().trim().min(1).max(2000).optional(),
+  samlSsoUrl: z.string().trim().max(2000).optional(),
+  /** PEM or Base64; several for a certificate rotation. */
+  samlCerts: z.string().max(50_000).optional(),
   domains: domainList.default([]),
   autoJoin: z.boolean().default(false),
   defaultWorkspaceId: z.string().nullable().optional(),
@@ -46,6 +57,8 @@ const connectionUpdate = z.object({
   tenantId: z.string().trim().optional(),
   clientId: z.string().trim().min(1).max(500).optional(),
   clientSecret: z.string().trim().min(1).max(2000).optional(),
+  samlSsoUrl: z.string().trim().max(2000).optional(),
+  samlCerts: z.string().max(50_000).optional(),
   domains: domainList.optional(),
   autoJoin: z.boolean().optional(),
   defaultWorkspaceId: z.string().nullable().optional(),
@@ -54,8 +67,26 @@ const connectionUpdate = z.object({
 
 const BROAD_TENANTS = new Set(["common", "organizations", "consumers"]);
 
-function issuerFor(type: "google" | "microsoft" | "oidc", input: { issuer?: string; tenantId?: string }) {
+function httpsUrl(raw: string | undefined, example: string, what: string) {
+  let u: URL;
+  try {
+    u = new URL(raw?.trim() ?? "");
+  } catch {
+    throw badRequest(`Enter the ${what}, e.g. ${example}`);
+  }
+  const local = ["localhost", "127.0.0.1"].includes(u.hostname);
+  if (u.protocol !== "https:" && !(local && u.protocol === "http:")) throw badRequest(`The ${what} must use https.`);
+  return u.toString();
+}
+
+function issuerFor(type: SsoType, input: { issuer?: string; tenantId?: string }) {
   if (type === "google") return GOOGLE_ISSUER;
+  if (type === "saml") {
+    // An entity ID is a URI: often a URL, sometimes a URN (urn:…), or the identity provider's own name.
+    const id = input.issuer?.trim() ?? "";
+    if (!id) throw badRequest("Enter the identity provider's entity ID (Issuer), or import its metadata.");
+    return id;
+  }
   if (type === "microsoft") {
     const t = input.tenantId?.trim() ?? "";
     if (!t) throw badRequest("Enter your Microsoft Entra directory (tenant) ID.");
@@ -76,8 +107,9 @@ function issuerFor(type: "google" | "microsoft" | "oidc", input: { issuer?: stri
   return iss;
 }
 
-const DEFAULT_NAME = { google: "Google", microsoft: "Microsoft", oidc: "Single sign-on" } as const;
-const FEATURE_FOR = { google: "sso", microsoft: "sso", oidc: "oidc" } as const;
+const DEFAULT_NAME = { google: "Google", microsoft: "Microsoft", oidc: "Single sign-on", saml: "Single sign-on" } as const;
+/** Custom providers, OpenID Connect or SAML, are one license feature. */
+const FEATURE_FOR = { google: "sso", microsoft: "sso", oidc: "oidc", saml: "oidc" } as const;
 
 function readCookie(req: FastifyRequest, name: string) {
   const m = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(req.headers.cookie ?? "");
@@ -93,7 +125,10 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
 
   const publicConn = (c: typeof ssoConnection.$inferSelect) => {
     const { clientSecretEnc: _s, ...rest } = c;
-    return rest;
+    if (c.type !== "saml") return rest;
+    // What to enter at the identity provider.
+    const sp = { entityId: spEntityId(cfg.appUrl, c.id), acsUrl: acsUrl(cfg.appUrl, c.id), metadataUrl: spEntityId(cfg.appUrl, c.id) };
+    return { ...rest, sp, certExpires: certExpiry(c.samlCerts ?? []) };
   };
 
   /* ───────────── Sign-in flow ───────────── */
@@ -108,6 +143,21 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     const invite = req.query.invite ?? null;
     if (!conn || !conn.enabled) return fail(reply, "This sign-in option isn't available.", invite);
     if (!(await license.hasFeature(FEATURE_FOR[conn.type]))) return fail(reply, "Single sign-on isn't included in your organization's license.", invite);
+    const next = req.query.next && /^\/(?!\/)/.test(req.query.next) ? req.query.next : "/app";
+    const exp = Date.now() + STATE_TTL_MS;
+    if (conn.type === "saml") {
+      let started;
+      try {
+        started = await samlStart(conn, cfg.appUrl, randomToken(), req.query.email);
+      } catch (e) {
+        return fail(reply, e instanceof SsoError ? e.message : "Couldn't start single sign-on.", invite);
+      }
+      // The request is answered once, by this browser (the sealed cookie) and only once (this record).
+      const actx = await ctx.auth.$context;
+      await actx.internalAdapter.createVerificationValue({ identifier: samlRequestId(started.requestId), value: conn.id, expiresAt: new Date(exp) });
+      const sealed = box.encrypt(JSON.stringify({ connId: conn.id, requestId: started.requestId, requestAt: started.requestAt, next, invite, exp }));
+      return reply.header("set-cookie", stateCookie(sealed, STATE_TTL_MS / 1000)).redirect(started.url);
+    }
     const r = newAuthRequest();
     let url: string;
     try {
@@ -115,8 +165,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     } catch (e) {
       return fail(reply, e instanceof SsoError ? e.message : "Couldn't start single sign-on.", invite);
     }
-    const next = req.query.next && /^\/(?!\/)/.test(req.query.next) ? req.query.next : "/app";
-    const sealed = box.encrypt(JSON.stringify({ ...r, connId: conn.id, next, invite, exp: Date.now() + STATE_TTL_MS }));
+    const sealed = box.encrypt(JSON.stringify({ ...r, connId: conn.id, next, invite, exp }));
     return reply.header("set-cookie", stateCookie(sealed, STATE_TTL_MS / 1000)).redirect(url);
   });
 
@@ -132,15 +181,99 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!req.query.code) return fail(reply, "The provider didn't complete the sign-in.", st.invite);
 
     const [conn] = await db.select().from(ssoConnection).where(eq(ssoConnection.id, st.connId));
-    if (!conn || !conn.enabled) return fail(reply, "This sign-in option isn't available.", st.invite);
+    if (!conn || !conn.enabled || conn.type === "saml") return fail(reply, "This sign-in option isn't available.", st.invite);
 
     let identity;
     try {
-      identity = await completeSignIn(conn, box.decrypt(conn.clientSecretEnc), { code: req.query.code, verifier: st.verifier, nonce: st.nonce, redirectUri });
+      identity = await completeSignIn(conn, box.decrypt(conn.clientSecretEnc ?? ""), { code: req.query.code, verifier: st.verifier, nonce: st.nonce, redirectUri });
     } catch (e) {
       req.log.warn({ err: e }, "sso sign-in failed");
       return fail(reply, e instanceof SsoError ? e.message : "Single sign-on failed.", st.invite);
     }
+    return finishSignIn(req, reply, conn, identity, st);
+  });
+
+  /* ───────────── SAML ───────────── */
+
+  // The identity provider posts its answer as a form; only this route takes form bodies.
+  app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 512 * 1024 }, (req, body, done) => {
+    if (!/^\/api\/auth\/sso\/[^/]+\/acs(\?|$)/.test(req.url)) return done(new HttpError(415, "Unsupported content type"), undefined);
+    done(null, Object.fromEntries(new URLSearchParams(body as string)));
+  });
+
+  /** Our metadata (and our entity ID): identity providers can import it from this URL. */
+  app.get<{ Params: { id: string } }>("/api/auth/sso/:id/metadata", async (req, reply) => {
+    const [conn] = await db.select().from(ssoConnection).where(eq(ssoConnection.id, req.params.id));
+    if (!conn || conn.type !== "saml") throw notFound("Not found");
+    return reply.type("application/samlmetadata+xml; charset=utf-8").send(spMetadata(conn, cfg.appUrl));
+  });
+
+  /**
+   * The identity provider's answer (HTTP-POST binding). It arrives from the provider's site, so the
+   * browser leaves out our SameSite=Lax state cookie; the first time, a page on our own site posts the
+   * same form again, now with the cookie. A sign-in started at the provider (its app tile) has no
+   * request of ours to answer: it's restarted from here, and the provider, already signed in, answers.
+   */
+  app.post<{ Params: { id: string }; Querystring: { again?: string }; Body: { SAMLResponse?: string; RelayState?: string } }>(
+    "/api/auth/sso/:id/acs",
+    async (req, reply) => {
+      const samlResponse = typeof req.body?.SAMLResponse === "string" ? req.body.SAMLResponse : "";
+      if (!samlResponse) return fail(reply, "The identity provider didn't complete the sign-in.");
+      const [conn] = await db.select().from(ssoConnection).where(eq(ssoConnection.id, req.params.id));
+      if (!conn || !conn.enabled || conn.type !== "saml") return fail(reply, "This sign-in option isn't available.");
+      const cookie = readCookie(req, STATE_COOKIE);
+      if (!cookie && !req.query.again) {
+        const nonce = randomBytes(16).toString("base64");
+        const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+        const relay = typeof req.body?.RelayState === "string" ? `<input type="hidden" name="RelayState" value="${esc(req.body.RelayState)}">` : "";
+        return reply
+          .type("text/html; charset=utf-8")
+          .header("cache-control", "no-store")
+          // The form may end up at the provider: a sign-in it started is restarted from here (form-action
+          // covers where the post's redirects lead too).
+          .header("content-security-policy", `default-src 'none'; script-src 'nonce-${nonce}'; form-action 'self' ${new URL(conn.samlSsoUrl!).origin}; frame-ancestors 'none'`)
+          .send(
+            `<!doctype html><meta charset="utf-8"><title>Signing in…</title>` +
+              `<form method="post" action="/api/auth/sso/${encodeURIComponent(req.params.id)}/acs?again=1">` +
+              `<input type="hidden" name="SAMLResponse" value="${esc(samlResponse)}">${relay}` +
+              `<noscript><button type="submit">Continue signing in</button></noscript></form>` +
+              `<script nonce="${nonce}">document.forms[0].submit()</script>`,
+          );
+      }
+      let st: { connId: string; requestId: string; requestAt: string; next: string; invite: string | null; exp: number } | null = null;
+      try {
+        st = JSON.parse(box.decrypt(cookie ?? ""));
+      } catch {
+        st = null;
+      }
+      if (!st || st.connId !== conn.id || !st.requestId || st.exp < Date.now()) {
+        // Started at the provider: start again from here. (Our own requests always get an answer that
+        // names them, so this doesn't repeat; without cookies the answer is refused below.)
+        if (!peekInResponseTo(samlResponse)) return reply.redirect(`/api/auth/sso/${encodeURIComponent(conn.id)}/start`);
+        return fail(reply, "Your sign-in session expired. Please try again.", st?.invite);
+      }
+      const used = await (await ctx.auth.$context).internalAdapter.consumeVerificationValue(samlRequestId(st.requestId));
+      if (!used || used.value !== conn.id) return fail(reply, "Your sign-in session expired. Please try again.", st.invite);
+      if (!(await license.hasFeature(FEATURE_FOR.saml))) return fail(reply, "Single sign-on isn't included in your organization's license.", st.invite);
+      let identity;
+      try {
+        identity = await samlComplete(conn, cfg.appUrl, samlResponse, { id: st.requestId, at: st.requestAt });
+      } catch (e) {
+        req.log.warn({ err: e }, "saml sign-in failed");
+        return fail(reply, e instanceof SsoError ? e.message : "Single sign-on failed.", st.invite);
+      }
+      return finishSignIn(req, reply, conn, identity, st);
+    },
+  );
+
+  /** After the provider vouched for someone: find or create their account, then sign them in. */
+  async function finishSignIn(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    conn: typeof ssoConnection.$inferSelect,
+    identity: SsoIdentity,
+    st: { next: string; invite: string | null },
+  ) {
     if (!emailDomainAllowed(conn, identity.email))
       return fail(reply, `${identity.email} can't sign in here. Use your ${conn.domains.join(" or ")} account.`, st.invite);
 
@@ -209,7 +342,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     return reply
       .header("set-cookie", stateCookie("", 0))
       .redirect(`/api/auth/sso/ticket?ticket=${encodeURIComponent(ticket)}&next=${encodeURIComponent(st.next)}`);
-  });
+  }
 
   async function createUser(email: string, name: string, orgRole: "owner" | "admin" | "member") {
     const id = randomUUID();
@@ -243,6 +376,8 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
       twoFactorDeadline: org?.twoFactorRequired && org.twoFactorDeadline && org.twoFactorDeadline > new Date() ? org.twoFactorDeadline.toISOString() : null,
       withoutTwoStep: (await withoutTwoStep(org?.ssoRequired ?? false)).length,
       redirectUri,
+      /** SAML: our entity ID is `<samlBase>/<id>/metadata`, the reply (ACS) URL `<samlBase>/<id>/acs`. */
+      samlBase: `${cfg.appUrl}/api/auth/sso`,
       connections: connections.map(publicConn),
       features: { sso: await license.hasFeature("sso"), oidc: await license.hasFeature("oidc") },
     };
@@ -309,9 +444,30 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     return authSettings();
   });
 
-  async function requireFeatureFor(type: "google" | "microsoft" | "oidc") {
+  async function requireFeatureFor(type: SsoType) {
     if (!(await license.hasFeature(FEATURE_FOR[type])))
-      throw new HttpError(402, type === "oidc" ? "Custom single sign-on is part of the Enterprise plan." : "Google and Microsoft sign-in aren't included in your license.", "feature_unavailable");
+      throw new HttpError(
+        402,
+        FEATURE_FOR[type] === "oidc" ? "Custom single sign-on (OpenID Connect or SAML) is part of the Enterprise plan." : "Google and Microsoft sign-in aren't included in your license.",
+        "feature_unavailable",
+      );
+  }
+
+  /** What each kind of provider needs: client ID and secret for OpenID, sign-in URL and certificate for SAML. */
+  function credentials(type: SsoType, body: { clientId?: string; clientSecret?: string; samlSsoUrl?: string; samlCerts?: string }) {
+    if (type === "saml") {
+      const samlSsoUrl = httpsUrl(body.samlSsoUrl, "https://acme.okta.com/app/…/sso/saml", "identity provider's sign-in URL (SSO URL)");
+      let samlCerts: string[];
+      try {
+        samlCerts = normalizeCerts(body.samlCerts ?? "");
+      } catch (e) {
+        throw badRequest((e as Error).message);
+      }
+      return { clientId: null, clientSecretEnc: null, samlSsoUrl, samlCerts };
+    }
+    if (!body.clientId) throw badRequest("Enter the client ID.");
+    if (!body.clientSecret) throw badRequest("Enter the client secret.");
+    return { clientId: body.clientId, clientSecretEnc: box.encrypt(body.clientSecret), samlSsoUrl: null, samlCerts: null };
   }
 
   async function checkWorkspace(id: string | null | undefined) {
@@ -327,15 +483,17 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     await requireFeatureFor(body.type);
     if (body.autoJoin && !body.domains.length) throw badRequest("List your email domains to let people join automatically.");
     await checkWorkspace(body.defaultWorkspaceId);
+    if (body.id && (await db.select({ id: ssoConnection.id }).from(ssoConnection).where(eq(ssoConnection.id, body.id))).length)
+      throw badRequest("A provider with this ID exists already. Close the form and start again.");
     const [c] = await db
       .insert(ssoConnection)
       .values({
+        ...(body.id && body.type === "saml" ? { id: body.id } : {}),
         type: body.type,
         name: body.name || DEFAULT_NAME[body.type],
         issuer: issuerFor(body.type, body),
         tenantId: body.type === "microsoft" ? body.tenantId!.trim() : null,
-        clientId: body.clientId,
-        clientSecretEnc: box.encrypt(body.clientSecret),
+        ...credentials(body.type, body),
         domains: body.domains,
         autoJoin: body.autoJoin,
         defaultWorkspaceId: body.defaultWorkspaceId ?? null,
@@ -357,12 +515,22 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     const autoJoin = body.autoJoin ?? c.autoJoin;
     if (autoJoin && !domains.length) throw badRequest("List your email domains to let people join automatically.");
     await checkWorkspace(body.defaultWorkspaceId);
+    let samlFields = {};
+    if (c.type === "saml") {
+      if (body.samlSsoUrl !== undefined) samlFields = { ...samlFields, samlSsoUrl: httpsUrl(body.samlSsoUrl, "https://acme.okta.com/app/…/sso/saml", "identity provider's sign-in URL (SSO URL)") };
+      if (body.samlCerts !== undefined) {
+        try {
+          samlFields = { ...samlFields, samlCerts: normalizeCerts(body.samlCerts) };
+        } catch (e) {
+          throw badRequest((e as Error).message);
+        }
+      }
+    }
     const [saved] = await db
       .update(ssoConnection)
       .set({
         name: body.name,
-        clientId: body.clientId,
-        ...(body.clientSecret ? { clientSecretEnc: box.encrypt(body.clientSecret) } : {}),
+        ...(c.type !== "saml" ? { clientId: body.clientId, ...(body.clientSecret ? { clientSecretEnc: box.encrypt(body.clientSecret) } : {}) } : samlFields),
         ...(body.issuer !== undefined || body.tenantId !== undefined
           ? { issuer: issuerFor(c.type, { issuer: body.issuer ?? c.issuer, tenantId: body.tenantId ?? c.tenantId ?? undefined }), tenantId: c.type === "microsoft" ? (body.tenantId ?? c.tenantId) : null }
           : {}),
@@ -378,7 +546,13 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     const live = await db.select({ id: ssoConnection.id }).from(ssoConnection).where(eq(ssoConnection.enabled, true));
     if (!live.length) await db.update(organization).set({ ssoRequired: false });
     clearSsoCaches();
-    await audit(ctx, { actor: u, action: "auth.sso_updated", targetType: "sso_connection", targetId: c.id, meta: { ...body, clientSecret: body.clientSecret ? "(changed)" : undefined } });
+    await audit(ctx, {
+      actor: u,
+      action: "auth.sso_updated",
+      targetType: "sso_connection",
+      targetId: c.id,
+      meta: { ...body, clientSecret: body.clientSecret ? "(changed)" : undefined, samlCerts: body.samlCerts ? "(changed)" : undefined },
+    });
     return publicConn(saved!);
   });
 
@@ -400,11 +574,38 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     const [c] = await db.select().from(ssoConnection).where(eq(ssoConnection.id, req.params.id));
     if (!c) throw notFound("Sign-in provider not found");
     clearSsoCaches();
+    if (c.type === "saml") {
+      const until = certExpiry(c.samlCerts ?? []);
+      if (!until || new Date(until) < new Date()) return { ok: false, message: "The identity provider's certificate has expired. Paste its new one." };
+      const host = new URL(c.samlSsoUrl!).host;
+      try {
+        // Any answer will do: without a sign-in request most providers answer with an error page.
+        await fetch(c.samlSsoUrl!, { signal: AbortSignal.timeout(10_000), redirect: "manual" });
+      } catch {
+        return { ok: false, message: `Couldn't reach ${host}. Check the sign-in URL and that this server can reach it.` };
+      }
+      const date = new Date(until).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+      return { ok: true, issuer: c.issuer, message: `Reached ${host}. The certificate is valid until ${date}.` };
+    }
     try {
       const d = await discover(c.issuer);
       return { ok: true, issuer: d.issuer, message: `Reached ${new URL(d.authorization_endpoint).host}.` };
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : "Couldn't reach the provider." };
+    }
+  });
+
+  /** Read an identity provider's SAML metadata (pasted, or from its URL) to fill in the form. */
+  app.post("/api/admin/sso/saml-metadata", async (req) => {
+    const u = await requireUser(ctx, req);
+    requireOrgCap(u, "org.auth.manage");
+    const body = parse(z.object({ url: z.string().trim().optional(), xml: z.string().max(500_000).optional() }), req.body);
+    try {
+      const m = body.xml?.trim() ? parseIdpMetadata(body.xml) : await fetchIdpMetadata(httpsUrl(body.url, "https://login.microsoftonline.com/…/federationmetadata.xml", "metadata URL"));
+      return { entityId: m.entityId, ssoUrl: m.ssoUrl, certs: m.certs.join("\n"), certExpires: certExpiry(m.certs) };
+    } catch (e) {
+      if (e instanceof SsoError) throw badRequest(e.message);
+      throw e;
     }
   });
 
@@ -414,11 +615,15 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
    */
   app.get("/api/public/desktop", async () => {
     const org = await getOrg(db);
-    const conns = await db.select({ type: ssoConnection.type, issuer: ssoConnection.issuer }).from(ssoConnection).where(eq(ssoConnection.enabled, true));
+    const conns = await db
+      .select({ type: ssoConnection.type, issuer: ssoConnection.issuer, samlSsoUrl: ssoConnection.samlSsoUrl })
+      .from(ssoConnection)
+      .where(eq(ssoConnection.enabled, true));
     // The issuer, and its authorization endpoint, which may live elsewhere (best effort: cached,
     // and an unreachable provider doesn't hold the answer up).
     const found = await Promise.all(
       conns.map(async (c) => {
+        if (c.type === "saml") return c.samlSsoUrl ? [new URL(c.samlSsoUrl).origin] : [];
         const d = await Promise.race([discover(c.issuer).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 4000).unref())]);
         return [c.issuer, d?.authorization_endpoint].flatMap((u) => {
           try {

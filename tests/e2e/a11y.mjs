@@ -110,7 +110,9 @@ const ready = async (path) => {
   await page.goto(`${APP}${path}`);
   await page.getByTestId("open-search").waitFor();
 };
-await ready("/app");
+// On a page that doesn't put the cursor anywhere itself (Chat focuses its message box, which skips
+// the menus on its own).
+await ready("/app/documents");
 await check("The first Tab reaches a skip link to the main content", async () => {
   await page.keyboard.press("Tab");
   const label = await page.evaluate(() => document.activeElement?.textContent?.trim());

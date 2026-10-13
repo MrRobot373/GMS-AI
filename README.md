@@ -37,7 +37,7 @@
 | Docker images + Compose stack | ✅ |
 | Background jobs (document processing, housekeeping): inside the API on one server, or a Redis/Valkey queue with separate worker processes (retries, restart recovery, Admin status) | ✅ |
 | Uploads on local disk or any S3-compatible bucket (AWS S3, MinIO, Ceph, SeaweedFS, R2…), bundled MinIO profile, copy script for existing installs | ✅ |
-| Single sign-on: Google, Microsoft Entra ID, any OpenID Connect provider (Okta, Keycloak…), invite-only or domain auto-join, "require SSO" ([details](docs/04-single-sign-on.md)) | ✅ (SAML: P4) |
+| Single sign-on: Google, Microsoft Entra ID, any OpenID Connect or SAML 2.0 provider (Okta, Keycloak, ADFS…), invite-only or domain auto-join, "require SSO" ([details](docs/04-single-sign-on.md)) | ✅ |
 | Licensing: Ed25519 license keys verified offline, seats/sections/features/workspace limits, daily check-ins (counts only), grace periods, Admin → License ([details](docs/05-license-server.md)) | ✅ |
 | License server + Super Admin console: customers, issue/change/revoke licenses, check-ins, release channel | ✅ `apps/license-server`, `apps/license-console` |
 | Work AI: agent tasks on DeepSeek Harness with a live timeline, plan, files, approvals for risky steps, follow-ups, queue, private web search (SearXNG), a browser the agent drives (forms ask first, no private network), MCP connectors, skills, schedules, per-task isolation (own Unix user, or optionally its own container with CPU/memory limits and no network beyond Aatmiq's proxy), metering ([details](docs/06-work-ai.md)) | ✅ |

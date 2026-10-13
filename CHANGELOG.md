@@ -9,6 +9,11 @@ without one.
 
 ## Unreleased
 
+- Single sign-on with any SAML 2.0 identity provider (Okta, Entra ID, Google Workspace, ADFS…):
+  import its metadata in Admin → Authentication; the provider's app tile works too.
+- Accessibility: every page meets WCAG 2.1 AA in both themes (contrast, names for controls), a
+  "Skip to content" link, and long dialogs scroll with their buttons in view.
+
 ## 1.0.0 — not yet released
 
 The first release.

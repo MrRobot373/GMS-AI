@@ -60,7 +60,7 @@ they're told). **Admin → Usage** shows who used what, by model and section, wi
 
 | Where | What to set |
 |---|---|
-| Admin → Authentication | Require two-step sign-in (right away, or with a few days' grace and reminders); single sign-on with Google, Microsoft or any OpenID Connect provider; require it for everyone but the owner |
+| Admin → Authentication | Require two-step sign-in (right away, or with a few days' grace and reminders); single sign-on with Google, Microsoft, any OpenID Connect or SAML 2.0 provider (import its metadata); require it for everyone but the owner |
 | Admin → Work AI | When the agent asks first (risky steps, always, never), how many tasks run at once, web search, the browser and which internal sites it may open, container limits |
 | Admin → Audit log | Who did what and when: sign-ins, changes, downloads, erasures |
 | Admin → Settings | The name, logo and colors; prompt logging (off by default: say so to your people if you turn it on); how long chats are kept; email |

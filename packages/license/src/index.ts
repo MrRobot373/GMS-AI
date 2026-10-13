@@ -13,7 +13,7 @@ export type LicensedSection = (typeof SECTIONS)[number];
 /** Optional capabilities gated by the license (`hasFeature`). */
 export const FEATURES = {
   sso: "Google and Microsoft sign-in",
-  oidc: "Custom single sign-on (OIDC: Okta, Keycloak, Entra…)",
+  oidc: "Custom single sign-on (OpenID Connect or SAML: Okta, Keycloak, Entra, ADFS…)",
   audit_export: "Audit log export",
   connectors: "Connectors for Work AI",
   managed_models: "Aatmiq-managed models",

@@ -1,7 +1,8 @@
 /**
  * Licensing + single sign-on, across the three apps (started by run-licensing.sh):
  *   Super Admin console :3100 → issues a key → a licensed Aatmiq :3200 sets up with it, checks in,
- *   enforces seats, follows term changes and revocation; then SSO through a mock OpenID provider :11600.
+ *   enforces seats, follows term changes and revocation; then SSO through a mock OpenID provider :11600
+ *   and a mock SAML identity provider :11700.
  */
 import { chromium } from "playwright-core";
 import { mkdirSync, rmSync } from "node:fs";
@@ -9,6 +10,7 @@ import { mkdirSync, rmSync } from "node:fs";
 const CONSOLE = "http://localhost:3100";
 const APP = "http://localhost:3200";
 const IDP = "http://127.0.0.1:11600";
+const SAML_IDP = "http://127.0.0.1:11700";
 const OUT = new URL("./results-licensing/shots/", import.meta.url).pathname;
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -43,6 +45,18 @@ const expect = (c, m) => {
   if (!c) throw new Error(m);
 };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Wait until the page is at a URL, through chains of pages that post themselves on (SAML): those
+ * interrupt one navigation with the next, which waitForURL reports as an error.
+ */
+async function landOn(page, re, timeout = 20000) {
+  const end = Date.now() + timeout;
+  while (!re.test(page.url())) {
+    if (Date.now() > end) throw new Error(`still at ${page.url()}: ${(await page.content().catch(() => "")).replace(/\s+/g, " ").slice(0, 400)}`);
+    await page.waitForTimeout(200);
+  }
+  await page.waitForLoadState().catch(() => {});
+}
 const toast = (page, text) => page.locator("[data-sonner-toast]", { hasText: text }).first().waitFor({ timeout: 10000 });
 /** Call the product API as the signed-in page (same cookies). */
 const apiAs = async (page, method, path, data) => {
@@ -177,6 +191,7 @@ await step("SSO", "Custom OIDC is an Enterprise feature until the license includ
   await owner.goto(`${APP}/admin/authentication`);
   await owner.getByTestId("add-oidc").filter({ hasText: "Enterprise" }).waitFor();
   expect(await owner.getByTestId("add-oidc").isDisabled(), "OIDC should be locked on the Work plan");
+  expect(await owner.getByTestId("add-saml").isDisabled(), "SAML should be locked on the Work plan");
   await sa.locator('button[aria-label="License options"]').click();
   await sa.getByRole("menuitem", { name: "Change terms" }).click();
   await sa.locator('[role="dialog"] button', { hasText: "Custom single sign-on" }).click();
@@ -245,6 +260,52 @@ await step("SSO", "An invite link offers SSO for the invited address", owner, as
   await ivy.waitForURL("**/app**");
   expect((await apiAs(ivy, "GET", "/api/me")).json.user.email === "ivy@globex.test", "wrong user");
   await ivy.close();
+});
+let samlAcs = "";
+let samlEntity = "";
+await step("SSO", "Add a SAML provider from its metadata URL and test it", owner, async () => {
+  await owner.goto(`${APP}/admin/authentication`);
+  await owner.click("button:has-text('Add provider')");
+  await owner.getByTestId("add-saml").click();
+  samlEntity = await owner.getByTestId("saml-entity-id").inputValue();
+  samlAcs = await owner.getByTestId("saml-acs").inputValue();
+  expect(/\/api\/auth\/sso\/[0-9a-f-]{36}\/metadata$/.test(samlEntity) && samlAcs === samlEntity.replace(/metadata$/, "acs"), "our SAML URLs");
+  await owner.fill('[role="dialog"] input[placeholder="Okta"]', "Entra");
+  await owner.getByTestId("saml-metadata").fill(`${SAML_IDP}/metadata`);
+  await owner.click('[role="dialog"] >> button:has-text("Import")');
+  await toast(owner, "Read the provider's metadata");
+  expect((await owner.getByTestId("saml-issuer").inputValue()) === `${SAML_IDP}/metadata`, "entity ID from the metadata");
+  expect((await owner.getByTestId("saml-sso-url").inputValue()) === `${SAML_IDP}/sso`, "SSO URL from the metadata");
+  expect((await owner.getByTestId("saml-certs").inputValue()).startsWith("-----BEGIN CERTIFICATE-----"), "certificate from the metadata");
+  await owner.fill('[role="dialog"] input[placeholder="acme.com"]', "globex.test");
+  await owner.screenshot({ path: `${OUT}admin-saml.png` });
+  await owner.click('[role="dialog"] >> button:has-text("Add provider")');
+  const row = owner.getByTestId("sso-connection").filter({ hasText: "Entra" });
+  await row.getByTestId("cert-expiry").filter({ hasText: "Certificate valid until" }).waitFor();
+  await row.locator("button", { hasText: "Test" }).click();
+  await toast(owner, "Reached 127.0.0.1:11700");
+  // Our metadata, at our entity ID, for the provider to import.
+  const md = await owner.request.get(samlEntity);
+  expect(md.ok() && (await md.text()).includes(`Location="${samlAcs}"`), "our metadata");
+});
+await step("SSO", "An invited person signs in with SAML", owner, async () => {
+  const me = (await apiAs(owner, "GET", "/api/me")).json;
+  await apiAs(owner, "POST", "/api/admin/invites", { email: "sia.verma@globex.test", workspaces: [{ workspaceId: me.workspaces[0].id, role: "member" }] });
+  const { page: sia } = await newUser("sia");
+  await sia.goto(`${APP}/login`);
+  await sia.getByTestId("sso-saml").filter({ hasText: "Continue with Entra" }).click();
+  await sia.waitForURL(`${SAML_IDP}/sso**`);
+  await sia.fill('input[name="email"]', "sia.verma@globex.test");
+  await sia.click("button:has-text('Sign in')");
+  await landOn(sia, /localhost:3200\/app\/chat/);
+  const who = (await apiAs(sia, "GET", "/api/me")).json.user;
+  expect(who.email === "sia.verma@globex.test" && who.name === "Sia Verma", `signed in as ${who.email} (${who.name})`);
+  // Later, from the provider's app tile (it remembers her): Aatmiq starts the sign-in again and she's in.
+  await sia.context().clearCookies({ domain: "localhost" }).catch(() => {});
+  await sia.goto(`${SAML_IDP}/start?acs=${encodeURIComponent(samlAcs)}&audience=${encodeURIComponent(samlEntity)}&email=sia.verma%40globex.test`, { waitUntil: "commit" });
+  await landOn(sia, /localhost:3200\/app\//);
+  expect((await apiAs(sia, "GET", "/api/me")).json.user.email === "sia.verma@globex.test", "the app tile signs her in");
+  await sia.close();
 });
 await step("SSO", "Requiring SSO hides passwords except for the owner", owner, async () => {
   await owner.goto(`${APP}/admin/authentication`);

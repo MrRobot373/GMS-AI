@@ -30,11 +30,12 @@ export function Dialog({
         <RDialog.Overlay className="fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-fade-in" />
         <RDialog.Content
           className={cn(
-            "fixed top-1/2 left-1/2 z-50 w-[calc(100vw-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface shadow-soft outline-none data-[state=open]:animate-rise",
+            // Taller than the screen, the middle scrolls: the title and the buttons stay in view.
+            "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface shadow-soft outline-none data-[state=open]:animate-rise",
             className,
           )}
         >
-          <div className="flex items-start justify-between gap-4 px-5 pt-5">
+          <div className="flex shrink-0 items-start justify-between gap-4 px-5 pt-5">
             <div>
               <RDialog.Title className="text-[15px] font-medium text-fg">{title}</RDialog.Title>
               {description ? (
@@ -47,9 +48,9 @@ export function Dialog({
               <X className="size-4" />
             </RDialog.Close>
           </div>
-          {children && <div className="px-5 pt-4 pb-1">{children}</div>}
-          {footer && <div className="flex justify-end gap-2 px-5 pt-3 pb-5">{footer}</div>}
-          {!footer && <div className="h-5" />}
+          {children && <div className="min-h-0 overflow-y-auto px-5 pt-4 pb-1">{children}</div>}
+          {footer && <div className="flex shrink-0 justify-end gap-2 px-5 pt-3 pb-5">{footer}</div>}
+          {!footer && <div className="h-5 shrink-0" />}
         </RDialog.Content>
       </RDialog.Portal>
     </RDialog.Root>

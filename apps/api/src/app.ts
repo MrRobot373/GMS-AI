@@ -170,6 +170,8 @@ export async function buildApp(
     if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return;
     const path = req.url.split("?")[0]!;
     if (!path.startsWith("/api/") || path.startsWith("/api/internal/")) return;
+    // A SAML identity provider posts its signed answer from its own site (checked in routes/sso.ts).
+    if (/^\/api\/auth\/sso\/[^/]+\/acs$/.test(path)) return;
     const origin = req.headers.origin;
     if (origin && origin !== APP_ORIGIN) throw new HttpError(403, "Requests from other sites aren't allowed.", "bad_origin");
   });
