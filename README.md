@@ -4,7 +4,7 @@
 
 *Aatmiq (Sanskrit ātmik, "of the self, one's own"), pronounced AAT-mik.*
 
-- [Rollout plan and product readiness](docs/11-rollout.md) · [Team server](docs/10-team-server.md) · [Models and Auto](docs/02-models.md) · [Personal data](docs/12-personal-data.md) · [Master plan](docs/00-master-plan.md) · [Foundation spec](docs/01-foundation.md) · [Connectors setup](docs/09-connectors.md) · [Skill library](docs/08-skills.md) · [Pricing & business](docs/pricing-and-business.md) · [Decision log](docs/decisions.md)
+- [Rollout plan and product readiness](docs/11-rollout.md) · [Team server](docs/10-team-server.md) · [Models and Auto](docs/02-models.md) · [Personal data](docs/12-personal-data.md) · [Releases](docs/13-releases.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/00-master-plan.md) · [Foundation spec](docs/01-foundation.md) · [Connectors setup](docs/09-connectors.md) · [Skill library](docs/08-skills.md) · [Pricing & business](docs/pricing-and-business.md) · [Decision log](docs/decisions.md)
 
 ## What works today
 

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { S3Config } from "./services/storage";
 
 export interface Config {
@@ -81,7 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     s3: loadS3(env),
     licensePublicKey: env.LICENSE_PUBLIC_KEY || null,
     licenseServerUrl: env.LICENSE_SERVER_URL === undefined ? "https://license.aatmiq.com" : env.LICENSE_SERVER_URL || null,
-    version: env.APP_VERSION ?? "0.1.0",
+    version: env.APP_VERSION || readVersion(),
     workDir: env.WORK_DIR ?? ".data/work",
     workControlUrl: env.WORK_CONTROL_URL || null,
     workSandbox: env.WORK_SANDBOX === "off" ? "off" : "on",
@@ -178,6 +180,17 @@ export function loadSetupModel(
     tier: tierSet === "none" ? null : ((tierSet as SetupModel["tier"]) ?? tier),
     thinkingSwitch: thinking === "switch",
   };
+}
+
+/** The release: the VERSION file at the repository root (copied into the images). */
+export function readVersion(): string {
+  for (const p of [join(process.cwd(), "VERSION"), join(process.cwd(), "..", "..", "VERSION"), "/app/VERSION"]) {
+    try {
+      const v = readFileSync(p, "utf8").trim();
+      if (/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(v)) return v;
+    } catch {}
+  }
+  return "0.0.0-dev";
 }
 
 /** S3 storage from S3_* variables; null (local disk) without S3_BUCKET. */

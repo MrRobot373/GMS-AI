@@ -54,6 +54,7 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
     return {
       user: { ...u, ...profile, twoFactorSetupRequired: u.twoFactorSetupRequired ?? false, twoFactorDue: u.twoFactorDue ?? null },
       emailEnabled: await ctx.mail.configured(),
+      version: ctx.cfg.version,
       isAdmin: isOrgAdmin(u.orgRole),
       isWorkspaceAdmin: workspaces.some((w) => w.role === "admin"),
       org: {

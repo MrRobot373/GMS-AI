@@ -64,6 +64,9 @@ services:
       retries: 20
 
   api:
+    # A release from the registry (AATMIQ_IMAGE_PREFIX=ghcr.io/…/, AATMIQ_VERSION=1.0.0; see
+    # docs/13-releases.md), or built here from the source with `up --build`.
+    image: ${AATMIQ_IMAGE_PREFIX:-}aatmiq-api:${AATMIQ_VERSION:-latest}
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
     depends_on:
@@ -83,6 +86,7 @@ services:
       retries: 10
 
   web:
+    image: ${AATMIQ_IMAGE_PREFIX:-}aatmiq-web:${AATMIQ_VERSION:-latest}
     build: { context: .., dockerfile: deploy/Dockerfile.web }
     restart: unless-stopped
     depends_on:
@@ -107,6 +111,7 @@ services:
 
   # Background jobs (document processing, housekeeping). Same image and settings as the API.
   worker:
+    image: ${AATMIQ_IMAGE_PREFIX:-}aatmiq-api:${AATMIQ_VERSION:-latest}
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     profiles: ["worker"]
     restart: unless-stopped

@@ -387,6 +387,7 @@ export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
     ]);
     const lic = await ctx.license.info();
     return {
+      version: ctx.cfg.version,
       users,
       workspaces: workspaces?.n ?? 0,
       pendingRequests: pending?.n ?? 0,

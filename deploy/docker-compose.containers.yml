@@ -11,7 +11,7 @@ services:
     environment:
       WORK_ISOLATION: container
       # The image task containers start from: this API's own image.
-      WORK_CONTAINER_IMAGE: ${AATMIQ_API_IMAGE:-aatmiq-api}
+      WORK_CONTAINER_IMAGE: ${AATMIQ_API_IMAGE:-${AATMIQ_IMAGE_PREFIX:-}aatmiq-api:${AATMIQ_VERSION:-latest}}
       WORK_CONTAINER_NETWORK: aatmiq_tasks
       # Task folders live in the files volume (mounted at /data here); each task gets only its own.
       WORK_CONTAINER_VOLUME: aatmiq_files

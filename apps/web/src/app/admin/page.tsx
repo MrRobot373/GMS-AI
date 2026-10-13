@@ -17,6 +17,7 @@ import { get } from "@/lib/api";
 import { formatTokens, timeAgo } from "@/lib/format";
 
 interface Overview {
+  version: string;
   users: { total: number; active: number };
   workspaces: number;
   pendingRequests: number;
@@ -100,6 +101,11 @@ export default function AdminOverview() {
                 </Badge>
               )}
             </Link>
+            {o.data && (
+              <p className="mt-2 px-1 text-[12px] text-fg-subtle" data-testid="app-version">
+                {me.org.productName} {o.data.version}
+              </p>
+            )}
           </Section>
         </div>
       </div>

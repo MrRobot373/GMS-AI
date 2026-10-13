@@ -80,6 +80,11 @@ checks `deploy/docker-compose.https.yml`: Caddy's certificate, the redirect from
 not published, HSTS, Secure cookies and a chat answer streaming through the proxy (7 checks). Both
 need the images `aatmiq-api:dev` and `aatmiq-web:dev` (and `caddy:2.11.3`).
 
+`run-upgrade.sh` is the upgrade test of every release (docs/13-releases.md): `FROM_IMAGE` makes
+data through the API (an owner, a chat with an answer, a document, a project with a note, a Work AI
+task), then `TO_IMAGE` starts on the same database and files and must keep and serve all of it
+(8 checks): `FROM_IMAGE=ghcr.io/<owner>/aatmiq-api:1.0.0 TO_IMAGE=aatmiq-api:dev tests/e2e/run-upgrade.sh`.
+
 ## Work AI container mode
 
 `run-containers.sh` starts the Compose stack with `deploy/docker-compose.containers.yml` (images
