@@ -119,9 +119,10 @@ What we have, and what's left before a customer pays for it.
 | Code | Code-OSS in the browser per person, agent panel with diffs, desktop app (Windows, macOS, Linux) |
 | Admin | Users, invitations in bulk, groups, budgets, token requests, usage, audit log, Health with email alerts |
 | Accounts | Passwords, two-step sign-in (with a grace period), single sign-on, email, signed-in devices |
+| Personal data | Download everything about a person (they or an admin), erase a person with their data, shared items to a colleague ([12-personal-data.md](12-personal-data.md)) |
 | Operations | One-command team install, HTTPS, nightly backups with a recorded status, restore, licensing |
 | Isolation | Each task and IDE as its own user, tasks in containers, a firewall from private networks, an egress proxy |
-| Quality | 199 API tests (plus 3 against a real Ollama server), 24 runtime tests, 118 + 32 + 18 + 14 browser checks, an authorization sweep of every route, a 25-person load test; CI on every push builds the images and runs them |
+| Quality | 204 API tests (plus 3 against a real Ollama server), 24 runtime tests, 118 + 32 + 20 + 14 browser checks, an authorization sweep of every route, a 25-person load test; CI on every push builds the images and runs them |
 
 ### Before the first sale
 
@@ -132,7 +133,6 @@ What we have, and what's left before a customer pays for it.
 | 3 | Signed desktop apps: a Windows code-signing certificate and an Apple Developer ID (notarization); add them as CI secrets | Unsigned installers trigger warnings |
 | 4 | Versioned releases: tag `v1.0.0`, images pushed to a registry, a changelog, and an upgrade test from each released version | Customers update in place |
 | 5 | An offline install bundle: the images and the models in one download | Many on-premises customers have no internet on the server |
-| 6 | Personal data: export everything about one person, and erase a person with their data | Privacy law (India's DPDP Act, GDPR) and customer contracts |
 | 7 | Legal: the license agreement (EULA), privacy notice, a data-processing addendum template, and the list of open-source licenses and model licenses we ship (Apache-2.0, NVIDIA Nemotron Open Model License: [02-models.md](02-models.md#model-licenses)) | Required to sell |
 | 8 | Customer documentation: a short user guide, an admin guide (from these docs), a hardware sizing table | So customers install without us |
 | 9 | Support: where customers report issues, response times per plan, which versions we support | Part of what they buy |

@@ -50,6 +50,7 @@ import {
 import { randomToken, sha256 } from "../crypto";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { getOrgPeriod } from "../services/quota";
+import { erasePerson, exportPerson } from "../services/personal-data";
 
 const INVITE_TTL_DAYS = 7;
 
@@ -127,6 +128,26 @@ export async function adminOrgRoutes(app: FastifyInstance, ctx: AppContext) {
       meta: body,
     });
     return { ok: true };
+  });
+
+  /** A person's data as a ZIP, for a request under privacy law (docs/12-personal-data.md). */
+  app.get<{ Params: { id: string } }>("/api/admin/users/:id/export", async (req, reply) => {
+    const u = await requireUser(ctx, req);
+    requireOrgCap(u, "org.users.manage");
+    const { stream, fileName } = await exportPerson(ctx, req.params.id);
+    await audit(ctx, { actor: u, action: "user.data_exported", targetType: "user", targetId: req.params.id, ip: req.ip });
+    return reply.header("content-type", "application/zip").header("content-disposition", `attachment; filename="${fileName}"`).send(stream);
+  });
+
+  /** Erase a person and their data, for good. Shared items can go to a colleague. */
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/erase", async (req) => {
+    const u = await requireUser(ctx, req);
+    requireOrgCap(u, "org.users.manage");
+    const body = parse(z.object({ confirmEmail: z.string().trim(), transferTo: z.string().nullable().optional() }), req.body);
+    const [target] = await db.select({ email: user.email }).from(user).where(eq(user.id, req.params.id));
+    if (!target) throw notFound("User not found");
+    if (body.confirmEmail.toLowerCase() !== target.email.toLowerCase()) throw badRequest("Type the person's email address to confirm.");
+    return erasePerson(ctx, u, req.params.id, { transferTo: body.transferTo });
   });
 
   app.get("/api/admin/invites", async (req) => {

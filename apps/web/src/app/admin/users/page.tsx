@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, KeyRound, Link2, MailWarning, MoreHorizontal, Search, ShieldCheck, ShieldOff, Smartphone, UserCheck, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
+import { Check, Copy, Download, Eraser, KeyRound, Link2, MailWarning, MoreHorizontal, Search, ShieldCheck, ShieldOff, Smartphone, UserCheck, UserMinus, UserPlus, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Section, Table, Td } from "@/components/admin/table";
@@ -54,6 +54,7 @@ export default function UsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [resetFor, setResetFor] = useState<UserRow | null>(null);
   const [twoStepFor, setTwoStepFor] = useState<UserRow | null>(null);
+  const [eraseFor, setEraseFor] = useState<UserRow | null>(null);
 
   const filtered = useMemo(
     () => (users.data ?? []).filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(q.toLowerCase())),
@@ -167,11 +168,13 @@ export default function UsersPage() {
                         <MenuItem icon={<ShieldOff />} onSelect={() => setTwoStepFor(u)}>Turn off two-step sign-in</MenuItem>
                       )}
                       <MenuSeparator />
+                      <MenuItem icon={<Download />} onSelect={() => window.location.assign(`/api/admin/users/${u.id}/export`)}>Download their data</MenuItem>
                       {u.status === "active" ? (
                         <MenuItem icon={<UserMinus />} danger onSelect={() => update.mutate({ id: u.id, status: "deactivated" })}>Deactivate</MenuItem>
                       ) : (
                         <MenuItem icon={<UserCheck />} onSelect={() => update.mutate({ id: u.id, status: "active" })}>Reactivate</MenuItem>
                       )}
+                      <MenuItem icon={<Eraser />} danger onSelect={() => setEraseFor(u)}>Erase person and data…</MenuItem>
                     </MenuContent>
                   </Menu>
                 )}
@@ -208,6 +211,7 @@ export default function UsersPage() {
 
       <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       {resetFor && <ResetLinkDialog person={resetFor} onClose={() => setResetFor(null)} />}
+      {eraseFor && <EraseDialog person={eraseFor} others={(users.data ?? []).filter((x) => x.id !== eraseFor.id && x.status === "active")} onClose={() => setEraseFor(null)} />}
       <Dialog
         open={!!twoStepFor}
         onOpenChange={(o) => !o && setTwoStepFor(null)}
@@ -466,6 +470,64 @@ function ResetLinkDialog({ person, onClose }: { person: UserRow; onClose: () => 
       }
     >
       {r?.link && <CopyLink link={r.link} />}
+    </Dialog>
+  );
+}
+
+/** Erase a person and their data for good (privacy law requests, someone leaving for good). */
+function EraseDialog({ person, others, onClose }: { person: UserRow; others: UserRow[]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [confirm, setConfirm] = useState("");
+  const [heir, setHeir] = useState("");
+  const erase = useMutation({
+    mutationFn: () =>
+      post<{ chats: number; documentsDeleted: number; documentsTransferred: number; projectsDeleted: number; projectsTransferred: number; tasks: number }>(
+        `/api/admin/users/${person.id}/erase`,
+        { confirmEmail: confirm, transferTo: heir || null },
+      ),
+    onSuccess: (r) => {
+      const moved = r.projectsTransferred + r.documentsTransferred;
+      toast.success(`${person.name} was erased${moved ? `; ${moved} shared item${moved === 1 ? "" : "s"} moved to ${others.find((o) => o.id === heir)?.name}` : ""}`);
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Erase ${person.name}?`}
+      description="Their account and everything they made are deleted for good: chats, private documents, Work AI tasks and their files, code workspaces, schedules, personal skills and connected apps. This can't be undone. Download their data first if they asked for a copy."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="danger" disabled={confirm.trim().toLowerCase() !== person.email.toLowerCase() || erase.isPending} onClick={() => erase.mutate()} data-testid="erase-confirm">
+            <Eraser /> Erase for good
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field
+          label="Give their shared projects and documents to"
+          hint="Projects, documents shared with a workspace and organization skills move to this person. Nobody: shared projects and documents are deleted too (organization skills go to you)."
+        >
+          <Select value={heir} onChange={(e) => setHeir(e.target.value)} data-testid="erase-heir">
+            <option value="">Nobody (delete them)</option>
+            {others.map((o) => (
+              <option key={o.id} value={o.id}>{o.name} ({o.email})</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={`Type ${person.email} to confirm`}>
+          <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={person.email} autoComplete="off" data-testid="erase-email" />
+        </Field>
+        <p className="text-[12.5px] leading-relaxed text-fg-subtle">
+          Usage stays in the totals without their name, and the activity log keeps what happened under a pseudonym. Backups made before today still
+          contain them until they expire.
+        </p>
+      </div>
     </Dialog>
   );
 }

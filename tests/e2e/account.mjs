@@ -4,7 +4,7 @@
  * Starts its own test mail server; the admin points Aatmiq at it from Admin → Settings → Email.
  */
 import { chromium } from "playwright-core";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { startSmtpSink } from "../../apps/api/test/smtp-sink.mjs";
 import { totpCode } from "../../apps/api/test/totp.mjs";
 
@@ -359,6 +359,32 @@ await step("Require", "Someone without it only gets the setup page until it's on
   await maya.goto(`${APP}/app/settings#security`);
   await maya.getByText("Your organization requires it").waitFor();
   expect((await maya.getByTestId("two-factor-off").count()) === 0, "turn-off button shown while required");
+});
+
+/* ═════════════ Personal data ═════════════ */
+await step("Your data", "Settings → Your data downloads everything about you as a ZIP", maya, async () => {
+  await maya.goto(`${APP}/app/settings`);
+  await maya.getByRole("button", { name: "Your data" }).click();
+  const [dl] = await Promise.all([maya.waitForEvent("download"), maya.getByTestId("download-my-data").click()]);
+  expect(/^aatmiq-data-maya-patel-\d{4}-\d{2}-\d{2}\.zip$/.test(dl.suggestedFilename()), dl.suggestedFilename());
+  const zip = readFileSync(await dl.path());
+  expect(zip.subarray(0, 4).toString("binary") === "PK\x03\x04", "not a ZIP");
+  for (const name of ["README.txt", "profile.json", "usage.csv", "activity-log.json"]) expect(zip.includes(Buffer.from(name)), `${name} missing`);
+  await shot(maya, "your-data");
+});
+await step("Your data", "An admin erases a person: confirm by email, and their session ends", owner, async () => {
+  await owner.goto(`${APP}/admin/users`);
+  await owner.getByRole("button", { name: "Actions for Maya Patel" }).click();
+  await owner.getByRole("menuitem", { name: /Erase person and data/ }).click();
+  const erase = owner.getByTestId("erase-confirm");
+  expect(await erase.isDisabled(), "erase allowed before typing the email");
+  await owner.getByTestId("erase-email").fill("maya@acme.test");
+  await shot(owner, "erase-dialog");
+  await erase.click();
+  await toast(owner, "Maya Patel was erased");
+  expect((await owner.getByText("maya@acme.test").count()) === 0, "still listed");
+  await maya.goto(`${APP}/app`);
+  await maya.waitForURL(/\/login/);
 });
 
 /* ═════════════ Report ═════════════ */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, Monitor, Moon, Settings, Sun, Trash2 } from "lucide-react";
+import { ArchiveRestore, Download, Monitor, Moon, Settings, Sun, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { TopBar } from "@/components/app/frame";
 import { useEffect, useState } from "react";
@@ -19,7 +19,7 @@ import { formatTokens, timeAgo } from "@/lib/format";
 import { applyTheme, readTheme, type ThemePref } from "@/lib/theme";
 import type { ChatSummary, QuotaStatus, TokenRequestRow } from "@/lib/types";
 
-const TABS = ["Profile", "Security", "Appearance", "Usage", "Archived chats"] as const;
+const TABS = ["Profile", "Security", "Appearance", "Usage", "Archived chats", "Your data"] as const;
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Profile");
@@ -55,6 +55,7 @@ export default function SettingsPage() {
           {tab === "Appearance" && <Appearance />}
           {tab === "Usage" && <Usage />}
           {tab === "Archived chats" && <ArchivedChats />}
+          {tab === "Your data" && <YourData />}
         </div>
       </div>
       </div>
@@ -297,5 +298,32 @@ function ArchivedChats() {
         </div>
       ))}
     </Card>
+  );
+}
+
+/** Download everything about you; erasing is for an admin (the owner can't be erased). */
+function YourData() {
+  return (
+    <div className="space-y-4">
+      <Card className="p-5">
+        <div className="text-[13.5px] text-fg">Download your data</div>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-fg-subtle">
+          A ZIP with everything kept about you: your profile and sign-ins, every chat (all versions), the documents you uploaded, your projects,
+          Work AI tasks and the files they made, skills, schedules, connected apps, usage and the activity log about you. Passwords and app
+          tokens are never included.
+        </p>
+        <Button asChild variant="secondary" className="mt-4">
+          <a href="/api/me/export" data-testid="download-my-data">
+            <Download /> Download my data
+          </a>
+        </Button>
+      </Card>
+      <Card className="p-5">
+        <div className="text-[13.5px] text-fg">Erase your account</div>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-fg-subtle">
+          Ask an admin of your organization: they can erase your account and everything you made, and give shared projects to a colleague.
+        </p>
+      </Card>
+    </div>
   );
 }

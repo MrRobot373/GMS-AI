@@ -13,6 +13,7 @@ import { audit, getOrg, parse, requireOrgCap, requireUser, type AppContext } fro
 import { randomToken } from "../crypto";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import type { MailServer } from "../services/mail";
+import { exportPerson } from "../services/personal-data";
 
 /** "Chrome on Windows", "Aatmiq Code on macOS"… from a browser's user agent. */
 export function describeDevice(ua: string | null): string {
@@ -75,6 +76,14 @@ export async function accountRoutes(app: FastifyInstance, ctx: AppContext) {
   /* ───────────── Signed-in devices ───────────── */
 
   /** Where the person is signed in (never the session tokens themselves). */
+  /** Everything Aatmiq holds about you, as a ZIP (docs/12-personal-data.md). */
+  app.get("/api/me/export", async (req, reply) => {
+    const u = await requireUser(ctx, req);
+    const { stream, fileName } = await exportPerson(ctx, u.id);
+    await audit(ctx, { actor: u, action: "user.data_exported", targetType: "user", targetId: u.id, ip: req.ip });
+    return reply.header("content-type", "application/zip").header("content-disposition", `attachment; filename="${fileName}"`).send(stream);
+  });
+
   app.get("/api/me/sessions", async (req) => {
     const u = await requireUser(ctx, req);
     const rows = await db
