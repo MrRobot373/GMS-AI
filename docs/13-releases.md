@@ -75,5 +75,5 @@ FROM_IMAGE=ghcr.io/<owner>/aatmiq-api:1.0.0 TO_IMAGE=aatmiq-api:latest tests/e2e
 
 ## Supported versions
 
-To decide with the support terms (rollout checklist item 9): we suggest the latest minor version
+To decide with the support terms (the support item of the rollout checklist, [11-rollout.md](11-rollout.md)): we suggest the latest minor version
 and the one before it get fixes; older ones are asked to update.

@@ -126,7 +126,8 @@ services:
       OLLAMA_KV_CACHE_TYPE: q8_0
     volumes:
       - ollama-chat:/root/.ollama
-    # Start the server, fetch the models the first time, load them, then keep serving.
+    # Start the server, fetch the models the first time (not again: they may come from the offline
+    # bundle), load them, then keep serving.
     entrypoint:
       - /bin/sh
       - -c
@@ -134,7 +135,7 @@ services:
         ollama serve & pid=$$!;
         until ollama list >/dev/null 2>&1; do sleep 1; done;
         for m in ${OLLAMA_CHAT_MODELS:-nemotron-3-nano:4b}; do
-          ollama pull $$m && ollama run $$m "" >/dev/null 2>&1 || echo "ollama-chat: $$m couldn't be downloaded";
+          { ollama show $$m >/dev/null 2>&1 || ollama pull $$m; } && ollama run $$m "" >/dev/null 2>&1 || echo "ollama-chat: $$m couldn't be downloaded";
         done;
         wait $$pid
     deploy:
@@ -171,7 +172,7 @@ services:
       - >-
         ollama serve & pid=$$!;
         until ollama list >/dev/null 2>&1; do sleep 1; done;
-        ollama pull ${LARGE_OLLAMA_MODEL:-nemotron-3-super:120b} && ollama run ${LARGE_OLLAMA_MODEL:-nemotron-3-super:120b} "" >/dev/null 2>&1
+        { ollama show ${LARGE_OLLAMA_MODEL:-nemotron-3-super:120b} >/dev/null 2>&1 || ollama pull ${LARGE_OLLAMA_MODEL:-nemotron-3-super:120b}; } && ollama run ${LARGE_OLLAMA_MODEL:-nemotron-3-super:120b} "" >/dev/null 2>&1
         || echo "ollama-large: the model couldn't be downloaded or doesn't fit";
         wait $$pid
     deploy:
@@ -210,7 +211,7 @@ services:
       - >-
         ollama serve & pid=$$!;
         until ollama list >/dev/null 2>&1; do sleep 1; done;
-        ollama pull ${EMBEDDING_MODEL:-embeddinggemma-2:270m} || echo "embeddings: the model couldn't be downloaded";
+        ollama show ${EMBEDDING_MODEL:-embeddinggemma-2:270m} >/dev/null 2>&1 || ollama pull ${EMBEDDING_MODEL:-embeddinggemma-2:270m} || echo "embeddings: the model couldn't be downloaded";
         wait $$pid
     deploy:
       resources:

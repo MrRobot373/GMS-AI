@@ -238,13 +238,37 @@ Restore refuses while Aatmiq is running. Test a restore once, on a spare machine
 
 ## Updating
 
+From a release (the images from the registry; [13-releases.md](13-releases.md)): set the new
+`AATMIQ_VERSION` in `deploy/.env`, then
+
 ```bash
 deploy/team.sh exec backup /scripts/backup.sh
-git pull
-deploy/team.sh up -d --build
+deploy/team.sh pull && deploy/team.sh up -d
 ```
 
-Database changes are applied when the API starts.
+From the source: `git pull` and `deploy/team.sh up -d --build` instead of the last line. Database
+changes are applied when the API starts.
+
+## Offline
+
+For a server without internet: make the bundle on any Linux machine with internet, Docker and
+Python 3, with the same `deploy/.env` (it decides the lineup and the models), copy it over (a USB
+disk, a share), and load it there.
+
+```bash
+deploy/offline.sh save /mnt/usb/aatmiq-bundle      # with internet: about 50 GB for the default lineup
+deploy/offline.sh load /mnt/usb/aatmiq-bundle      # on the server
+deploy/team.sh up -d
+```
+
+| Step | What it does |
+|---|---|
+| `save` | Pulls every image the stack uses (Aatmiq's from the registry, or builds them from the source when `AATMIQ_IMAGE_PREFIX` isn't set), saves them in one file, downloads the models (Hugging Face for vLLM, the Ollama library for the rest) into folders shaped like the Compose volumes, copies the deploy folder (never `deploy/.env`: it holds the secrets), and writes checksums |
+| `load` | Checks every file against the checksums (and stops if one is damaged), loads the images, fills the model volumes, and sets `HF_HUB_OFFLINE=1` and `LICENSE_SERVER_URL=` (no check-ins) in `deploy/.env` |
+
+Without internet the license works from its key alone (it never needs to reach us); web search for
+Work AI needs a SearXNG that can reach the web, so leave it off. For updates, make a new bundle with
+the new version and load it the same way (after a backup).
 
 ## Keeping an eye on it
 
