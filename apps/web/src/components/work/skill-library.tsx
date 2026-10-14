@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
 import { get, patch } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { useT } from "@/i18n";
 
 interface LibrarySkill {
   slug: string;
@@ -25,6 +26,7 @@ const CATEGORIES = ["Software development", "Data", "Documents & writing", "Busi
 
 /** Aatmiq's built-in skills: everyone can browse and read them; admins switch them on or off. */
 export function SkillLibrary({ canManage }: { canManage: boolean }) {
+  const t = useT();
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["skill-library"], queryFn: () => get<LibrarySkill[]>("/api/work/skills/library") });
   const [q, setQ] = useState("");
@@ -46,15 +48,15 @@ export function SkillLibrary({ canManage }: { canManage: boolean }) {
   return (
     <section data-testid="skill-library">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px] text-fg">
-        <Library className="size-3.5 text-fg-subtle" /> Library
+        <Library className="size-3.5 text-fg-subtle" /> {t("Library")}
         <span className="text-[12px] text-fg-subtle">
-          · Built into Aatmiq. {canManage ? `${on} of ${all.length} on for everyone.` : "The agent picks the right one for each task."}
+          · {t("Built into Aatmiq.")} {canManage ? t("{on} of {total} on for everyone.", { on, total: all.length }) : t("The agent picks the right one for each task.")}
         </span>
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-fg-subtle" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search skills" className="pl-8" data-testid="library-search" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search skills")} className="pl-8" data-testid="library-search" />
         </div>
         <div className="flex flex-wrap gap-1.5">
           {["All", ...CATEGORIES].map((c) => (
@@ -82,20 +84,20 @@ export function SkillLibrary({ canManage }: { canManage: boolean }) {
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setOpen(s)}>
                 <div className="flex items-center gap-2 text-[13.5px] text-fg">
                   {s.name}
-                  {!s.enabled && <Badge>Off</Badge>}
+                  {!s.enabled && <Badge>{t("Off")}</Badge>}
                   {s.files.length > 0 && (
                     <span className="inline-flex items-center gap-1 text-[11.5px] text-fg-subtle">
-                      <FileCode2 className="size-3" /> {s.files.length === 1 ? "1 helper" : `${s.files.length} helpers`}
+                      <FileCode2 className="size-3" /> {t.n(s.files.length, "{n} helper", "{n} helpers")}
                     </span>
                   )}
                 </div>
                 <div className="truncate text-[12px] text-fg-subtle">{s.description}</div>
               </button>
               <span className="hidden text-[11.5px] text-fg-subtle sm:block">{s.category}</span>
-              {canManage && <Switch checked={s.enabled} onCheckedChange={() => toggle.mutate(s)} label={`Use ${s.name}`} />}
+              {canManage && <Switch checked={s.enabled} onCheckedChange={() => toggle.mutate(s)} label={t("Use {name}", { name: s.name })} />}
             </div>
           ))}
-          {shown.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-fg-subtle">No skills match.</div>}
+          {shown.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-fg-subtle">{t("No skills match.")}</div>}
         </div>
       )}
       {open && <LibrarySkillDialog skill={open} onClose={() => setOpen(null)} />}
@@ -104,6 +106,7 @@ export function SkillLibrary({ canManage }: { canManage: boolean }) {
 }
 
 function LibrarySkillDialog({ skill, onClose }: { skill: LibrarySkill; onClose: () => void }) {
+  const t = useT();
   const q = useQuery({ queryKey: ["skill-library", skill.slug], queryFn: () => get<{ body: string; files: string[] }>(`/api/work/skills/library/${skill.slug}`) });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={skill.name} description={skill.description} className="max-w-3xl">
@@ -111,7 +114,7 @@ function LibrarySkillDialog({ skill, onClose }: { skill: LibrarySkill; onClose: 
         {q.data ? <Markdown content={q.data.body.replace(/^\s*# .*\n+/, "")} /> : <Skeleton className="h-60 rounded-lg" />}
         {!!q.data?.files.length && (
           <p className="mt-4 text-[12px] text-fg-subtle">
-            Ships with: {q.data.files.map((f) => <code key={f} className="mr-2">{f}</code>)}
+            {t("Ships with:")} {q.data.files.map((f) => <code key={f} className="mr-2">{f}</code>)}
           </p>
         )}
       </div>

@@ -78,7 +78,7 @@ Your name → **Settings**:
 |---|---|
 | Profile | Your name, job title, and instructions every answer follows ("I work in finance; keep answers short") |
 | Security | Your password, two-step sign-in, email confirmation, and the devices you're signed in on (sign out of any) |
-| Appearance | Light, dark or your computer's setting |
+| Appearance | Language (English or हिन्दी; your organization's default until you pick), and light, dark or your computer's setting |
 | Usage | The tokens you've used this period; **Request more tokens** asks your admin |
 | Archived chats | Chats you archived, to bring back or delete |
 | Your data | **Download my data**: a ZIP of everything kept about you |

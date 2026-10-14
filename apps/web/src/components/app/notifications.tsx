@@ -10,8 +10,10 @@ import { cn } from "@/lib/cn";
 import { timeAgo } from "@/lib/format";
 import type { NotificationRow } from "@/lib/types";
 import { useSession } from "./session";
+import { useT } from "@/i18n";
 
 export function NotificationsButton() {
+  const t = useT();
   const { me } = useSession();
   const qc = useQueryClient();
   const router = useRouter();
@@ -32,7 +34,7 @@ export function NotificationsButton() {
   return (
     <Popover.Root onOpenChange={(o) => !o && unread > 0 && markRead.mutate()}>
       <Popover.Trigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`} className="relative">
+        <Button variant="ghost" size="icon-sm" aria-label={unread ? t("Notifications ({n} unread)", { n: unread }) : t("Notifications")} className="relative">
           <Bell className="size-4" />
           {unread > 0 && (
             <span className="absolute top-1 right-1 size-2 rounded-full bg-accent shadow-[0_0_0_2px_var(--bg-subtle)]" />
@@ -47,8 +49,8 @@ export function NotificationsButton() {
           className="z-50 w-80 animate-rise rounded-xl border border-border bg-surface shadow-soft outline-none"
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <span className="text-sm font-medium">Notifications</span>
-            {unread > 0 && <span className="text-xs text-fg-subtle">{unread} new</span>}
+            <span className="text-sm font-medium">{t("Notifications")}</span>
+            {unread > 0 && <span className="text-xs text-fg-subtle">{t("{unread} new", { unread: unread })}</span>}
           </div>
           <div className="max-h-96 overflow-y-auto p-1">
             {list.data?.length ? (
@@ -62,12 +64,12 @@ export function NotificationsButton() {
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] leading-snug text-fg">{n.title}</span>
                     {n.body && <span className="mt-0.5 block truncate text-xs text-fg-muted">{n.body}</span>}
-                    <span className="mt-1 block text-[11px] text-fg-subtle">{timeAgo(n.createdAt)}</span>
+                    <span className="mt-1 block text-[11px] text-fg-subtle">{timeAgo(n.createdAt, t)}</span>
                   </span>
                 </button>
               ))
             ) : (
-              <p className="px-3 py-8 text-center text-sm text-fg-subtle">You&apos;re all caught up.</p>
+              <p className="px-3 py-8 text-center text-sm text-fg-subtle">{t("You're all caught up.")}</p>
             )}
           </div>
         </Popover.Content>

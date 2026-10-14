@@ -434,4 +434,24 @@ d("Email, password reset and two-step sign-in", () => {
     expect(fourth.statusCode).toBe(429);
     expect(fourth.json().code).toBe("too_many_resets");
   });
+
+  it("interface language: each person's own, or the organization's default; only languages it has", async () => {
+    const ravi = await join((await invite("ravi.lang@acme.test")).link, "Ravi");
+    let me = (await call(ravi, "GET", "/api/me")).json;
+    expect(me.user.locale).toBeNull();
+    expect(me.org.defaultLocale).toBe("en");
+    expect((await call(owner, "PUT", "/api/admin/settings", { defaultLocale: "hi" })).status).toBe(200);
+    expect((await call(ravi, "GET", "/api/me")).json.org.defaultLocale).toBe("hi");
+    expect((await call(null, "GET", "/api/public/status")).json.org.defaultLocale).toBe("hi");
+    expect((await call(ravi, "PATCH", "/api/me", { locale: "en" })).status).toBe(200);
+    me = (await call(ravi, "GET", "/api/me")).json;
+    expect(me.user.locale).toBe("en");
+    expect((await call(ravi, "PATCH", "/api/me", { locale: "fr" })).status).toBe(400);
+    expect((await call(ravi, "PATCH", "/api/me", { locale: null })).status).toBe(200);
+    expect((await call(ravi, "GET", "/api/me")).json.user.locale).toBeNull();
+    // Members can't change the organization's default.
+    expect((await call(ravi, "PUT", "/api/admin/settings", { defaultLocale: "en" })).status).toBe(403);
+    expect((await call(owner, "PUT", "/api/admin/settings", { defaultLocale: "xx" })).status).toBe(400);
+    expect((await call(owner, "PUT", "/api/admin/settings", { defaultLocale: "en" })).status).toBe(200);
+  });
 });

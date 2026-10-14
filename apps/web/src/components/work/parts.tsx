@@ -10,6 +10,7 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/component
 import { cn } from "@/lib/cn";
 import type { AvailableModel } from "@/lib/types";
 import { STATUS_LABEL, type TaskStatus } from "@/lib/work";
+import { msg, useT } from "@/i18n";
 
 export function StatusIcon({ status, className }: { status: TaskStatus; className?: string }) {
   const cls = cn("size-3.5 shrink-0", className);
@@ -32,6 +33,7 @@ export function StatusIcon({ status, className }: { status: TaskStatus; classNam
 }
 
 export function StatusPill({ status }: { status: TaskStatus }) {
+  const t = useT();
   return (
     <span
       className={cn(
@@ -42,35 +44,36 @@ export function StatusPill({ status }: { status: TaskStatus }) {
       data-status={status}
     >
       <StatusIcon status={status} className="size-3" />
-      {STATUS_LABEL[status]}
+      {t(STATUS_LABEL[status])}
     </span>
   );
 }
 
 const TABS = [
-  { href: "/app/work", label: "Tasks", exact: true },
-  { href: "/app/work/schedules", label: "Scheduled" },
-  { href: "/app/work/skills", label: "Skills" },
-  { href: "/app/work/connections", label: "Connections" },
+  { href: "/app/work", label: msg("Tasks"), exact: true },
+  { href: "/app/work/schedules", label: msg("Scheduled") },
+  { href: "/app/work/skills", label: msg("Skills") },
+  { href: "/app/work/connections", label: msg("Connections") },
 ];
 
 /** Tasks · Scheduled · Skills · Connections, under the top bar of Work AI's list pages. */
 export function WorkTabs() {
+  const t = useT();
   const pathname = usePathname();
   return (
     <div className="flex h-10 shrink-0 items-end gap-5 border-b border-border px-4 sm:px-6">
-      {TABS.map((t) => {
-        const active = t.exact ? pathname === t.href : pathname.startsWith(t.href);
+      {TABS.map((tab) => {
+        const active = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
         return (
           <Link
-            key={t.href}
-            href={t.href}
+            key={tab.href}
+            href={tab.href}
             className={cn(
               "-mb-px border-b-2 pb-2 text-[13px] transition-colors",
               active ? "border-fg text-fg" : "border-transparent text-fg-subtle hover:text-fg-muted",
             )}
           >
-            {t.label}
+            {t(tab.label)}
           </Link>
         );
       })}
@@ -108,6 +111,7 @@ export const WorkComposer = forwardRef<
     disabled?: boolean;
   }
 >(function WorkComposer(p, ref) {
+  const t = useT();
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   useImperativeHandle(ref, () => ({ focus: () => ta.current?.focus() }));
@@ -133,7 +137,7 @@ export const WorkComposer = forwardRef<
             <span key={f.key} className="inline-flex h-7 max-w-64 items-center gap-1.5 rounded-md border border-border bg-bg pr-1 pl-2 text-[12.5px] text-fg">
               <FileIcon name={f.file.name} className="size-3.5" />
               <span className="truncate">{f.file.name}</span>
-              <button type="button" aria-label={`Remove ${f.file.name}`} onClick={() => p.onRemoveFile?.(f.key)} className="rounded p-0.5 text-fg-subtle hover:bg-surface-2 hover:text-fg">
+              <button type="button" aria-label={t("Remove {name}", { name: f.file.name })} onClick={() => p.onRemoveFile?.(f.key)} className="rounded p-0.5 text-fg-subtle hover:bg-surface-2 hover:text-fg">
                 <X className="size-3" />
               </button>
             </span>
@@ -174,8 +178,8 @@ export const WorkComposer = forwardRef<
               }}
               data-testid="work-file-input"
             />
-            <Tooltip content="Add files to the task folder">
-              <button type="button" onClick={() => fileRef.current?.click()} aria-label="Add files" className="rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg">
+            <Tooltip content={t("Add files to the task folder")}>
+              <button type="button" onClick={() => fileRef.current?.click()} aria-label={t("Add files")} className="rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg">
                 <Paperclip className="size-4" />
               </button>
             </Tooltip>
@@ -191,14 +195,14 @@ export const WorkComposer = forwardRef<
               </button>
             </MenuTrigger>
             <MenuContent align="end" className="w-64">
-              <MenuLabel>Model for this task</MenuLabel>
+              <MenuLabel>{t("Model for this task")}</MenuLabel>
               {p.models.map((m) => (
                 <MenuItem key={m.id} onSelect={() => p.onModelChange!(m)} shortcut={m.id === p.model!.id ? <Check className="size-3.5" /> : null}>
                   <span className="flex flex-col">
                     <span>{m.displayName}</span>
                     <span className="text-[11.5px] text-fg-subtle">
                       {m.id === "auto"
-                        ? `Picks by the task: ${m.tiers?.map((t) => t.displayName).join(", ")}`
+                        ? t("Picks by the task: {models}", { models: m.tiers?.map((x) => x.displayName).join(", ") ?? "" })
                         : `${m.providerName}${m.groups?.length ? ` · via ${m.groups.map((g) => g.name).join(", ")}` : ""}`}
                     </span>
                   </span>
@@ -208,8 +212,8 @@ export const WorkComposer = forwardRef<
           </Menu>
         )}
         {p.busy && p.onStop && (
-          <Tooltip content="Stop the task">
-            <button type="button" onClick={p.onStop} aria-label="Stop" className="flex size-8 items-center justify-center rounded-lg border border-border text-fg transition-colors hover:bg-surface-2" data-testid="work-stop">
+          <Tooltip content={t("Stop the task")}>
+            <button type="button" onClick={p.onStop} aria-label={t("Stop")} className="flex size-8 items-center justify-center rounded-lg border border-border text-fg transition-colors hover:bg-surface-2" data-testid="work-stop">
               <Square className="size-3 fill-current" />
             </button>
           </Tooltip>
@@ -217,7 +221,7 @@ export const WorkComposer = forwardRef<
         <button
           type="submit"
           disabled={!canSend}
-          aria-label="Send"
+          aria-label={t("Send")}
           className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-fg transition-opacity disabled:opacity-30"
           data-testid="work-send"
         >

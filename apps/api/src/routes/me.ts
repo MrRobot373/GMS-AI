@@ -28,7 +28,7 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     const org = await getOrg(db);
     const [profile] = await db
-      .select({ jobTitle: user.jobTitle, customInstructions: user.customInstructions, createdAt: user.createdAt, emailVerified: user.emailVerified })
+      .select({ jobTitle: user.jobTitle, customInstructions: user.customInstructions, locale: user.locale, createdAt: user.createdAt, emailVerified: user.emailVerified })
       .from(user)
       .where(eq(user.id, u.id));
     const workspaces = await db
@@ -63,6 +63,7 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
         accentColor: org?.accentColor ?? DEFAULT_ACCENT,
         promptLogging: org?.promptLogging ?? false,
         logoUrl: logoUrl(org?.logo),
+        defaultLocale: org?.defaultLocale ?? "en",
       },
       workspaces,
       unreadNotifications: unread?.n ?? 0,

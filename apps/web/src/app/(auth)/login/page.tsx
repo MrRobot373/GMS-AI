@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { SsoButtons, useSsoOptions } from "@/components/sso-buttons";
 import { api } from "@/lib/api";
+import { useT } from "@/i18n";
 
 function LoginForm() {
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   const { data: status } = usePublicStatus();
@@ -47,7 +49,7 @@ function LoginForm() {
       }
       done();
     } catch (err: any) {
-      setError(err?.status === 401 ? "That email and password don't match." : err?.status === 403 ? "Your account is deactivated. Contact your admin." : (err?.message ?? "Sign-in failed."));
+      setError(err?.status === 401 ? t("That email and password don't match.") : err?.status === 403 ? t("Your account is deactivated. Contact your admin.") : (err?.message ?? t("Sign-in failed.")));
       setLoading(false);
     }
   }
@@ -56,27 +58,27 @@ function LoginForm() {
 
   return (
     <AuthShell
-      title={`Sign in to ${status?.org.productName ?? "Aatmiq"}`}
-      subtitle="Use the work email your admin invited."
-      footer={<>No account? Ask your workspace admin for an invite.</>}
+      title={t("Sign in to {product}", { product: status?.org.productName ?? "Aatmiq" })}
+      subtitle={t("Use the work email your admin invited.")}
+      footer={<>{t("No account? Ask your workspace admin for an invite.")}</>}
     >
       {options.length > 0 && <SsoButtons options={options} next={next} />}
       {options.length > 0 && passwordVisible && (
         <div className="my-6 flex items-center gap-3 text-xs text-fg-subtle">
-          <span className="h-px flex-1 bg-border" /> or use your password <span className="h-px flex-1 bg-border" />
+          <span className="h-px flex-1 bg-border" /> {t("or use your password")} <span className="h-px flex-1 bg-border" />
         </div>
       )}
       {passwordVisible ? (
         <form onSubmit={submit} className="space-y-4">
-          <Field label="Email">
+          <Field label={t("Email")}>
             <Input type="email" autoComplete="email" autoFocus={!options.length} required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
           </Field>
           <Field
             label={
               <span className="flex items-center justify-between">
-                Password
+                {t("Password")}
                 <Link href={`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`} className="font-normal text-fg-subtle hover:text-fg" data-testid="forgot-link">
-                  Forgot password?
+                  {t("Forgot password?")}
                 </Link>
               </span>
             }
@@ -85,14 +87,14 @@ function LoginForm() {
           </Field>
           <FormError message={error} />
           <Button type="submit" variant={options.length ? "outline" : "primary"} size="lg" className="w-full" loading={loading}>
-            Continue
+            {t("Continue")}
           </Button>
         </form>
       ) : (
         <div className="mt-4 space-y-3">
           <FormError message={error} />
           <button type="button" onClick={() => setShowPassword(true)} className="block w-full text-center text-[12px] text-fg-subtle hover:text-fg">
-            Organization owner? Sign in with a password
+            {t("Organization owner? Sign in with a password")}
           </button>
         </div>
       )}
@@ -102,6 +104,7 @@ function LoginForm() {
 
 /** The second step: a code from the authenticator app, or one of the backup codes. */
 function CodeStep({ email, onDone, onBack }: { email: string; onDone: () => void; onBack: () => void }) {
+  const t = useT();
   const [backup, setBackup] = useState(false);
   const [code, setCode] = useState("");
   const [trust, setTrust] = useState(false);
@@ -118,16 +121,16 @@ function CodeStep({ email, onDone, onBack }: { email: string; onDone: () => void
       onDone();
     } catch (err: any) {
       setLoading(false);
-      if (err?.status === 401) setError(backup ? "That backup code isn't valid or was already used." : "That code isn't right. Check the time on your phone and try the newest code.");
-      else if (err?.status === 403 || /expired|session/i.test(err?.message ?? "")) setError("This sign-in timed out. Go back and enter your password again.");
-      else setError(err?.message ?? "Couldn't check the code.");
+      if (err?.status === 401) setError(backup ? t("That backup code isn't valid or was already used.") : t("That code isn't right. Check the time on your phone and try the newest code."));
+      else if (err?.status === 403 || /expired|session/i.test(err?.message ?? "")) setError(t("This sign-in timed out. Go back and enter your password again."));
+      else setError(err?.message ?? t("Couldn't check the code."));
     }
   }
 
   return (
-    <AuthShell title="Two-step sign-in" subtitle={backup ? "Enter one of the backup codes you saved." : `Open your authenticator app and enter the code for ${email}.`}>
+    <AuthShell title={t("Two-step sign-in")} subtitle={backup ? t("Enter one of the backup codes you saved.") : t("Open your authenticator app and enter the code for {email}.", { email: email })}>
       <form onSubmit={verify} className="space-y-4">
-        <Field label={backup ? "Backup code" : "6-digit code"}>
+        <Field label={backup ? t("Backup code") : t("6-digit code")}>
           <Input
             key={backup ? "backup" : "totp"}
             autoFocus
@@ -144,19 +147,19 @@ function CodeStep({ email, onDone, onBack }: { email: string; onDone: () => void
         </Field>
         <label className="flex items-center gap-2 text-[12.5px] text-fg-muted">
           <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} className="accent-[var(--accent)]" />
-          Don&apos;t ask again on this device for 30 days
+          {t("Don't ask again on this device for 30 days")}
         </label>
         <FormError message={error} />
         <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading} data-testid="two-factor-submit">
-          Verify
+          {t("Verify")}
         </Button>
       </form>
       <div className="mt-4 flex items-center justify-between text-[12px] text-fg-subtle">
         <button type="button" onClick={onBack} className="hover:text-fg">
-          ← Back
+          {t("← Back")}
         </button>
         <button type="button" onClick={() => (setBackup(!backup), setCode(""), setError(null))} className="hover:text-fg" data-testid="use-backup">
-          {backup ? "Use the authenticator app" : "Use a backup code"}
+          {backup ? t("Use the authenticator app") : t("Use a backup code")}
         </button>
       </div>
     </AuthShell>

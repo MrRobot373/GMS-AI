@@ -3,16 +3,18 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { SidebarOpenButton } from "./sidebar-state";
+import { useT } from "@/i18n";
 
 /** The app sits in a rounded window on a darker canvas, like a native desktop app. Its page goes in `<main id="main">`. */
 export function AppFrame({ children, className }: { children: ReactNode; className?: string }) {
+  const t = useT();
   return (
     <div className="h-dvh bg-canvas md:p-2">
       <a
         href="#main"
         className="fixed top-2 left-2 z-50 -translate-y-16 rounded-md bg-primary px-3 py-2 text-[13px] text-primary-fg shadow-soft transition-transform focus:translate-y-0"
       >
-        Skip to content
+        {t("Skip to content")}
       </a>
       <div
         className={cn(

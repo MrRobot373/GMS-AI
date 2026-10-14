@@ -71,6 +71,8 @@ export const organization = pgTable("organization", {
   loginMessage: text("login_message"),
   budgetPeriod: budgetPeriodEnum("budget_period").notNull().default("month"),
   promptLogging: boolean("prompt_logging").notNull().default(false),
+  /** Interface language for people who haven't picked one. */
+  defaultLocale: text("default_locale").notNull().default("en"),
   retentionDays: integer("retention_days"),
   licenseKey: text("license_key"),
   /** When on, only the owner may still sign in with a password (break-glass); everyone else uses SSO. */
@@ -103,6 +105,8 @@ export const user = pgTable("user", {
   status: userStatusEnum("status").notNull().default("active"),
   jobTitle: text("job_title"),
   customInstructions: text("custom_instructions"),
+  /** Interface language ("en", "hi"); null: the organization's default. */
+  locale: text("locale"),
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
   /** Two-step sign-in with an authenticator app (Better Auth two-factor plugin). */
   twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),

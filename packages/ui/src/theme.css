@@ -86,7 +86,8 @@
   --color-success: var(--success);
   --color-success-soft: color-mix(in oklab, var(--success) 14%, transparent);
 
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Inter has no Devanagari: Hindi falls through to Noto Sans Devanagari (bundled), then the system's. */
+  --font-sans: "Inter Variable", "Noto Sans Devanagari Variable", "Nirmala UI", "Kohinoor Devanagari", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-serif: "Newsreader", ui-serif, Georgia, serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
 

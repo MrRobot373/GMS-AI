@@ -9,8 +9,10 @@ import { NewProjectDialog, ProjectIcon, useProjects } from "@/components/project
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/spinner";
 import { timeAgo } from "@/lib/format";
+import { useT } from "@/i18n";
 
 export default function ProjectsPage() {
+  const t = useT();
   const { me, workspaceId } = useSession();
   const projects = useProjects(workspaceId);
   const [creating, setCreating] = useState(false);
@@ -19,18 +21,18 @@ export default function ProjectsPage() {
     <div className="flex h-full min-h-0 flex-col">
       <TopBar
         icon={<FolderOpen />}
-        title="Projects"
+        title={t("Projects")}
         actions={
           <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
-            <Plus className="size-3.5" /> New project
+            <Plus className="size-3.5" /> {t("New project")}
           </Button>
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
-          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">Projects</h1>
+          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">{t("Projects")}</h1>
           <p className="mt-1 max-w-xl text-[13px] text-fg-subtle">
-            A project keeps the chats, files and instructions for one piece of work together. Chats inside a project remember each other and can use its files.
+            {t("A project keeps the chats, files and instructions for one piece of work together. Chats inside a project remember each other and can use its files.")}
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -48,15 +50,15 @@ export default function ProjectsPage() {
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[14px] text-fg">{p.name}</span>
                   {p.visibility === "workspace" ? (
-                    <Globe className="size-3.5 text-fg-subtle" aria-label="Shared with the workspace" />
+                    <Globe className="size-3.5 text-fg-subtle" aria-label={t("Shared with the workspace")} />
                   ) : p.memberCount > 0 ? (
-                    <Users className="size-3.5 text-fg-subtle" aria-label="Shared" />
+                    <Users className="size-3.5 text-fg-subtle" aria-label={t("Shared")} />
                   ) : (
-                    <Lock className="size-3.5 text-fg-subtle" aria-label="Private" />
+                    <Lock className="size-3.5 text-fg-subtle" aria-label={t("Private")} />
                   )}
                 </div>
                 <p className="mt-2.5 line-clamp-2 min-h-[34px] text-[12.5px] leading-snug text-fg-subtle">
-                  {p.description || "No description"}
+                  {p.description || t("No description")}
                 </p>
                 <div className="mt-3 flex items-center gap-3 text-[11.5px] text-fg-subtle">
                   <span className="flex items-center gap-1">
@@ -65,7 +67,7 @@ export default function ProjectsPage() {
                   <span className="flex items-center gap-1">
                     <Paperclip className="size-3" /> {p.sourceCount}
                   </span>
-                  <span className="ml-auto">{p.ownerId === me.user.id ? "Yours" : "Shared with you"} · {timeAgo(p.updatedAt)}</span>
+                  <span className="ml-auto">{p.ownerId === me.user.id ? t("Yours") : t("Shared with you")} · {timeAgo(p.updatedAt, t)}</span>
                 </div>
               </Link>
             ))}
@@ -74,7 +76,7 @@ export default function ProjectsPage() {
                 onClick={() => setCreating(true)}
                 className="flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
               >
-                <Plus className="size-4" /> New project
+                <Plus className="size-4" /> {t("New project")}
               </button>
             )}
           </div>

@@ -74,6 +74,17 @@ E2E_SCRIPT=$PWD/tests/e2e/a11y.mjs tests/e2e/run-work.sh
 What it can't check (it needs a person with a screen reader): whether the order and wording make
 sense when heard. Do that once per release with NVDA or VoiceOver on Chat, a task and Admin → Users.
 
+## Hindi
+
+`hindi.mjs` switches a person to Hindi and checks the main pages, `lang="hi"` (also in the
+server-rendered page), dates, the sign-in page after signing out, the organization's default and
+a person's own choice, that the admin console stays English, and runs axe in Hindi. Screenshots of
+the pages in Hindi go to `results-hindi/` for review ([docs/14-languages.md](../../docs/14-languages.md)).
+
+```bash
+E2E_SCRIPT=$PWD/tests/e2e/hindi.mjs tests/e2e/run-work.sh
+```
+
 ## Desktop app
 
 `desktop.mjs` drives the real Electron app (`apps/desktop`, built first) against the stack
@@ -142,7 +153,7 @@ Logs and failure screenshots go to `results-licensing/`.
 
 ## Where they run
 
-Every push (`.github/workflows/ci.yml`): `full.mjs`, `work.mjs` and `a11y.mjs` on the source tree,
+Every push (`.github/workflows/ci.yml`): `full.mjs`, `work.mjs`, `hindi.mjs` and `a11y.mjs` on the source tree,
 and the API image's firewall. Every night (`.github/workflows/nightly.yml`, or by hand from the Actions tab):
 `account.mjs`, `code.mjs` (with the IDE build, also with `IDE_URL`), `licensing.mjs`, the 25-person
 load test, and on the Compose stack built from the images `run-containers.sh`, `run-https.sh`,

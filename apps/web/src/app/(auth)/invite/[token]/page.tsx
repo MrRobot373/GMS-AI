@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { api, get } from "@/lib/api";
+import { useT } from "@/i18n";
 
 export default function InvitePage() {
   return (
@@ -19,6 +20,7 @@ export default function InvitePage() {
 }
 
 function Invite() {
+  const t = useT();
   const { token } = useParams<{ token: string }>();
   const router = useRouter();
   const invite = useQuery({
@@ -56,31 +58,31 @@ function Invite() {
     );
   if (invite.isError)
     return (
-      <AuthShell title="Invitation not valid" subtitle="This link has expired or was already used. Ask your admin to send a new one." footer={<a href="/login" className="text-fg underline underline-offset-4">Go to sign in</a>}>
+      <AuthShell title={t("Invitation not valid")} subtitle={t("This link has expired or was already used. Ask your admin to send a new one.")} footer={<a href="/login" className="text-fg underline underline-offset-4">{t("Go to sign in")}</a>}>
         <span />
       </AuthShell>
     );
 
   return (
-    <AuthShell title={`Join ${invite.data!.orgName}`} subtitle={<>You were invited as <span className="text-fg">{invite.data!.email}</span></>}>
+    <AuthShell title={t("Join {orgName}", { orgName: invite.data!.orgName })} subtitle={<>{t("You were invited as")} <span className="text-fg">{invite.data!.email}</span></>}>
       {options.length > 0 && <SsoButtons options={options} invite={token} email={invite.data!.email} next="/app" />}
       {options.length > 0 && passwordAllowed && (
         <div className="my-6 flex items-center gap-3 text-xs text-fg-subtle">
-          <span className="h-px flex-1 bg-border" /> or create a password <span className="h-px flex-1 bg-border" />
+          <span className="h-px flex-1 bg-border" /> {t("or create a password")} <span className="h-px flex-1 bg-border" />
         </div>
       )}
       {!passwordAllowed && <div className="mt-4"><FormError message={error} /></div>}
       {passwordAllowed && (
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Your name">
-          <Input autoFocus required value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
+        <Field label={t("Your name")}>
+          <Input autoFocus required value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Full name")} />
         </Field>
-        <Field label="Create a password" hint="At least 10 characters.">
+        <Field label={t("Create a password")} hint={t("At least 10 characters.")}>
           <Input type="password" required minLength={10} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </Field>
         <FormError message={error} />
         <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
-          Join workspace
+          {t("Join workspace")}
         </Button>
       </form>
       )}

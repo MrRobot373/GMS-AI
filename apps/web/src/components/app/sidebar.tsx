@@ -44,6 +44,8 @@ import { useSession } from "./session";
 import { StatusIcon } from "@/components/work/parts";
 import { usePendingApprovals, useWorkTasks } from "@/lib/work";
 import { useCodeWorkspaces } from "@/lib/code";
+import { chatTitle } from "@/lib/format";
+import { useT } from "@/i18n";
 
 export function useChats(workspaceId: string) {
   return useQuery({
@@ -86,6 +88,7 @@ function NavItem({
   soon?: boolean;
   shortcut?: ReactNode;
 }) {
+  const t = useT();
   return (
     <Link
       href={href}
@@ -96,7 +99,7 @@ function NavItem({
     >
       <span className={cn("[&>svg]:size-4", active ? "text-fg" : "text-fg-subtle")}>{icon}</span>
       <span className="flex-1 truncate">{children}</span>
-      {soon && <span className="text-[11px] text-fg-subtle">Soon</span>}
+      {soon && <span className="text-[11px] text-fg-subtle">{t("Soon")}</span>}
       {shortcut}
     </Link>
   );
@@ -119,6 +122,7 @@ function SectionLabel({ children, open, onToggle, action }: { children: ReactNod
 }
 
 export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
+  const t = useT();
   const { me, workspace, workspaceId, setWorkspaceId, signOut } = useSession();
   const pathname = usePathname();
   const router = useRouter();
@@ -156,7 +160,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
       if (v.archived !== undefined) qc.invalidateQueries({ queryKey: ["archived", workspaceId] });
       if (v.archived) {
         if (pathname === `/app/chat/${v.id}`) router.push("/app/chat");
-        toast("Chat archived", { action: { label: "Undo", onClick: () => update.mutate({ id: v.id, archived: false }) } });
+        toast(t("Chat archived"), { action: { label: t("Undo"), onClick: () => update.mutate({ id: v.id, archived: false }) } });
       }
     },
   });
@@ -165,7 +169,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: ["chats", workspaceId] });
       if (pathname === `/app/chat/${id}`) router.push("/app/chat");
-      toast("Chat deleted");
+      toast(t("Chat deleted"));
     },
   });
 
@@ -190,26 +194,26 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
         )}
       >
         <Link href={`/app/chat/${c.id}`} className="min-w-0 flex-1 truncate px-2 text-[13px]">
-          {c.title}
+          {chatTitle(c.title, t)}
         </Link>
         <Menu>
           <MenuTrigger asChild>
             <button
-              aria-label="Chat options"
+              aria-label={t("Chat options")}
               className="mr-1 rounded p-0.5 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:text-fg focus:opacity-100 data-[state=open]:opacity-100"
             >
               <MoreHorizontal className="size-4" />
             </button>
           </MenuTrigger>
           <MenuContent align="start" side="right" className="min-w-40">
-            <MenuItem icon={<Pencil />} onSelect={() => { setRenaming(c); setNewTitle(c.title); }}>Rename</MenuItem>
+            <MenuItem icon={<Pencil />} onSelect={() => { setRenaming(c); setNewTitle(c.title); }}>{t("Rename")}</MenuItem>
             <MenuItem icon={c.pinned ? <PinOff /> : <Pin />} onSelect={() => update.mutate({ id: c.id, pinned: !c.pinned })}>
-              {c.pinned ? "Unpin" : "Pin"}
+              {c.pinned ? t("Unpin") : t("Pin")}
             </MenuItem>
-            <MenuItem icon={<FolderInput />} onSelect={() => setMoving(c)}>Move to project</MenuItem>
-            <MenuItem icon={<Archive />} onSelect={() => update.mutate({ id: c.id, archived: true })}>Archive</MenuItem>
+            <MenuItem icon={<FolderInput />} onSelect={() => setMoving(c)}>{t("Move to project")}</MenuItem>
+            <MenuItem icon={<Archive />} onSelect={() => update.mutate({ id: c.id, archived: true })}>{t("Archive")}</MenuItem>
             <MenuSeparator />
-            <MenuItem icon={<Trash2 />} danger onSelect={() => remove.mutate(c.id)}>Delete</MenuItem>
+            <MenuItem icon={<Trash2 />} danger onSelect={() => remove.mutate(c.id)}>{t("Delete")}</MenuItem>
           </MenuContent>
         </Menu>
       </div>
@@ -224,7 +228,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
           <MenuTrigger asChild>
             <button className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-surface px-2 text-left transition-colors hover:border-border-strong">
               <WorkspaceTile name={workspace?.name ?? me.org.name} icon={workspace?.icon} />
-              <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{workspace?.name ?? "No workspace"}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{workspace?.name ?? t("No workspace")}</span>
               <ChevronsUpDown className="size-3.5 shrink-0 text-fg-subtle" />
             </button>
           </MenuTrigger>
@@ -243,11 +247,11 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                 {w.name}
               </MenuItem>
             ))}
-            {me.workspaces.length === 0 && <div className="px-2 py-1.5 text-xs text-fg-subtle">You aren&apos;t in any workspace yet.</div>}
+            {me.workspaces.length === 0 && <div className="px-2 py-1.5 text-xs text-fg-subtle">{t("You aren't in any workspace yet.")}</div>}
           </MenuContent>
         </Menu>
-        <Tooltip content={<span className="flex items-center gap-1.5">Hide sidebar <Kbd>⌘</Kbd><Kbd>B</Kbd></span>}>
-          <Button variant="ghost" size="icon-sm" onClick={onCollapse} aria-label="Collapse sidebar">
+        <Tooltip content={<span className="flex items-center gap-1.5">{t("Hide sidebar")} <Kbd>⌘</Kbd><Kbd>B</Kbd></span>}>
+          <Button variant="ghost" size="icon-sm" onClick={onCollapse} aria-label={t("Collapse sidebar")}>
             <PanelLeft className="size-4" />
           </Button>
         </Tooltip>
@@ -262,7 +266,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
           data-testid="open-search"
         >
           <Search className="size-3.5 shrink-0 text-fg-subtle" />
-          <span className="min-w-0 flex-1 text-[13px] text-fg-subtle">Search</span>
+          <span className="min-w-0 flex-1 text-[13px] text-fg-subtle">{t("Search")}</span>
           <span className="flex gap-0.5">
             <Kbd>⌘</Kbd>
             <Kbd>K</Kbd>
@@ -273,31 +277,31 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
       {/* Primary nav */}
       <nav className="space-y-px px-2 pt-3">
         <NavItem href="/app/chat" icon={<SquarePen />} active={pathname === "/app/chat"}>
-          New chat
+          {t("New chat")}
         </NavItem>
         {can("chat") && (
           <NavItem href="/app/chat" icon={<MessageSquare />} active={pathname.startsWith("/app/chat/")}>
-            Chat
+            {t("Chat")}
           </NavItem>
         )}
         {can("chat") && (
           <NavItem href="/app/projects" icon={<FolderOpen />} active={pathname === "/app/projects"}>
-            Projects
+            {t("Projects")}
           </NavItem>
         )}
         {can("chat") && (
           <NavItem href="/app/documents" icon={<FileText />} active={pathname.startsWith("/app/documents")}>
-            Documents
+            {t("Documents")}
           </NavItem>
         )}
         {can("work") && (
-          <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={`${pendingApprovals} waiting for approval`}>{pendingApprovals}</span> : undefined}>
-            Work AI
+          <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
+            {t("Work AI")}
           </NavItem>
         )}
         {can("code") && (
           <NavItem href="/app/code" icon={<Code2 />} active={pathname.startsWith("/app/code")}>
-            Code
+            {t("Code")}
           </NavItem>
         )}
       </nav>
@@ -310,10 +314,10 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
               open={projectsOpen}
               onToggle={() => setProjectsOpen((o) => !o)}
               action={
-                <Tooltip content="New project">
+                <Tooltip content={t("New project")}>
                   <button
                     type="button"
-                    aria-label="New project"
+                    aria-label={t("New project")}
                     onClick={() => setNewProject(true)}
                     className="mr-1 rounded p-0.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
                   >
@@ -322,7 +326,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                 </Tooltip>
               }
             >
-              Projects
+              {t("Projects")}
             </SectionLabel>
             {projectsOpen && (
               <div className="space-y-px">
@@ -344,7 +348,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                 })}
                 {(projects.data?.length ?? 0) > 8 && (
                   <Link href="/app/projects" className="flex h-8 items-center px-2 text-[12.5px] text-fg-subtle hover:text-fg">
-                    See all {projects.data!.length}
+                    {t("See all {length}", { length: projects.data!.length })}
                   </Link>
                 )}
                 {projects.data?.length === 0 && (
@@ -353,7 +357,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                     onClick={() => setNewProject(true)}
                     className="flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] text-fg-subtle transition-colors hover:bg-surface-2/70 hover:text-fg"
                   >
-                    <Plus className="size-4" /> New project
+                    <Plus className="size-4" /> {t("New project")}
                   </button>
                 )}
               </div>
@@ -362,7 +366,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
         )}
         {inWork ? (
           <div className="mb-3">
-            <SectionLabel>Tasks</SectionLabel>
+            <SectionLabel>{t("Tasks")}</SectionLabel>
             <div className="space-y-px">
               {(workTasks.data ?? []).slice(0, 30).map((t) => {
                 const active = pathname === `/app/work/${t.id}`;
@@ -380,12 +384,12 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                   </Link>
                 );
               })}
-              {workTasks.data?.length === 0 && <p className="px-2 py-2 text-[12.5px] text-fg-subtle">Your tasks will appear here.</p>}
+              {workTasks.data?.length === 0 && <p className="px-2 py-2 text-[12.5px] text-fg-subtle">{t("Your tasks will appear here.")}</p>}
             </div>
           </div>
         ) : inCode ? (
           <div className="mb-3">
-            <SectionLabel>Workspaces</SectionLabel>
+            <SectionLabel>{t("Workspaces")}</SectionLabel>
             <div className="space-y-px">
               {(codeWorkspaces.data ?? []).map((w) => {
                 const active = pathname === `/app/code/${w.id}`;
@@ -403,19 +407,19 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                   </Link>
                 );
               })}
-              {codeWorkspaces.data?.length === 0 && <p className="px-2 py-2 text-[12.5px] text-fg-subtle">Your workspaces will appear here.</p>}
+              {codeWorkspaces.data?.length === 0 && <p className="px-2 py-2 text-[12.5px] text-fg-subtle">{t("Your workspaces will appear here.")}</p>}
             </div>
           </div>
         ) : null}
         {!inWork && !inCode && pinned.length > 0 && (
           <div className="mb-3">
-            <SectionLabel>Pinned</SectionLabel>
+            <SectionLabel>{t("Pinned")}</SectionLabel>
             <div className="space-y-px">{pinned.map(chatRow)}</div>
           </div>
         )}
         {!inWork && !inCode && (
         <SectionLabel open={recentsOpen} onToggle={() => setRecentsOpen((o) => !o)}>
-          Recents
+          {t("Recents")}
         </SectionLabel>
         )}
         {!inWork && !inCode && recentsOpen && (
@@ -426,7 +430,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
               ))}
             {recent.map(chatRow)}
             {chats.data && all.length === 0 && (
-              <p className="px-2 py-2 text-[12.5px] text-fg-subtle">Your conversations will appear here.</p>
+              <p className="px-2 py-2 text-[12.5px] text-fg-subtle">{t("Your conversations will appear here.")}</p>
             )}
           </div>
         )}
@@ -436,7 +440,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
       <div className="space-y-px border-t border-border px-2 pt-2 pb-2">
         {(me.isAdmin || me.isWorkspaceAdmin) && (
           <NavItem href="/admin" icon={<Shield />}>
-            Admin console
+            {t("Admin console")}
           </NavItem>
         )}
         <div className="flex items-center gap-1">
@@ -450,12 +454,12 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             </MenuTrigger>
             <MenuContent side="top" className="w-56">
               <MenuLabel>{me.user.email}</MenuLabel>
-              <MenuItem icon={<Settings />} onSelect={() => router.push("/app/settings")}>Settings</MenuItem>
+              <MenuItem icon={<Settings />} onSelect={() => router.push("/app/settings")}>{t("Settings")}</MenuItem>
               {(me.isAdmin || me.isWorkspaceAdmin) && (
-                <MenuItem icon={<Shield />} onSelect={() => router.push("/admin")}>Admin console</MenuItem>
+                <MenuItem icon={<Shield />} onSelect={() => router.push("/admin")}>{t("Admin console")}</MenuItem>
               )}
               <MenuSeparator />
-              <MenuItem icon={<LogOut />} onSelect={signOut}>Sign out</MenuItem>
+              <MenuItem icon={<LogOut />} onSelect={signOut}>{t("Sign out")}</MenuItem>
             </MenuContent>
           </Menu>
           <NotificationsButton />
@@ -468,10 +472,10 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
       <Dialog
         open={!!renaming}
         onOpenChange={(o) => !o && setRenaming(null)}
-        title="Rename chat"
+        title={t("Rename chat")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setRenaming(null)}>{t("Cancel")}</Button>
             <Button
               variant="primary"
               onClick={() => {
@@ -479,7 +483,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                 setRenaming(null);
               }}
             >
-              Save
+              {t("Save")}
             </Button>
           </>
         }

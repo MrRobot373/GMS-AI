@@ -139,9 +139,10 @@ What we have, and what's left before a customer pays for it.
 
 ### Nice to have
 
-More interface languages (Hindi first). Accessibility is checked on every push
-(WCAG 2.1 AA with axe-core, both themes, and the keyboard: [tests/e2e/README.md](../tests/e2e/README.md#accessibility));
-a screen-reader walk-through by a person (NVDA or VoiceOver) is still to do once before selling.
+Accessibility is checked on every push (WCAG 2.1 AA with axe-core, both themes, and the keyboard:
+[tests/e2e/README.md](../tests/e2e/README.md#accessibility)); a screen-reader walk-through by a
+person (NVDA or VoiceOver) is still to do once before selling. The Hindi interface needs a native
+speaker's review before phase 3 ([14-languages.md](14-languages.md#before-release-a-native-speakers-review)).
 
 ## Risks
 

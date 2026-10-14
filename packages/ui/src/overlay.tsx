@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Dialog as RDialog, DropdownMenu as RMenu } from "radix-ui";
 import type { ReactNode } from "react";
 import { cn } from "./cn";
+import { useUiText } from "./text";
 
 /* ───────────── Dialog ───────────── */
 
@@ -24,6 +25,7 @@ export function Dialog({
   footer?: ReactNode;
   className?: string;
 }) {
+  const text = useUiText();
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
@@ -44,7 +46,7 @@ export function Dialog({
                 <RDialog.Description className="sr-only">{typeof title === "string" ? title : "Dialog"}</RDialog.Description>
               )}
             </div>
-            <RDialog.Close className="-mt-1 -mr-1 rounded-md p-1 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg" aria-label="Close">
+            <RDialog.Close className="-mt-1 -mr-1 rounded-md p-1 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg" aria-label={text.close}>
               <X className="size-4" />
             </RDialog.Close>
           </div>

@@ -8,9 +8,11 @@ import { useMe } from "@/components/app/session";
 import { RequiredTwoStepSetup } from "@/components/settings/security";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiError, post } from "@/lib/api";
+import { useT } from "@/i18n";
 
 /** Shown instead of the app while the organization requires two-step sign-in and it isn't set up. */
 export default function TwoStepSetupPage() {
+  const t = useT();
   const router = useRouter();
   const qc = useQueryClient();
   const { data: me, error } = useMe();
@@ -35,18 +37,20 @@ export default function TwoStepSetupPage() {
 
   return (
     <AuthShell
-      title="Set up two-step sign-in"
-      subtitle={`${me.org.name || "Your organization"} requires a code from an authenticator app after your password. It takes about a minute.`}
+      title={t("Set up two-step sign-in")}
+      subtitle={me.org.name
+        ? t("{org} requires a code from an authenticator app after your password. It takes about a minute.", { org: me.org.name })
+        : t("Your organization requires a code from an authenticator app after your password. It takes about a minute.")}
       footer={
         <button type="button" onClick={signOut} className="hover:text-fg">
-          Sign out
+          {t("Sign out")}
         </button>
       }
     >
       <ol className="mb-5 list-decimal space-y-1.5 pl-5 text-[13px] text-fg-muted">
-        <li>Install an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, 1Password…).</li>
-        <li>Scan the QR code, then enter the 6-digit code it shows.</li>
-        <li>Save your backup codes somewhere safe.</li>
+        <li>{t("Install an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, 1Password…).")}</li>
+        <li>{t("Scan the QR code, then enter the 6-digit code it shows.")}</li>
+        <li>{t("Save your backup codes somewhere safe.")}</li>
       </ol>
       <RequiredTwoStepSetup
         onDone={async () => {

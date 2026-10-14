@@ -50,11 +50,13 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrig
 import { Skeleton } from "@/components/ui/spinner";
 import { del, formatBytes, patch, post } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { timeAgo } from "@/lib/format";
+import { chatTitle, timeAgo } from "@/lib/format";
 import type { ProjectDetail, ProjectSource, SourceLabel } from "@/lib/types";
+import { useT } from "@/i18n";
 
 /** /app/projects/:id (project home + new chat) and /app/projects/:id/:chatId (a chat in the project). */
 export default function ProjectPage() {
+  const t = useT();
   const projectId = useParams<{ id: string }>().id;
   // Read the chat id from the pathname: it follows history.replaceState, while route params don't.
   const paramChat = usePathname().split("/")[4] || undefined;
@@ -74,8 +76,8 @@ export default function ProjectPage() {
   if (project.error) {
     return (
       <div className="flex h-full flex-col">
-        <TopBar title="Project" />
-        <div className="flex flex-1 items-center justify-center text-[13px] text-fg-subtle">This project doesn&apos;t exist or you no longer have access.</div>
+        <TopBar title={t("Project")} />
+        <div className="flex flex-1 items-center justify-center text-[13px] text-fg-subtle">{t("This project doesn't exist or you no longer have access.")}</div>
       </div>
     );
   }
@@ -109,6 +111,7 @@ export default function ProjectPage() {
 }
 
 function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail; composer: ReactNode; notices: ReactNode }) {
+  const t = useT();
   const { me, workspaceId } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
@@ -126,7 +129,7 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
     mutationFn: () => del(`/api/projects/${p.id}`),
     onSuccess: () => {
       refreshAll();
-      toast(`Deleted ${p.name}`);
+      toast(t("Deleted {name}", { name: p.name }));
       router.push("/app/projects");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -135,7 +138,7 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
     mutationFn: () => del(`/api/projects/${p.id}/members/${me.user.id}`),
     onSuccess: () => {
       refreshAll();
-      toast(`You left ${p.name}`);
+      toast(t("You left {name}", { name: p.name }));
       router.push("/app/projects");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -154,30 +157,30 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
             <div className="min-w-0 flex-1">
               <h1 className="truncate font-serif text-[30px] leading-tight tracking-[-0.02em]" data-testid="project-title">{p.name}</h1>
               <p className="mt-0.5 text-[13px] text-fg-subtle">
-                {p.description || (p.role === "owner" ? "Your project" : `${p.owner?.name ?? "Someone"}'s project`)}
+                {p.description || (p.role === "owner" ? t("Your project") : p.owner?.name ? t("{owner}'s project", { owner: p.owner.name }) : t("Someone's project"))}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <Button variant="outline" size="sm" onClick={() => setSharing(true)}>
                 {p.visibility === "workspace" ? <Globe className="size-3.5" /> : <Share2 className="size-3.5" />}
-                {sharedCount > 0 ? "Shared" : "Share"}
+                {sharedCount > 0 ? t("Shared") : t("Share")}
               </Button>
               <Menu>
                 <MenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="Project options">
+                  <Button variant="ghost" size="icon-sm" aria-label={t("Project options")}>
                     <MoreHorizontal className="size-4" />
                   </Button>
                 </MenuTrigger>
                 <MenuContent align="end">
-                  {p.canEdit && <MenuItem icon={<Settings2 />} onSelect={() => setEditing(true)}>Project settings</MenuItem>}
-                  <MenuItem icon={<Users />} onSelect={() => setSharing(true)}>People</MenuItem>
+                  {p.canEdit && <MenuItem icon={<Settings2 />} onSelect={() => setEditing(true)}>{t("Project settings")}</MenuItem>}
+                  <MenuItem icon={<Users />} onSelect={() => setSharing(true)}>{t("People")}</MenuItem>
                   {isMember && p.role !== "owner" && (
-                    <MenuItem icon={<LogOut />} onSelect={() => leave.mutate()}>Leave project</MenuItem>
+                    <MenuItem icon={<LogOut />} onSelect={() => leave.mutate()}>{t("Leave project")}</MenuItem>
                   )}
                   {(p.role === "owner" || me.isAdmin || me.isWorkspaceAdmin) && (
                     <>
                       <MenuSeparator />
-                      <MenuItem icon={<Trash2 />} danger onSelect={() => setConfirmDelete(true)}>Delete project</MenuItem>
+                      <MenuItem icon={<Trash2 />} danger onSelect={() => setConfirmDelete(true)}>{t("Delete project")}</MenuItem>
                     </>
                   )}
                 </MenuContent>
@@ -192,11 +195,11 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
 
           <section className="mt-8">
             <h2 className="mb-2 text-[13px] text-fg">
-              Chats <span className="text-fg-subtle">({p.chats.length})</span>
+              {t("Chats")} <span className="text-fg-subtle">({p.chats.length})</span>
             </h2>
             {p.chats.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-[13px] text-fg-subtle">
-                Chats you start here stay in this project and can use its files and each other.
+                {t("Chats you start here stay in this project and can use its files and each other.")}
               </div>
             ) : (
               <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface" data-testid="project-chats">
@@ -207,13 +210,13 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
                     className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50"
                   >
                     <MessageSquare className="size-3.5 shrink-0 text-fg-subtle" />
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-fg">{c.title}</span>
+                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-fg">{chatTitle(c.title, t)}</span>
                     {c.userId !== me.user.id ? (
-                      <span className="shrink-0 text-[12px] text-fg-subtle">Shared by {c.userName}</span>
+                      <span className="shrink-0 text-[12px] text-fg-subtle">{t("Shared by {userName}", { userName: c.userName })}</span>
                     ) : c.sharedToProject ? (
-                      <span className="shrink-0 text-[12px] text-fg-subtle">Shared</span>
+                      <span className="shrink-0 text-[12px] text-fg-subtle">{t("Shared")}</span>
                     ) : null}
-                    <span className="w-16 shrink-0 text-right text-[12px] text-fg-subtle">{timeAgo(c.updatedAt)}</span>
+                    <span className="w-16 shrink-0 text-right text-[12px] text-fg-subtle">{timeAgo(c.updatedAt, t)}</span>
                   </Link>
                 ))}
               </div>
@@ -224,29 +227,29 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
             <section className="mt-8">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-[13px] text-fg">
-                  Tasks <span className="text-fg-subtle">({p.tasks.length})</span>
+                  {t("Tasks")} <span className="text-fg-subtle">({p.tasks.length})</span>
                 </h2>
                 <Button variant="outline" size="sm" onClick={() => router.push(`/app/work?project=${p.id}`)} data-testid="project-new-task">
-                  <Workflow className="size-3.5" /> New task
+                  <Workflow className="size-3.5" /> {t("New task")}
                 </Button>
               </div>
               {p.tasks.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-[13px] text-fg-subtle">
-                  Work AI tasks started here follow the project&apos;s instructions, get a copy of its files and can save results back to it.
+                  {t("Work AI tasks started here follow the project's instructions, get a copy of its files and can save results back to it.")}
                 </div>
               ) : (
                 <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface" data-testid="project-tasks">
-                  {p.tasks.map((t) => (
-                    <Link key={t.id} href={`/app/work/${t.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50">
-                      <StatusIcon status={t.status} />
-                      <span className="min-w-0 flex-1 truncate text-[13.5px] text-fg">{t.title}</span>
-                      {t.scheduleId && <CalendarClock className="size-3.5 shrink-0 text-fg-subtle" aria-label="Scheduled" />}
-                      {t.userId !== me.user.id ? (
-                        <span className="shrink-0 text-[12px] text-fg-subtle">Shared by {t.userName}</span>
-                      ) : t.sharedToProject ? (
-                        <span className="shrink-0 text-[12px] text-fg-subtle">Shared</span>
+                  {p.tasks.map((task) => (
+                    <Link key={task.id} href={`/app/work/${task.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50">
+                      <StatusIcon status={task.status} />
+                      <span className="min-w-0 flex-1 truncate text-[13.5px] text-fg">{task.title}</span>
+                      {task.scheduleId && <CalendarClock className="size-3.5 shrink-0 text-fg-subtle" aria-label={t("Scheduled")} />}
+                      {task.userId !== me.user.id ? (
+                        <span className="shrink-0 text-[12px] text-fg-subtle">{t("Shared by {userName}", { userName: task.userName })}</span>
+                      ) : task.sharedToProject ? (
+                        <span className="shrink-0 text-[12px] text-fg-subtle">{t("Shared")}</span>
                       ) : null}
-                      <span className="w-16 shrink-0 text-right text-[12px] text-fg-subtle">{timeAgo(t.updatedAt)}</span>
+                      <span className="w-16 shrink-0 text-right text-[12px] text-fg-subtle">{timeAgo(task.updatedAt, t)}</span>
                     </Link>
                   ))}
                 </div>
@@ -267,12 +270,12 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
       <Dialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title={`Delete ${p.name}?`}
-        description="All chats in this project and the files added only to it are deleted. Documents linked from the library stay in the library. This can't be undone."
+        title={t("Delete {name}?", { name: p.name })}
+        description={t("All chats in this project and the files added only to it are deleted. Documents linked from the library stay in the library. This can't be undone.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-            <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>Delete project</Button>
+            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button>
+            <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>{t("Delete project")}</Button>
           </>
         }
       />
@@ -293,13 +296,14 @@ function Panel({ title, action, children }: { title: ReactNode; action?: ReactNo
 }
 
 function InstructionsCard({ project: p, onEdit }: { project: ProjectDetail; onEdit: () => void }) {
+  const t = useT();
   return (
     <Panel
-      title="Instructions"
+      title={t("Instructions")}
       action={
         p.canEdit && (
           <Button variant="ghost" size="sm" onClick={onEdit} className="-mr-1.5">
-            {p.instructions ? "Edit" : "Add"}
+            {p.instructions ? t("Edit") : t("Add")}
           </Button>
         )
       }
@@ -310,7 +314,7 @@ function InstructionsCard({ project: p, onEdit }: { project: ProjectDetail; onEd
         </p>
       ) : (
         <p className="text-[12.5px] leading-relaxed text-fg-subtle">
-          Tell the assistant how to work in this project: tone, format, background. They replace personal instructions here.
+          {t("Tell the assistant how to work in this project: tone, format, background. They replace personal instructions here.")}
         </p>
       )}
     </Panel>
@@ -324,6 +328,7 @@ function SourceIcon({ s }: { s: ProjectSource }) {
 }
 
 function SourcesCard({ project: p }: { project: ProjectDetail }) {
+  const t = useT();
   const { workspaceId } = useSession();
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -383,7 +388,7 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
     try {
       await uploadProjectSource(p.id, file, old);
       refresh();
-      toast("New version added. The old one is kept but no longer used in answers.");
+      toast(t("New version added. The old one is kept but no longer used in answers."));
     } catch (e) {
       toast.error(`${file.name}: ${(e as Error).message}`);
     } finally {
@@ -401,21 +406,21 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
     <Panel
       title={
         <span>
-          Sources <span className="text-fg-subtle">({p.sources.length})</span>
+          {t("Sources")} <span className="text-fg-subtle">({p.sources.length})</span>
         </span>
       }
       action={
         p.canEdit && (
           <Menu>
             <MenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="-mr-1.5" aria-label="Add source">
-                <Plus className="size-3.5" /> Add
+              <Button variant="ghost" size="sm" className="-mr-1.5" aria-label={t("Add source")}>
+                <Plus className="size-3.5" /> {t("Add")}
               </Button>
             </MenuTrigger>
             <MenuContent align="end">
-              <MenuItem icon={<Upload />} onSelect={() => inputRef.current?.click()}>Upload files</MenuItem>
-              <MenuItem icon={<StickyNote />} onSelect={() => setNoteOpen(true)}>Add text</MenuItem>
-              <MenuItem icon={<Library />} onSelect={() => setLibraryOpen(true)}>From your documents</MenuItem>
+              <MenuItem icon={<Upload />} onSelect={() => inputRef.current?.click()}>{t("Upload files")}</MenuItem>
+              <MenuItem icon={<StickyNote />} onSelect={() => setNoteOpen(true)}>{t("Add text")}</MenuItem>
+              <MenuItem icon={<Library />} onSelect={() => setLibraryOpen(true)}>{t("From your documents")}</MenuItem>
             </MenuContent>
           </Menu>
         )
@@ -464,21 +469,21 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
               <a
                 href={`/api/documents/${s.id}/file`}
                 className={cn("min-w-0 flex-1 truncate text-[12.5px] text-fg-muted hover:text-fg", s.supersededById && "line-through")}
-                title={newer ? `${s.name}, replaced by ${newer.name}` : s.name}
+                title={newer ? t("{old}, replaced by {new}", { old: s.name, new: newer.name }) : s.name}
               >
                 {s.name}
               </a>
-              {s.supersededById && <span className="shrink-0 text-[10.5px] text-fg-subtle">Old version</span>}
+              {s.supersededById && <span className="shrink-0 text-[10.5px] text-fg-subtle">{t("Old version")}</span>}
               <LabelBadge label={s.label} />
               {s.status === "processing" ? (
-                <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" aria-label="Processing" />
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" aria-label={t("Processing")} />
               ) : s.status === "failed" ? (
-                <CircleAlert className="size-3.5 shrink-0 text-danger" aria-label={s.error ?? "Failed"} />
+                <CircleAlert className="size-3.5 shrink-0 text-danger" aria-label={s.error ?? t("Failed")} />
               ) : (
                 !s.label &&
                 !s.supersededById && (
                   <span className={cn("shrink-0 text-[11px] text-fg-subtle", p.canEdit && "group-hover:hidden")}>
-                    {!s.projectOnly ? "Library" : s.kind === "file" ? formatBytes(s.sizeBytes) : s.kind === "answer" ? "Answer" : "Text"}
+                    {!s.projectOnly ? t("Library") : s.kind === "file" ? formatBytes(s.sizeBytes) : s.kind === "answer" ? t("Answer") : t("Text")}
                   </span>
                 )
               )}
@@ -487,14 +492,14 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
                   <MenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label={`Options for ${s.name}`}
+                      aria-label={t("Options for {name}", { name: s.name })}
                       className="hidden shrink-0 rounded p-0.5 text-fg-subtle group-hover:block hover:text-fg data-[state=open]:block"
                     >
                       <MoreHorizontal className="size-3.5" />
                     </button>
                   </MenuTrigger>
                   <MenuContent align="end" className="min-w-52">
-                    <MenuLabel>Label</MenuLabel>
+                    <MenuLabel>{t("Label")}</MenuLabel>
                     {(["confirmed", "assumption", "tbd"] as const).map((l) => (
                       <MenuItem
                         key={l}
@@ -502,7 +507,7 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
                         shortcut={s.label === l ? <Check className="size-3.5" /> : undefined}
                         onSelect={() => updateSource.mutate({ id: s.id, label: s.label === l ? null : l })}
                       >
-                        {LABELS[l].text}
+                        {t(LABELS[l].text)}
                       </MenuItem>
                     ))}
                     <MenuSeparator />
@@ -514,21 +519,21 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
                           versionRef.current?.click();
                         }}
                       >
-                        Upload new version
+                        {t("Upload new version")}
                       </MenuItem>
                     )}
                     {s.supersededById ? (
                       <MenuItem icon={<RotateCcw />} onSelect={() => updateSource.mutate({ id: s.id, supersededById: null })}>
-                        Make current again
+                        {t("Make current again")}
                       </MenuItem>
                     ) : (
                       <MenuItem icon={<History />} disabled={p.sources.length < 2} onSelect={() => setSuperseding(s)}>
-                        Replaced by another source…
+                        {t("Replaced by another source…")}
                       </MenuItem>
                     )}
                     <MenuSeparator />
                     <MenuItem icon={<Trash2 />} danger onSelect={() => remove.mutate(s.id)}>
-                      {s.projectOnly ? "Delete" : "Remove from project"}
+                      {s.projectOnly ? t("Delete") : t("Remove from project")}
                     </MenuItem>
                   </MenuContent>
                 </Menu>
@@ -539,8 +544,8 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
         {p.sources.length === 0 && uploading.length === 0 && (
           <p className="px-1.5 text-[12.5px] leading-relaxed text-fg-subtle">
             {p.canEdit
-              ? "Add files, pasted text or saved answers. Every chat in this project can use them without attaching."
-              : "No sources yet."}
+              ? t("Add files, pasted text or saved answers. Every chat in this project can use them without attaching.")
+              : t("No sources yet.")}
           </p>
         )}
       </div>
@@ -548,23 +553,23 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
       <Dialog
         open={noteOpen}
         onOpenChange={setNoteOpen}
-        title="Add text"
-        description="Paste meeting notes, requirements or anything the project should know."
+        title={t("Add text")}
+        description={t("Paste meeting notes, requirements or anything the project should know.")}
         className="max-w-lg"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setNoteOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setNoteOpen(false)}>{t("Cancel")}</Button>
             <Button variant="primary" disabled={!noteTitle.trim() || !noteBody.trim()} loading={addNote.isPending} onClick={() => addNote.mutate()}>
-              Add source
+              {t("Add source")}
             </Button>
           </>
         }
       >
         <div className="space-y-3">
-          <Field label="Title">
-            <Input autoFocus value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="e.g. Kickoff meeting notes" />
+          <Field label={t("Title")}>
+            <Input autoFocus value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder={t("e.g. Kickoff meeting notes")} />
           </Field>
-          <Field label="Text">
+          <Field label={t("Text")}>
             <Textarea value={noteBody} onChange={(e) => setNoteBody(e.target.value)} className="min-h-48" data-testid="note-body" />
           </Field>
         </div>
@@ -573,8 +578,8 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
       <Dialog
         open={!!superseding}
         onOpenChange={(o) => !o && setSuperseding(null)}
-        title="Replaced by which source?"
-        description={superseding ? `“${superseding.name}” will be kept for reference but left out of answers.` : undefined}
+        title={t("Replaced by which source?")}
+        description={superseding ? t("“{name}” will be kept for reference but left out of answers.", { name: superseding.name }) : undefined}
       >
         <div className="-mx-1 max-h-72 space-y-px overflow-y-auto">
           {p.sources
@@ -596,7 +601,7 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
         </div>
       </Dialog>
 
-      <Dialog open={libraryOpen} onOpenChange={setLibraryOpen} title="Add from your documents" description="People in this project can read the documents you add.">
+      <Dialog open={libraryOpen} onOpenChange={setLibraryOpen} title={t("Add from your documents")} description={t("People in this project can read the documents you add.")}>
         <div className="-mx-1 max-h-80 space-y-px overflow-y-auto">
           {library.isLoading && <Skeleton className="h-8" />}
           {linkable.map((d) => (
@@ -613,7 +618,13 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
           ))}
           {library.data && linkable.length === 0 && (
             <p className="px-2 py-3 text-[12.5px] text-fg-subtle">
-              Nothing left to add. Upload documents on the <Link href="/app/documents" className="text-fg underline-offset-2 hover:underline">Documents</Link> page.
+              {t("Nothing left to add. Upload documents on the {page} page.", {
+                page: (
+                  <Link href="/app/documents" className="text-fg underline-offset-2 hover:underline">
+                    {t("Documents")}
+                  </Link>
+                ),
+              })}
             </p>
           )}
         </div>
@@ -623,13 +634,14 @@ function SourcesCard({ project: p }: { project: ProjectDetail }) {
 }
 
 function PeopleCard({ project: p, onOpen }: { project: ProjectDetail; onOpen: () => void }) {
+  const t = useT();
   const people = [...(p.owner ? [{ id: p.owner.id, name: p.owner.name }] : []), ...p.members.map((m) => ({ id: m.userId, name: m.name }))];
   return (
     <Panel
-      title="People"
+      title={t("People")}
       action={
         <Button variant="ghost" size="sm" className="-mr-1.5" onClick={onOpen}>
-          {p.canEdit ? "Manage" : "View"}
+          {p.canEdit ? t("Manage") : t("View")}
         </Button>
       }
     >
@@ -641,14 +653,14 @@ function PeopleCard({ project: p, onOpen }: { project: ProjectDetail; onOpen: ()
         </div>
         <span className={cn("text-[12.5px] text-fg-subtle")}>
           {p.visibility === "workspace"
-            ? "Everyone in the workspace"
+            ? t("Everyone in the workspace")
             : people.length <= 1
-              ? "Only the owner"
-              : `${people.length} people`}
+              ? t("Only the owner")
+              : t.n(people.length, "{n} person", "{n} people")}
         </span>
       </div>
       <p className="mt-2.5 flex items-start gap-1.5 text-[12px] leading-snug text-fg-subtle">
-        <FileText className="mt-px size-3.5 shrink-0" /> Chats are private to their author unless shared to the project.
+        <FileText className="mt-px size-3.5 shrink-0" /> {t("Chats are private to their author unless shared to the project.")}
       </p>
     </Panel>
   );

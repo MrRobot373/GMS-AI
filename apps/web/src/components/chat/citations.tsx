@@ -9,19 +9,21 @@ import { Tooltip } from "@/components/ui/misc";
 import { Dialog } from "@/components/ui/overlay";
 import { cn } from "@/lib/cn";
 import type { Citation, SourceLabel } from "@/lib/types";
+import { msg, useT } from "@/i18n";
 
 export const LABELS: Record<SourceLabel, { text: string; hint: string; cls: string }> = {
-  confirmed: { text: "Confirmed", hint: "Checked and agreed", cls: "text-success border-success/30" },
-  assumption: { text: "Assumption", hint: "Believed true, not confirmed yet", cls: "text-warning border-warning/30" },
-  tbd: { text: "TBD", hint: "Still to be decided", cls: "text-fg-muted border-border-strong" },
+  confirmed: { text: msg("Confirmed"), hint: msg("Checked and agreed"), cls: "text-success border-success/30" },
+  assumption: { text: msg("Assumption"), hint: msg("Believed true, not confirmed yet"), cls: "text-warning border-warning/30" },
+  tbd: { text: msg("TBD"), hint: msg("Still to be decided"), cls: "text-fg-muted border-border-strong" },
 };
 
 export function LabelBadge({ label, className }: { label: SourceLabel | null | undefined; className?: string }) {
+  const t = useT();
   if (!label) return null;
   const l = LABELS[label];
   return (
-    <span title={l.hint} className={cn("inline-flex h-[18px] shrink-0 items-center rounded border px-1 text-[10.5px] leading-none", l.cls, className)}>
-      {l.text}
+    <span title={t(l.hint)} className={cn("inline-flex h-[18px] shrink-0 items-center rounded border px-1 text-[10.5px] leading-none", l.cls, className)}>
+      {t(l.text)}
     </span>
   );
 }
@@ -34,12 +36,13 @@ export function linkCitations(text: string, citations: Citation[] | null | undef
 }
 
 export function CitationChip({ citation, onOpen }: { citation: Citation; onOpen: (c: Citation) => void }) {
+  const t = useT();
   return (
     <Tooltip
       content={
         <span className="block max-w-64">
-          <span className="block text-fg">{citation.kind === "chat" ? `Earlier chat: ${citation.name}` : citation.name}</span>
-          {citation.page && <span className="text-fg-subtle">Page {citation.page}</span>}
+          <span className="block text-fg">{citation.kind === "chat" ? t("Earlier chat: {name}", { name: citation.name }) : citation.name}</span>
+          {citation.page && <span className="text-fg-subtle">{t("Page {page}", { page: citation.page })}</span>}
         </span>
       }
     >
@@ -56,9 +59,10 @@ export function CitationChip({ citation, onOpen }: { citation: Citation; onOpen:
 }
 
 export function SourcesRow({ citations, onOpen }: { citations: Citation[]; onOpen: (c: Citation) => void }) {
+  const t = useT();
   return (
     <div className="mt-3">
-      <div className="mb-1.5 text-[12px] text-fg-subtle">Sources</div>
+      <div className="mb-1.5 text-[12px] text-fg-subtle">{t("Sources")}</div>
       <div className="flex flex-wrap gap-1.5">
         {citations.map((c) => (
           <button
@@ -86,6 +90,7 @@ export function SourcesRow({ citations, onOpen }: { citations: Citation[]; onOpe
 }
 
 export function useSourceDialog() {
+  const t = useT();
   const [open, setOpen] = useState<Citation | null>(null);
   const dialog = (
     <Dialog
@@ -108,28 +113,30 @@ export function useSourceDialog() {
       description={
         open
           ? open.kind === "chat"
-            ? `Source ${open.n} · earlier chat in this project`
+            ? t("Source {n} · earlier chat in this project", { n: open.n })
             : open.kind === "task"
-              ? `Source ${open.n} · Work AI task in this project`
-              : `Source ${open.n}${open.page ? ` · page ${open.page}` : ""}`
+              ? t("Source {n} · Work AI task in this project", { n: open.n })
+              : open.page
+                ? t("Source {n} · page {page}", { n: open.n, page: open.page })
+                : t("Source {n}", { n: open.n })
           : undefined
       }
       footer={
         open?.kind === "chat" ? (
           <Button variant="outline" asChild>
             <Link href={`/app/chat/${open.chatId}`} onClick={() => setOpen(null)}>
-              <MessageSquare className="size-3.5" /> Open chat
+              <MessageSquare className="size-3.5" /> {t("Open chat")}
             </Link>
           </Button>
         ) : open?.kind === "task" ? (
           <Button variant="outline" asChild>
             <Link href={`/app/work/${open.taskId}`} onClick={() => setOpen(null)}>
-              <Workflow className="size-3.5" /> Open task
+              <Workflow className="size-3.5" /> {t("Open task")}
             </Link>
           </Button>
         ) : (
           <Button variant="outline" onClick={() => open && (window.location.href = `/api/documents/${open.documentId}/file`)}>
-            <Download className="size-3.5" /> Download document
+            <Download className="size-3.5" /> {t("Download document")}
           </Button>
         )
       }

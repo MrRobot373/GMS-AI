@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Tooltip } from "radix-ui";
 import { useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
+import { LocaleRoot, type Locale } from "@/i18n";
 
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({ children, locale }: { children: ReactNode; locale: Locale }) {
   const [client] = useState(
     () =>
       new QueryClient({
@@ -16,18 +17,20 @@ export function Providers({ children }: { children: ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
-      <Tooltip.Provider>
-        {children}
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            classNames: {
-              toast: "!bg-surface !border-border !text-fg !rounded-xl !shadow-soft",
-              description: "!text-fg-muted",
-            },
-          }}
-        />
-      </Tooltip.Provider>
+      <LocaleRoot initial={locale}>
+        <Tooltip.Provider>
+          {children}
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              classNames: {
+                toast: "!bg-surface !border-border !text-fg !rounded-xl !shadow-soft",
+                description: "!text-fg-muted",
+              },
+            }}
+          />
+        </Tooltip.Provider>
+      </LocaleRoot>
     </QueryClientProvider>
   );
 }

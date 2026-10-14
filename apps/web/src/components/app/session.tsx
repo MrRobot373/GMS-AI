@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Spinner } from "@/components/ui/spinner";
+import { useSetLocale, useT } from "@/i18n";
 import { ApiError, get, post } from "@/lib/api";
 import { applyAccent, applyFavicon } from "@/lib/theme";
 import type { Me } from "@/lib/types";
@@ -47,6 +48,14 @@ export function SessionGate({ children, requireAdmin }: { children: ReactNode; r
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [error, router, pathname]);
+
+  // The person's language, or the organization's.
+  const setLocale = useSetLocale();
+  const t = useT();
+  const wanted = me ? (me.user.locale ?? me.org.defaultLocale ?? "en") : null;
+  useEffect(() => {
+    if (wanted && wanted !== t.locale) setLocale(wanted);
+  }, [wanted, t.locale, setLocale]);
 
   useEffect(() => applyAccent(me?.org.accentColor), [me?.org.accentColor]);
   useEffect(() => applyFavicon(me?.org.logoUrl), [me?.org.logoUrl]);
@@ -92,7 +101,7 @@ export function SessionGate({ children, requireAdmin }: { children: ReactNode; r
     return (
       <div className="flex min-h-dvh items-center justify-center text-fg-subtle">
         {error && !(error instanceof ApiError && error.status === 401) ? (
-          <p className="text-sm">Couldn&apos;t reach the server. Retrying…</p>
+          <p className="text-sm">{t("Couldn't reach the server. Retrying…")}</p>
         ) : (
           <Spinner />
         )}

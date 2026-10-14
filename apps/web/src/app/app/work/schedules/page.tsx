@@ -19,6 +19,7 @@ import { del, get, patch, post } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import type { AvailableModel } from "@/lib/types";
 import type { Schedule } from "@/lib/work";
+import { useT } from "@/i18n";
 
 type Freq = "daily" | "weekdays" | "weekly" | "monthly" | "hourly" | "custom";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -76,6 +77,7 @@ function describeCron(cron: string): string {
 }
 
 export default function SchedulesPage() {
+  const t = useT();
   const { workspaceId } = useSession();
   const qc = useQueryClient();
   const router = useRouter();
@@ -105,7 +107,7 @@ export default function SchedulesPage() {
     onSuccess: () => {
       refresh();
       setRemoving(null);
-      toast("Schedule deleted");
+      toast(t("Schedule deleted"));
     },
   });
   const list = schedules.data ?? [];
@@ -114,29 +116,29 @@ export default function SchedulesPage() {
     <div className="flex h-full min-h-0 flex-col">
       <TopBar
         icon={<Workflow />}
-        title="Work AI"
+        title={t("Work AI")}
         actions={
           <Button variant="primary" size="sm" onClick={() => setEditing("new")} data-testid="new-schedule">
-            <Plus className="size-3.5" /> New schedule
+            <Plus className="size-3.5" /> {t("New schedule")}
           </Button>
         }
       />
       <WorkTabs />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
-          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">Scheduled tasks</h1>
-          <p className="mt-1 max-w-xl text-[13px] text-fg-subtle">Run a task on a schedule: a morning briefing, a weekly report, a monthly clean-up. Each run is a new task you can open and follow up on.</p>
+          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">{t("Scheduled tasks")}</h1>
+          <p className="mt-1 max-w-xl text-[13px] text-fg-subtle">{t("Run a task on a schedule: a morning briefing, a weekly report, a monthly clean-up. Each run is a new task you can open and follow up on.")}</p>
           {schedules.isLoading ? (
             <Skeleton className="mt-6 h-40 rounded-xl" />
           ) : list.length === 0 ? (
             <EmptyState
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<CalendarClock className="size-5" />}
-              title="Nothing scheduled"
-              description="For example: every weekday at 8:30, summarize yesterday's sales into report.md."
+              title={t("Nothing scheduled")}
+              description={t("For example: every weekday at 8:30, summarize yesterday's sales into report.md.")}
               action={
                 <Button variant="primary" size="sm" onClick={() => setEditing("new")}>
-                  <Plus className="size-3.5" /> New schedule
+                  <Plus className="size-3.5" /> {t("New schedule")}
                 </Button>
               }
             />
@@ -151,29 +153,29 @@ export default function SchedulesPage() {
                       <span>
                         {describeCron(s.cron)} ({s.timezone})
                       </span>
-                      {s.projectName && <span>· in {s.projectName}</span>}
-                      {s.enabled && s.nextRunAt && <span>· next {new Date(s.nextRunAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" })}</span>}
+                      {s.projectName && <span>{t("· in {projectName}", { projectName: s.projectName })}</span>}
+                      {s.enabled && s.nextRunAt && <span>· {t("next {when}", { when: t.dateTime(s.nextRunAt, { weekday: "short", hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" }) })}</span>}
                       {s.lastTaskId && s.lastStatus && s.lastRunAt && (
                         <Link href={`/app/work/${s.lastTaskId}`} className="inline-flex items-center gap-1 hover:text-fg">
-                          · <StatusIcon status={s.lastStatus} className="size-3" /> last run {timeAgo(s.lastRunAt)}
+                          · <StatusIcon status={s.lastStatus} className="size-3" /> {t("last run {lastRunAt}", { lastRunAt: timeAgo(s.lastRunAt, t) })}
                         </Link>
                       )}
                     </div>
                   </div>
                   <Button variant="ghost" size="sm" loading={runNow.isPending && runNow.variables?.id === s.id} onClick={() => runNow.mutate(s)}>
-                    <Play className="size-3.5" /> Run now
+                    <Play className="size-3.5" /> {t("Run now")}
                   </Button>
-                  <Switch checked={s.enabled} onCheckedChange={() => toggle.mutate(s)} label={`Enable ${s.name}`} />
+                  <Switch checked={s.enabled} onCheckedChange={() => toggle.mutate(s)} label={t("Enable {name}", { name: s.name })} />
                   <Menu>
                     <MenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" aria-label={`Options for ${s.name}`}>
+                      <Button variant="ghost" size="icon-sm" aria-label={t("Options for {name}", { name: s.name })}>
                         <MoreHorizontal className="size-4" />
                       </Button>
                     </MenuTrigger>
                     <MenuContent align="end">
-                      <MenuItem icon={<Pencil />} onSelect={() => setEditing(s)}>Edit</MenuItem>
+                      <MenuItem icon={<Pencil />} onSelect={() => setEditing(s)}>{t("Edit")}</MenuItem>
                       <MenuSeparator />
-                      <MenuItem icon={<Trash2 />} danger onSelect={() => setRemoving(s)}>Delete</MenuItem>
+                      <MenuItem icon={<Trash2 />} danger onSelect={() => setRemoving(s)}>{t("Delete")}</MenuItem>
                     </MenuContent>
                   </Menu>
                 </div>
@@ -188,12 +190,12 @@ export default function SchedulesPage() {
       <Dialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title={`Delete “${removing?.name}”?`}
-        description="Tasks it already ran are kept."
+        title={t("Delete “{name}”?", { name: removing?.name })}
+        description={t("Tasks it already ran are kept.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
-            <Button variant="danger" loading={remove.isPending} onClick={() => removing && remove.mutate(removing)}>Delete</Button>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>{t("Cancel")}</Button>
+            <Button variant="danger" loading={remove.isPending} onClick={() => removing && remove.mutate(removing)}>{t("Delete")}</Button>
           </>
         }
       />
@@ -202,6 +204,7 @@ export default function SchedulesPage() {
 }
 
 function ScheduleDialog({ schedule, workspaceId, onClose, onSaved }: { schedule?: Schedule; workspaceId: string; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
   const initial = fromCron(schedule?.cron ?? "0 9 * * 1-5");
   const [name, setName] = useState(schedule?.name ?? "");
   const [prompt, setPrompt] = useState(schedule?.prompt ?? "");
@@ -236,7 +239,7 @@ function ScheduleDialog({ schedule, workspaceId, onClose, onSaved }: { schedule?
     onSuccess: () => {
       onSaved();
       onClose();
-      toast.success(schedule ? "Schedule saved" : "Scheduled");
+      toast.success(schedule ? t("Schedule saved") : t("Scheduled"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -245,37 +248,37 @@ function ScheduleDialog({ schedule, workspaceId, onClose, onSaved }: { schedule?
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={schedule ? "Edit schedule" : "New schedule"}
+      title={schedule ? t("Edit schedule") : t("New schedule")}
       className="max-w-xl"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" disabled={!name.trim() || !prompt.trim() || !!preview.error} loading={save.isPending} onClick={() => save.mutate()} data-testid="save-schedule">
-            {schedule ? "Save" : "Schedule"}
+            {schedule ? t("Save") : t("Schedule")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Name">
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Morning sales brief" data-testid="schedule-name" />
+        <Field label={t("Name")}>
+          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Morning sales brief")} data-testid="schedule-name" />
         </Field>
-        <Field label="Task">
-          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder="Summarize yesterday's sales from sales.csv into report.md with a chart." data-testid="schedule-prompt" />
+        <Field label={t("Task")}>
+          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder={t("Summarize yesterday's sales from sales.csv into report.md with a chart.")} data-testid="schedule-prompt" />
         </Field>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Repeat">
+          <Field label={t("Repeat")}>
             <Select value={freq} onChange={(e) => setFreq(e.target.value as Freq)} data-testid="schedule-freq">
-              <option value="weekdays">Weekdays</option>
-              <option value="daily">Every day</option>
-              <option value="weekly">Every week</option>
-              <option value="monthly">Every month</option>
-              <option value="hourly">Every hour</option>
-              <option value="custom">Custom (cron)</option>
+              <option value="weekdays">{t("Weekdays")}</option>
+              <option value="daily">{t("Every day")}</option>
+              <option value="weekly">{t("Every week")}</option>
+              <option value="monthly">{t("Every month")}</option>
+              <option value="hourly">{t("Every hour")}</option>
+              <option value="custom">{t("Custom (cron)")}</option>
             </Select>
           </Field>
           {freq === "weekly" && (
-            <Field label="On">
+            <Field label={t("On")}>
               <Select value={day} onChange={(e) => setDay(Number(e.target.value))}>
                 {DAYS.map((d, i) => (
                   <option key={d} value={i}>{d}</option>
@@ -284,7 +287,7 @@ function ScheduleDialog({ schedule, workspaceId, onClose, onSaved }: { schedule?
             </Field>
           )}
           {freq === "monthly" && (
-            <Field label="Day">
+            <Field label={t("Day")}>
               <Select value={day} onChange={(e) => setDay(Number(e.target.value))}>
                 {Array.from({ length: 28 }, (_, i) => (
                   <option key={i} value={i + 1}>{i + 1}</option>
@@ -293,22 +296,22 @@ function ScheduleDialog({ schedule, workspaceId, onClose, onSaved }: { schedule?
             </Field>
           )}
           {freq === "custom" ? (
-            <Field label="Cron" className="sm:col-span-2">
+            <Field label={t("Cron")} className="sm:col-span-2">
               <Input value={custom} onChange={(e) => setCustom(e.target.value)} className="font-mono" placeholder="30 8 * * 1-5" />
             </Field>
           ) : (
-            <Field label={freq === "hourly" ? "Minute" : "At"}>
+            <Field label={freq === "hourly" ? t("Minute") : t("At")}>
               <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
             </Field>
           )}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Time zone">
+          <Field label={t("Time zone")}>
             <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
           </Field>
-          <Field label="Model">
+          <Field label={t("Model")}>
             <Select value={modelId} onChange={(e) => setModelId(e.target.value)}>
-              <option value="">{models.data?.find((m) => m.id === "auto" && m.isDefault) ? "Default (Auto)" : "Workspace default"}</option>
+              <option value="">{models.data?.find((m) => m.id === "auto" && m.isDefault) ? t("Default (Auto)") : t("Workspace default")}</option>
               {(models.data ?? []).filter((m) => m.id !== "auto").map((m) => (
                 <option key={m.id} value={m.id}>{m.displayName}</option>
               ))}
@@ -316,9 +319,9 @@ function ScheduleDialog({ schedule, workspaceId, onClose, onSaved }: { schedule?
           </Field>
         </div>
         {(projects.data?.length ?? 0) > 0 && (
-          <Field label="Project" hint="Runs follow the project's instructions, get its files and connectors, and appear in the project.">
+          <Field label={t("Project")} hint={t("Runs follow the project's instructions, get its files and connectors, and appear in the project.")}>
             <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} data-testid="schedule-project">
-              <option value="">None</option>
+              <option value="">{t("None")}</option>
               {projects.data!.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -330,9 +333,9 @@ function ScheduleDialog({ schedule, workspaceId, onClose, onSaved }: { schedule?
             <span className="text-danger">{(preview.error as Error).message}</span>
           ) : (
             <>
-              <span className="text-fg-subtle">Next runs: </span>
+              <span className="text-fg-subtle">{t("Next runs:")} </span>
               <span className="text-fg-muted">
-                {(preview.data?.runs ?? []).map((r) => new Date(r).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })).join(" · ") || "…"}
+                {(preview.data?.runs ?? []).map((r) => t.dateTime(r, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })).join(" · ") || "…"}
               </span>
             </>
           )}

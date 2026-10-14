@@ -13,6 +13,7 @@ import { Dialog } from "@/components/ui/overlay";
 import { ApiError, del, get, patch, post, put } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { DocumentRow, Person, ProjectDetail, ProjectSummary } from "@/lib/types";
+import { useT } from "@/i18n";
 
 export const PROJECT_HUES = ["190", "260", "330", "25", "145", "45", "210", "0"];
 
@@ -50,8 +51,9 @@ export async function uploadProjectSource(projectId: string, file: File, replace
 }
 
 function HuePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const t = useT();
   return (
-    <div className="flex gap-1.5" role="radiogroup" aria-label="Colour">
+    <div className="flex gap-1.5" role="radiogroup" aria-label={t("Colour")}>
       {PROJECT_HUES.map((h) => (
         <button
           key={h}
@@ -72,6 +74,7 @@ function HuePicker({ value, onChange }: { value: string; onChange: (v: string) =
 }
 
 export function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const t = useT();
   const { workspaceId } = useSession();
   const qc = useQueryClient();
   const router = useRouter();
@@ -98,32 +101,32 @@ export function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpen
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="New project"
-      description="Keep chats, files and instructions for one piece of work together."
+      title={t("New project")}
+      description={t("Keep chats, files and instructions for one piece of work together.")}
       footer={
         <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
           <Button variant="primary" disabled={!name.trim()} loading={create.isPending} onClick={() => create.mutate()}>
-            Create project
+            {t("Create project")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Name">
+        <Field label={t("Name")}>
           <Input
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Q3 board report"
+            placeholder={t("e.g. Q3 board report")}
             onKeyDown={(e) => e.key === "Enter" && name.trim() && create.mutate()}
           />
         </Field>
-        <Field label="Colour">
+        <Field label={t("Colour")}>
           <HuePicker value={color} onChange={setColor} />
         </Field>
-        <Field label="Instructions" hint="Optional. Every chat in this project follows these, instead of your personal instructions.">
-          <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="e.g. Answer as a concise checklist. Our fiscal year starts in April." />
+        <Field label={t("Instructions")} hint={t("Optional. Every chat in this project follows these, instead of your personal instructions.")}>
+          <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={t("e.g. Answer as a concise checklist. Our fiscal year starts in April.")} />
         </Field>
       </div>
     </Dialog>
@@ -131,6 +134,7 @@ export function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpen
 }
 
 export function ProjectSettingsDialog({ project, open, onOpenChange }: { project: ProjectDetail; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const { workspaceId } = useSession();
   const [name, setName] = useState(project.name);
@@ -167,7 +171,7 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: { project
       qc.invalidateQueries({ queryKey: ["project", project.id] });
       qc.invalidateQueries({ queryKey: ["projects", workspaceId] });
       onOpenChange(false);
-      toast("Project saved");
+      toast(t("Project saved"));
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -175,40 +179,40 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: { project
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Project settings"
+      title={t("Project settings")}
       className="max-w-lg"
       footer={
         <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim()} loading={save.isPending} onClick={() => save.mutate()}>Save</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
+          <Button variant="primary" disabled={!name.trim()} loading={save.isPending} onClick={() => save.mutate()}>{t("Save")}</Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Name">
+        <Field label={t("Name")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="Colour">
+        <Field label={t("Colour")}>
           <HuePicker value={color} onChange={setColor} />
         </Field>
-        <Field label="Description">
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What is this project about?" />
+        <Field label={t("Description")}>
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("What is this project about?")} />
         </Field>
-        <Field label="Instructions" hint="Chats and Work AI tasks in this project follow these instead of each person's own custom instructions.">
+        <Field label={t("Instructions")} hint={t("Chats and Work AI tasks in this project follow these instead of each person's own custom instructions.")}>
           <Textarea
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             className="min-h-40"
-            placeholder="e.g. You are helping the finance team. Always cite the source file. Use INR."
+            placeholder={t("e.g. You are helping the finance team. Always cite the source file. Use INR.")}
             data-testid="project-instructions"
           />
         </Field>
         {canWork && (connectors.data?.length ?? 0) > 0 && (
-          <Field label="Connectors for Work AI tasks" hint="Tasks in this project can use only the apps chosen here (each person still signs in to their own).">
+          <Field label={t("Connectors for Work AI tasks")} hint={t("Tasks in this project can use only the apps chosen here (each person still signs in to their own).")}>
             <div className="space-y-2" data-testid="project-connectors">
               <Select value={connectorIds === null ? "all" : "some"} onChange={(e) => setConnectorIds(e.target.value === "all" ? null : [])} data-testid="project-connectors-mode">
-                <option value="all">All the organization&apos;s connectors</option>
-                <option value="some">Only the ones chosen below</option>
+                <option value="all">{t("All the organization's connectors")}</option>
+                <option value="some">{t("Only the ones chosen below")}</option>
               </Select>
               {connectorIds !== null && (
                 <div className="grid max-h-48 gap-1.5 overflow-y-auto sm:grid-cols-2">
@@ -238,6 +242,7 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: { project
 }
 
 export function ShareProjectDialog({ project, open, onOpenChange }: { project: ProjectDetail; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const { me, workspaceId } = useSession();
   const [adding, setAdding] = useState("");
@@ -280,16 +285,16 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`Share “${project.name}”`}
-      description="People you share with can use the project's instructions and sources. Chats stay private unless their author shares them to the project."
+      title={t("Share “{name}”", { name: project.name })}
+      description={t("People you share with can use the project's instructions and sources. Chats stay private unless their author shares them to the project.")}
       className="max-w-lg"
     >
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-2">
           {(
             [
-              { v: "private", icon: Lock, t: "Only people invited", d: "You and the people below" },
-              { v: "workspace", icon: Globe, t: "Everyone in the workspace", d: "Anyone can open and chat" },
+              { v: "private", icon: Lock, t: t("Only people invited"), d: t("You and the people below") },
+              { v: "workspace", icon: Globe, t: t("Everyone in the workspace"), d: t("Anyone can open and chat") },
             ] as const
           ).map((o) => (
             <button
@@ -315,8 +320,8 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
         {editable && (
           <div className="flex gap-2">
             <div className="min-w-0 flex-1">
-              <Select value={adding} onChange={(e) => setAdding(e.target.value)} aria-label="Person to add">
-                <option value="">{candidates.length ? "Add a person from this workspace…" : "Everyone here already has access"}</option>
+              <Select value={adding} onChange={(e) => setAdding(e.target.value)} aria-label={t("Person to add")}>
+                <option value="">{candidates.length ? t("Add a person from this workspace…") : t("Everyone here already has access")}</option>
                 {candidates.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {p.email}
@@ -325,13 +330,13 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
               </Select>
             </div>
             <div className="w-28">
-              <Select value={role} onChange={(e) => setRole(e.target.value as "chat" | "edit")} aria-label="Role">
-                <option value="chat">Can chat</option>
-                <option value="edit">Can edit</option>
+              <Select value={role} onChange={(e) => setRole(e.target.value as "chat" | "edit")} aria-label={t("Role")}>
+                <option value="chat">{t("Can chat")}</option>
+                <option value="edit">{t("Can edit")}</option>
               </Select>
             </div>
             <Button variant="primary" disabled={!adding} loading={setMember.isPending} onClick={() => setMember.mutate({ userId: adding, role })}>
-              <UserPlus className="size-3.5" /> Add
+              <UserPlus className="size-3.5" /> {t("Add")}
             </Button>
           </div>
         )}
@@ -342,11 +347,11 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
               <Avatar name={project.owner.name} className="size-7" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] text-fg">
-                  {project.owner.name} {project.owner.id === me.user.id && <span className="text-fg-subtle">(you)</span>}
+                  {project.owner.name} {project.owner.id === me.user.id && <span className="text-fg-subtle">{t("(you)")}</span>}
                 </div>
                 <div className="truncate text-[12px] text-fg-subtle">{project.owner.email}</div>
               </div>
-              <span className="text-[12px] text-fg-subtle">Owner</span>
+              <span className="text-[12px] text-fg-subtle">{t("Owner")}</span>
             </div>
           )}
           {project.members.map((m) => (
@@ -354,7 +359,7 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
               <Avatar name={m.name} image={m.image} className="size-7" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] text-fg">
-                  {m.name} {m.userId === me.user.id && <span className="text-fg-subtle">(you)</span>}
+                  {m.name} {m.userId === me.user.id && <span className="text-fg-subtle">{t("(you)")}</span>}
                 </div>
                 <div className="truncate text-[12px] text-fg-subtle">{m.email}</div>
               </div>
@@ -363,26 +368,26 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
                   <div className="w-28">
                     <Select
                       value={m.role}
-                      aria-label={`Role for ${m.name}`}
+                      aria-label={t("Role for {name}", { name: m.name })}
                       onChange={(e) => setMember.mutate({ userId: m.userId, role: e.target.value as "chat" | "edit" })}
                       className="h-8"
                     >
-                      <option value="chat">Can chat</option>
-                      <option value="edit">Can edit</option>
+                      <option value="chat">{t("Can chat")}</option>
+                      <option value="edit">{t("Can edit")}</option>
                     </Select>
                   </div>
-                  <Button variant="ghost" size="icon-sm" aria-label={`Remove ${m.name}`} onClick={() => removeMember.mutate(m.userId)}>
+                  <Button variant="ghost" size="icon-sm" aria-label={t("Remove {name}", { name: m.name })} onClick={() => removeMember.mutate(m.userId)}>
                     <Trash2 className="size-3.5" />
                   </Button>
                 </>
               ) : (
-                <span className="text-[12px] text-fg-subtle">{m.role === "edit" ? "Can edit" : "Can chat"}</span>
+                <span className="text-[12px] text-fg-subtle">{m.role === "edit" ? t("Can edit") : t("Can chat")}</span>
               )}
             </div>
           ))}
           {project.members.length === 0 && (
             <p className="px-3 py-3 text-[12.5px] text-fg-subtle">
-              {project.visibility === "workspace" ? "Everyone in the workspace can chat here." : "Nobody else has access yet."}
+              {project.visibility === "workspace" ? t("Everyone in the workspace can chat here.") : t("Nobody else has access yet.")}
             </p>
           )}
         </div>
@@ -399,6 +404,7 @@ export function MoveToProjectDialog({
   chat: { id: string; title: string; projectId?: string | null } | null;
   onOpenChange: (o: boolean) => void;
 }) {
+  const t = useT();
   const { workspaceId } = useSession();
   const qc = useQueryClient();
   const projects = useProjects(workspaceId);
@@ -410,13 +416,13 @@ export function MoveToProjectDialog({
       qc.invalidateQueries({ queryKey: ["project"] });
       qc.invalidateQueries({ queryKey: ["chat", chat!.id] });
       const name = projects.data?.find((p) => p.id === projectId)?.name;
-      toast(projectId ? `Moved to ${name}` : "Removed from project");
+      toast(projectId ? t("Moved to {name}", { name: name }) : t("Removed from project"));
       onOpenChange(false);
     },
     onError: (e) => toast.error((e as Error).message),
   });
   return (
-    <Dialog open={!!chat} onOpenChange={onOpenChange} title="Move to project" description={chat ? `“${chat.title}”` : undefined}>
+    <Dialog open={!!chat} onOpenChange={onOpenChange} title={t("Move to project")} description={chat ? `“${chat.title}”` : undefined}>
       <div className="max-h-72 space-y-px overflow-y-auto">
         {(projects.data ?? []).map((p) => (
           <button
@@ -434,14 +440,14 @@ export function MoveToProjectDialog({
             {chat?.projectId === p.id && <Check className="size-3.5" />}
           </button>
         ))}
-        {projects.data?.length === 0 && <p className="px-2 py-2 text-[12.5px] text-fg-subtle">You have no projects yet. Create one from the sidebar.</p>}
+        {projects.data?.length === 0 && <p className="px-2 py-2 text-[12.5px] text-fg-subtle">{t("You have no projects yet. Create one from the sidebar.")}</p>}
         {chat?.projectId && (
           <button
             type="button"
             onClick={() => move.mutate(null)}
             className="mt-1 flex h-9 w-full items-center gap-2.5 rounded-lg border-t border-border px-2 text-left text-[13px] text-fg-muted hover:bg-surface-2"
           >
-            Remove from project
+            {t("Remove from project")}
           </button>
         )}
       </div>

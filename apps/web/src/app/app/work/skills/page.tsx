@@ -15,8 +15,10 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from 
 import { Skeleton } from "@/components/ui/spinner";
 import { del, get, patch, post } from "@/lib/api";
 import type { Skill } from "@/lib/work";
+import { useT } from "@/i18n";
 
 export default function SkillsPage() {
+  const t = useT();
   const { me } = useSession();
   const qc = useQueryClient();
   const skills = useQuery({ queryKey: ["work-skills"], queryFn: () => get<Skill[]>("/api/work/skills") });
@@ -33,33 +35,33 @@ export default function SkillsPage() {
     onSuccess: () => {
       refresh();
       setRemoving(null);
-      toast("Skill deleted");
+      toast(t("Skill deleted"));
     },
   });
 
   const all = skills.data ?? [];
   const groups = [
-    { key: "org", title: "Organization", hint: "Shared with everyone. Admins manage these.", icon: Building2, items: all.filter((s) => s.scope === "org") },
-    { key: "personal", title: "Yours", hint: "Only your tasks use these.", icon: User, items: all.filter((s) => s.scope === "personal") },
+    { key: "org", title: t("Organization"), hint: t("Shared with everyone. Admins manage these."), icon: Building2, items: all.filter((s) => s.scope === "org") },
+    { key: "personal", title: t("Yours"), hint: t("Only your tasks use these."), icon: User, items: all.filter((s) => s.scope === "personal") },
   ];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <TopBar
         icon={<Workflow />}
-        title="Work AI"
+        title={t("Work AI")}
         actions={
           <Button variant="primary" size="sm" onClick={() => setEditing("new")} data-testid="new-skill">
-            <Plus className="size-3.5" /> New skill
+            <Plus className="size-3.5" /> {t("New skill")}
           </Button>
         }
       />
       <WorkTabs />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
-          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">Skills</h1>
+          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">{t("Skills")}</h1>
           <p className="mt-1 max-w-xl text-[13px] text-fg-subtle">
-            Reusable instructions for recurring work: how your team writes reports, checks invoices or formats data. The agent reads a skill&apos;s description and follows it when it fits the task.
+            {t("Reusable instructions for recurring work: how your team writes reports, checks invoices or formats data. The agent reads a skill's description and follows it when it fits the task.")}
           </p>
           {skills.isLoading ? (
             <Skeleton className="mt-6 h-40 rounded-xl" />
@@ -67,11 +69,11 @@ export default function SkillsPage() {
             <EmptyState
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<Sparkles className="size-5" />}
-              title="No skills of your own yet"
-              description="Write down how your team does a task once, and every Work AI task can follow it. The library below covers common work already."
+              title={t("No skills of your own yet")}
+              description={t("Write down how your team does a task once, and every Work AI task can follow it. The library below covers common work already.")}
               action={
                 <Button variant="primary" size="sm" onClick={() => setEditing("new")}>
-                  <Plus className="size-3.5" /> New skill
+                  <Plus className="size-3.5" /> {t("New skill")}
                 </Button>
               }
             />
@@ -92,23 +94,23 @@ export default function SkillsPage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 text-[13.5px] text-fg">
                               {s.name}
-                              {!s.enabled && <Badge>Off</Badge>}
+                              {!s.enabled && <Badge>{t("Off")}</Badge>}
                             </div>
                             <div className="truncate text-[12px] text-fg-subtle">{s.description}</div>
                           </div>
                           {s.editable && (
                             <>
-                              <Switch checked={s.enabled} onCheckedChange={() => toggle.mutate(s)} label={`Use ${s.name}`} />
+                              <Switch checked={s.enabled} onCheckedChange={() => toggle.mutate(s)} label={t("Use {name}", { name: s.name })} />
                               <Menu>
                                 <MenuTrigger asChild>
-                                  <Button variant="ghost" size="icon-sm" aria-label={`Options for ${s.name}`}>
+                                  <Button variant="ghost" size="icon-sm" aria-label={t("Options for {name}", { name: s.name })}>
                                     <MoreHorizontal className="size-4" />
                                   </Button>
                                 </MenuTrigger>
                                 <MenuContent align="end">
-                                  <MenuItem icon={<Pencil />} onSelect={() => setEditing(s)}>Edit</MenuItem>
+                                  <MenuItem icon={<Pencil />} onSelect={() => setEditing(s)}>{t("Edit")}</MenuItem>
                                   <MenuSeparator />
-                                  <MenuItem icon={<Trash2 />} danger onSelect={() => setRemoving(s)}>Delete</MenuItem>
+                                  <MenuItem icon={<Trash2 />} danger onSelect={() => setRemoving(s)}>{t("Delete")}</MenuItem>
                                 </MenuContent>
                               </Menu>
                             </>
@@ -129,12 +131,12 @@ export default function SkillsPage() {
       <Dialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title={`Delete “${removing?.name}”?`}
-        description={removing?.scope === "org" ? "Nobody's tasks will use it any more." : "Your tasks won't use it any more."}
+        title={t("Delete “{name}”?", { name: removing?.name })}
+        description={removing?.scope === "org" ? t("Nobody's tasks will use it any more.") : t("Your tasks won't use it any more.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
-            <Button variant="danger" loading={remove.isPending} onClick={() => removing && remove.mutate(removing)}>Delete</Button>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>{t("Cancel")}</Button>
+            <Button variant="danger" loading={remove.isPending} onClick={() => removing && remove.mutate(removing)}>{t("Delete")}</Button>
           </>
         }
       />
@@ -143,6 +145,7 @@ export default function SkillsPage() {
 }
 
 function SkillDialog({ skill, canOrg, onClose, onSaved }: { skill?: Skill; canOrg: boolean; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
   const [form, setForm] = useState({
     name: skill?.name ?? "",
     description: skill?.description ?? "",
@@ -157,7 +160,7 @@ function SkillDialog({ skill, canOrg, onClose, onSaved }: { skill?: Skill; canOr
     onSuccess: () => {
       onSaved();
       onClose();
-      toast.success(skill ? "Skill saved" : "Skill added. New tasks can use it.");
+      toast.success(skill ? t("Skill saved") : t("Skill added. New tasks can use it."));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -166,41 +169,41 @@ function SkillDialog({ skill, canOrg, onClose, onSaved }: { skill?: Skill; canOr
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={skill ? "Edit skill" : "New skill"}
+      title={skill ? t("Edit skill") : t("New skill")}
       className="max-w-2xl"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" disabled={!valid} loading={save.isPending} onClick={() => save.mutate()} data-testid="save-skill">
-            {skill ? "Save" : "Add skill"}
+            {skill ? t("Save") : t("Add skill")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-[1fr_180px]">
-          <Field label="Name">
-            <Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Monthly sales report" data-testid="skill-name" />
+          <Field label={t("Name")}>
+            <Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("Monthly sales report")} data-testid="skill-name" />
           </Field>
           {!skill && canOrg && (
-            <Field label="Who can use it">
+            <Field label={t("Who can use it")}>
               <Select value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as "org" | "personal" })}>
-                <option value="personal">Only me</option>
-                <option value="org">Everyone</option>
+                <option value="personal">{t("Only me")}</option>
+                <option value="org">{t("Everyone")}</option>
               </Select>
             </Field>
           )}
         </div>
-        <Field label="When to use it" hint="The agent reads this to decide whether the skill fits a task.">
-          <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Use when asked for a monthly sales report" data-testid="skill-description" />
+        <Field label={t("When to use it")} hint={t("The agent reads this to decide whether the skill fits a task.")}>
+          <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t("Use when asked for a monthly sales report")} data-testid="skill-description" />
         </Field>
-        <Field label="Instructions" hint="Steps, rules, templates and examples. Markdown works.">
+        <Field label={t("Instructions")} hint={t("Steps, rules, templates and examples. Markdown works.")}>
           <Textarea
             value={form.body}
             onChange={(e) => setForm({ ...form, body: e.target.value })}
             rows={12}
             className="font-mono text-[12.5px] leading-relaxed"
-            placeholder={"1. Load sales.csv from the folder\n2. Group by region and month\n3. Save report.md with a summary table and a chart (chart.png)"}
+            placeholder={t("1. Load sales.csv from the folder\n2. Group by region and month\n3. Save report.md with a summary table and a chart (chart.png)")}
             data-testid="skill-body"
           />
         </Field>

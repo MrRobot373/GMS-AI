@@ -1,8 +1,12 @@
 import { GeistMono } from "geist/font/mono";
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
+import { isLocale, LOCALE_COOKIE } from "@/i18n/locales";
 import { themeBootScript } from "@/lib/theme";
 import { Providers } from "./providers";
 import "@fontsource-variable/inter";
+// Devanagari for Hindi (and names in it): fetched only when such text is on the page.
+import "@fontsource-variable/noto-sans-devanagari";
 import "@fontsource/newsreader/400.css";
 import "@fontsource/newsreader/400-italic.css";
 import "./globals.css";
@@ -20,14 +24,17 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // The language is a cookie, so pages arrive in it (and screen readers know it from the start).
+  const saved = (await cookies()).get(LOCALE_COOKIE)?.value;
+  const locale = isLocale(saved) ? saved : "en";
   return (
-    <html lang="en" data-theme="dark" className={GeistMono.variable} suppressHydrationWarning>
+    <html lang={locale} data-theme="dark" className={GeistMono.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers locale={locale}>{children}</Providers>
       </body>
     </html>
   );

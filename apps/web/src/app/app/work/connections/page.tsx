@@ -14,6 +14,7 @@ import { Dialog } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/spinner";
 import { del, get, post } from "@/lib/api";
 import { ConnectorIcon } from "@/lib/connectors";
+import { useT } from "@/i18n";
 
 interface Connection {
   id: string;
@@ -36,6 +37,7 @@ export default function ConnectionsPage() {
 }
 
 function Connections() {
+  const t = useT();
   const qc = useQueryClient();
   const { me } = useSession();
   const router = useRouter();
@@ -49,7 +51,7 @@ function Connections() {
     const ok = params.get("connected");
     const err = params.get("connector_error");
     if (!ok && !err) return;
-    if (ok) toast.success("Connected. Your Work AI tasks can use it now.");
+    if (ok) toast.success(t("Connected. Your Work AI tasks can use it now."));
     if (err) toast.error(err);
     router.replace("/app/work/connections");
   }, [params, router]);
@@ -66,7 +68,7 @@ function Connections() {
     onSuccess: () => {
       refresh();
       setRemoving(null);
-      toast("Disconnected");
+      toast(t("Disconnected"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -78,13 +80,13 @@ function Connections() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <TopBar icon={<Workflow />} title="Work AI" />
+      <TopBar icon={<Workflow />} title={t("Work AI")} />
       <WorkTabs />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
-          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">Connections</h1>
+          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">{t("Connections")}</h1>
           <p className="mt-1 max-w-xl text-[13px] text-fg-subtle">
-            Apps your tasks can use. Connect your own accounts and the agent works with your access: your mailbox, your calendar, your designs. It asks before changing anything.
+            {t("Apps your tasks can use. Connect your own accounts and the agent works with your access: your mailbox, your calendar, your designs. It asks before changing anything.")}
           </p>
           {list.isLoading ? (
             <Skeleton className="mt-6 h-40 rounded-xl" />
@@ -92,14 +94,14 @@ function Connections() {
             <EmptyState
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<Plug className="size-5" />}
-              title="No apps yet"
-              description={isAdmin ? "Add Gmail, Canva, GitHub and more in Admin → Work AI → Connectors." : "Your admin hasn't added any apps yet."}
+              title={t("No apps yet")}
+              description={isAdmin ? t("Add Gmail, Canva, GitHub and more in Admin → Work AI → Connectors.") : t("Your admin hasn't added any apps yet.")}
             />
           ) : (
             <div className="mt-6 space-y-8">
               {personal.length > 0 && (
                 <section>
-                  <h2 className="mb-2 text-[13px] text-fg">Your accounts</h2>
+                  <h2 className="mb-2 text-[13px] text-fg">{t("Your accounts")}</h2>
                   <Card className="divide-y divide-border">
                     {personal.map((c) => (
                       <div key={c.id} className="flex flex-wrap items-center gap-4 px-4 py-3.5" data-testid="connection-row" data-name={c.name}>
@@ -107,20 +109,20 @@ function Connections() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 text-[13.5px] text-fg">
                             {c.displayName}
-                            {c.connected && <Badge tone="success">Connected</Badge>}
-                            {c.account?.status === "expired" && <Badge tone="warning">Needs reconnecting</Badge>}
+                            {c.connected && <Badge tone="success">{t("Connected")}</Badge>}
+                            {c.account?.status === "expired" && <Badge tone="warning">{t("Needs reconnecting")}</Badge>}
                           </div>
                           <div className="truncate text-[12px] text-fg-subtle">
-                            {c.connected && c.account?.label ? `Signed in as ${c.account.label}` : (c.description ?? "")}
+                            {c.connected && c.account?.label ? t("Signed in as {label}", { label: c.account.label }) : (c.description ?? "")}
                           </div>
                         </div>
                         {c.connected ? (
                           <Button variant="ghost" size="sm" onClick={() => setRemoving(c)} data-testid="disconnect">
-                            Disconnect
+                            {t("Disconnect")}
                           </Button>
                         ) : (
                           <Button variant="primary" size="sm" loading={connect.isPending && connect.variables?.id === c.id} onClick={() => connect.mutate(c)} data-testid="connect">
-                            {c.account?.status === "expired" ? "Reconnect" : "Connect"}
+                            {c.account?.status === "expired" ? t("Reconnect") : t("Connect")}
                           </Button>
                         )}
                       </div>
@@ -130,16 +132,16 @@ function Connections() {
               )}
               {shared.length > 0 && (
                 <section>
-                  <h2 className="mb-2 text-[13px] text-fg">Ready for everyone</h2>
+                  <h2 className="mb-2 text-[13px] text-fg">{t("Ready for everyone")}</h2>
                   <Card className="divide-y divide-border">
                     {shared.map((c) => (
                       <div key={c.id} className="flex items-center gap-4 px-4 py-3.5" data-testid="connection-row" data-name={c.name}>
                         <ConnectorIcon category={c.category} />
                         <div className="min-w-0 flex-1">
                           <div className="text-[13.5px] text-fg">{c.displayName}</div>
-                          <div className="truncate text-[12px] text-fg-subtle">{c.description ?? (c.auth === "token" ? "Set up by your admin." : "Open service.")}</div>
+                          <div className="truncate text-[12px] text-fg-subtle">{c.description ?? (c.auth === "token" ? t("Set up by your admin.") : t("Open service."))}</div>
                         </div>
-                        <Badge>On</Badge>
+                        <Badge>{t("On")}</Badge>
                       </div>
                     ))}
                   </Card>
@@ -152,13 +154,13 @@ function Connections() {
       <Dialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title={`Disconnect ${removing?.displayName}?`}
-        description="Your tasks stop using it, and Aatmiq forgets your sign-in. You can connect again any time."
+        title={t("Disconnect {displayName}?", { displayName: removing?.displayName })}
+        description={t("Your tasks stop using it, and Aatmiq forgets your sign-in. You can connect again any time.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>{t("Cancel")}</Button>
             <Button variant="danger" loading={disconnect.isPending} onClick={() => removing && disconnect.mutate(removing)} data-testid="confirm-disconnect">
-              Disconnect
+              {t("Disconnect")}
             </Button>
           </>
         }

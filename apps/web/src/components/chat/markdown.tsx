@@ -7,6 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { Citation } from "@/lib/types";
 import { CitationChip, linkCitations } from "./citations";
+import { useT } from "@/i18n";
 
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -16,12 +17,13 @@ function textOf(node: ReactNode): string {
 }
 
 function CodeBlock({ children, className }: { children?: ReactNode; className?: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const lang = /language-(\w+)/.exec(className ?? "")?.[1];
   return (
     <div className="group/code overflow-hidden rounded-xl border border-border bg-bg-subtle">
       <div className="flex h-9 items-center justify-between border-b border-border px-3.5">
-        <span className="font-mono text-[11.5px] text-fg-subtle">{lang ?? "text"}</span>
+        <span className="font-mono text-[11.5px] text-fg-subtle">{lang ?? t("text")}</span>
         <button
           onClick={() => {
             navigator.clipboard.writeText(textOf(children).replace(/\n$/, ""));
@@ -31,7 +33,7 @@ function CodeBlock({ children, className }: { children?: ReactNode; className?: 
           className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg print:hidden"
         >
           {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("Copied") : t("Copy")}
         </button>
       </div>
       <pre className="overflow-x-auto p-4 font-mono text-[13px] leading-relaxed">

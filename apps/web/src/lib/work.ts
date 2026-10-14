@@ -2,6 +2,7 @@
 
 import type { Routing } from "@aatmiq/shared";
 import { useQuery } from "@tanstack/react-query";
+import { msg } from "@/i18n";
 import { get } from "./api";
 
 export type TaskStatus = "queued" | "running" | "needs_approval" | "completed" | "failed" | "cancelled";
@@ -135,66 +136,67 @@ export function shortPath(p: unknown): string | undefined {
 }
 
 /** One-line description of a tool call, for the timeline. */
-export function describeCall(name: string, args: any): { verb: string; target?: string } {
+/** What a step did: `verb` is an English text to show with t(verb, params). */
+export function describeCall(name: string, args: any): { verb: string; target?: string; params?: Record<string, string> } {
   const raw = (args ?? {}) as Record<string, any>;
   const a: Record<string, any> = { ...raw, path: shortPath(raw.path), file_path: shortPath(raw.file_path) };
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
-  if (mcp) return { verb: `Used ${mcp[1]}`, target: mcp[2]!.replaceAll("_", " ") };
+  if (mcp) return { verb: msg("Used {tool}"), params: { tool: mcp[1]! }, target: mcp[2]!.replaceAll("_", " ") };
   switch (name) {
     case "bash":
     case "pwsh":
-      return { verb: "Ran", target: String(a.command ?? "").split("\n")[0] };
+      return { verb: msg("Ran"), target: String(a.command ?? "").split("\n")[0] };
     case "write":
-      return { verb: "Wrote", target: a.path ?? a.file_path };
+      return { verb: msg("Wrote"), target: a.path ?? a.file_path };
     case "edit":
     case "str_replace_editor":
-      return { verb: "Edited", target: a.path ?? a.file_path };
+      return { verb: msg("Edited"), target: a.path ?? a.file_path };
     case "read":
     case "read_image":
-      return { verb: "Read", target: a.path ?? a.file_path };
+      return { verb: msg("Read"), target: a.path ?? a.file_path };
     case "glob":
-      return { verb: "Looked for files", target: a.pattern };
+      return { verb: msg("Looked for files"), target: a.pattern };
     case "grep":
-      return { verb: "Searched files for", target: a.pattern };
+      return { verb: msg("Searched files for"), target: a.pattern };
     case "web_search":
-      return { verb: "Searched the web", target: Array.isArray(a.queries) ? a.queries.join(" · ") : a.query };
+      return { verb: msg("Searched the web"), target: Array.isArray(a.queries) ? a.queries.join(" · ") : a.query };
     case "web_fetch":
-      return { verb: "Opened", target: a.url };
+      return { verb: msg("Opened"), target: a.url };
     case "browser_open":
-      return { verb: "Opened in the browser", target: a.url };
+      return { verb: msg("Opened in the browser"), target: a.url };
     case "browser_click":
-      return { verb: a.confirm_submit ? "Submitted a form" : "Clicked", target: `element ${a.element}` };
+      return { verb: a.confirm_submit ? msg("Submitted a form") : msg("Clicked"), target: `element ${a.element}` };
     case "browser_type":
-      return { verb: a.confirm_submit ? "Typed and submitted" : "Typed", target: String(a.text ?? "").slice(0, 60) };
+      return { verb: a.confirm_submit ? msg("Typed and submitted") : msg("Typed"), target: String(a.text ?? "").slice(0, 60) };
     case "browser_select":
-      return { verb: "Chose", target: a.option };
+      return { verb: msg("Chose"), target: a.option };
     case "browser_back":
-      return { verb: "Went back a page" };
+      return { verb: msg("Went back a page") };
     case "browser_read":
-      return { verb: "Read more of the page" };
+      return { verb: msg("Read more of the page") };
     case "browser_screenshot":
-      return { verb: "Took a screenshot" };
+      return { verb: msg("Took a screenshot") };
     case "skill":
-      return { verb: "Used skill", target: a.name ?? a.skill };
+      return { verb: msg("Used skill"), target: a.name ?? a.skill };
     case "todo_write": {
       const todos = (Array.isArray(a.todos) ? a.todos : []) as { content: string; status: string }[];
-      if (todos.length && todos.every((t) => t.status === "completed")) return { verb: "Finished the plan" };
+      if (todos.length && todos.every((t) => t.status === "completed")) return { verb: msg("Finished the plan") };
       const now = todos.find((t) => t.status === "in_progress");
       return { verb: now ? `Plan: ${now.content}` : `Planned ${todos.length} steps` };
     }
     case "subagent":
     case "subagent_fork":
-      return { verb: "Asked a helper agent", target: a.description ?? a.task };
+      return { verb: msg("Asked a helper agent"), target: a.description ?? a.task };
     default:
-      return { verb: `Used ${name.replaceAll("_", " ")}` };
+      return { verb: msg("Used {tool}"), params: { tool: name.replaceAll("_", " ") } };
   }
 }
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
-  queued: "Queued",
-  running: "Working",
-  needs_approval: "Needs approval",
-  completed: "Done",
-  failed: "Failed",
-  cancelled: "Stopped",
+  queued: msg("Queued"),
+  running: msg("Working"),
+  needs_approval: msg("Needs approval"),
+  completed: msg("Done"),
+  failed: msg("Failed"),
+  cancelled: msg("Stopped"),
 };

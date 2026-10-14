@@ -5,6 +5,7 @@ import { KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { get } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { useT } from "@/i18n";
 
 export interface SsoOption {
   id: string;
@@ -40,6 +41,7 @@ export function ProviderIcon({ type, className }: { type: SsoOption["type"]; cla
 
 /** "Continue with …" buttons. Each starts the provider's sign-in in this tab. */
 export function SsoButtons({ options, next, invite, email }: { options: SsoOption[]; next?: string | null; invite?: string; email?: string }) {
+  const t = useT();
   return (
     <div className="grid gap-2">
       {options.map((o) => {
@@ -50,7 +52,7 @@ export function SsoButtons({ options, next, invite, email }: { options: SsoOptio
         return (
           <Button key={o.id} variant="outline" size="lg" className="w-full" asChild>
             <a href={`/api/auth/sso/${o.id}/start${q.size ? `?${q}` : ""}`} data-testid={`sso-${o.type}`}>
-              <ProviderIcon type={o.type} /> Continue with {o.name}
+              <ProviderIcon type={o.type} /> {t("Continue with {name}", { name: o.name })}
             </a>
           </Button>
         );

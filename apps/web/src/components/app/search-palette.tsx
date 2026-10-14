@@ -11,9 +11,10 @@ import { Kbd } from "@/components/ui/misc";
 import { Spinner } from "@/components/ui/spinner";
 import { get } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { timeAgo } from "@/lib/format";
+import { chatTitle, timeAgo } from "@/lib/format";
 import type { ChatSummary, SearchResults } from "@/lib/types";
 import { useSession } from "./session";
+import { useT } from "@/i18n";
 
 interface Item {
   key: string;
@@ -36,6 +37,7 @@ function useDebounced<T>(value: T, ms: number) {
 
 /** ⌘K: search chat titles and messages, documents and projects in the current workspace. */
 export function SearchPalette({ open, onOpenChange, recents }: { open: boolean; onOpenChange: (o: boolean) => void; recents: ChatSummary[] }) {
+  const t = useT();
   const { workspaceId } = useSession();
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -60,13 +62,13 @@ export function SearchPalette({ open, onOpenChange, recents }: { open: boolean; 
   const items = useMemo<Item[]>(() => {
     if (dq.length < 2) {
       return [
-        { key: "new", group: "Actions", icon: <SquarePen />, title: "New chat", href: "/app/chat" },
+        { key: "new", group: t("Actions"), icon: <SquarePen />, title: t("New chat"), href: "/app/chat" },
         ...recents.slice(0, 6).map((c) => ({
           key: `r-${c.id}`,
-          group: "Recent chats",
+          group: t("Recent chats"),
           icon: <MessageSquare />,
-          title: c.title,
-          meta: timeAgo(c.updatedAt),
+          title: chatTitle(c.title, t),
+          meta: timeAgo(c.updatedAt, t),
           href: `/app/chat/${c.id}`,
         })),
       ];
@@ -76,35 +78,35 @@ export function SearchPalette({ open, onOpenChange, recents }: { open: boolean; 
     return [
       ...r.projects.map((p) => ({
         key: `p-${p.id}`,
-        group: "Projects",
+        group: t("Projects"),
         icon: <ProjectIcon color={p.color} />,
         title: p.name,
         href: `/app/projects/${p.id}`,
       })),
       ...r.chats.map((c) => ({
         key: `c-${c.id}`,
-        group: "Chats",
+        group: t("Chats"),
         icon: c.archived ? <Archive /> : <MessageSquare />,
-        title: c.title,
+        title: chatTitle(c.title, t),
         detail: c.snippet,
         meta: (
           <span className="flex items-center gap-1.5">
             {c.projectName && <span className="max-w-32 truncate">{c.projectName}</span>}
-            {c.archived && <span>Archived</span>}
-            <span>{timeAgo(c.updatedAt)}</span>
+            {c.archived && <span>{t("Archived")}</span>}
+            <span>{timeAgo(c.updatedAt, t)}</span>
           </span>
         ),
         href: c.projectId ? `/app/projects/${c.projectId}/${c.id}` : `/app/chat/${c.id}`,
       })),
       ...r.documents.map((d) => ({
         key: `d-${d.id}`,
-        group: "Documents",
+        group: t("Documents"),
         icon: <FileIcon name={d.name} />,
         title: d.name,
         href: d.projectId ? `/app/projects/${d.projectId}` : `/app/documents`,
       })),
     ];
-  }, [dq, recents, results.data]);
+  }, [dq, recents, results.data, t]);
 
   useEffect(() => setActive(0), [items.length, dq]);
   useEffect(() => {
@@ -123,11 +125,11 @@ export function SearchPalette({ open, onOpenChange, recents }: { open: boolean; 
       <RDialog.Portal>
         <RDialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-fade-in" />
         <RDialog.Content
-          aria-label="Search"
+          aria-label={t("Search")}
           className="fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-32px)] max-w-xl -translate-x-1/2 overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-soft outline-none data-[state=open]:animate-rise"
         >
-          <RDialog.Title className="sr-only">Search</RDialog.Title>
-          <RDialog.Description className="sr-only">Search chats, documents and projects</RDialog.Description>
+          <RDialog.Title className="sr-only">{t("Search")}</RDialog.Title>
+          <RDialog.Description className="sr-only">{t("Search chats, documents and projects")}</RDialog.Description>
           <div className="flex h-12 items-center gap-2.5 border-b border-border px-4">
             <Search className="size-4 shrink-0 text-fg-subtle" />
             <input
@@ -146,7 +148,7 @@ export function SearchPalette({ open, onOpenChange, recents }: { open: boolean; 
                   go(items[active]);
                 }
               }}
-              placeholder="Search chats, messages, documents and projects"
+              placeholder={t("Search chats, messages, documents and projects")}
               className="min-w-0 flex-1 bg-transparent text-[14px] text-fg outline-none placeholder:text-fg-subtle"
               data-testid="search-input"
             />
@@ -181,12 +183,12 @@ export function SearchPalette({ open, onOpenChange, recents }: { open: boolean; 
               );
             })}
             {dq.length >= 2 && results.data && items.length === 0 && (
-              <p className="px-3 py-6 text-center text-[13px] text-fg-subtle">Nothing matches “{dq}”.</p>
+              <p className="px-3 py-6 text-center text-[13px] text-fg-subtle">{t("Nothing matches “{dq}”.", { dq: dq })}</p>
             )}
           </div>
           <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-[11.5px] text-fg-subtle">
-            <span className="flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> to move</span>
-            <span className="flex items-center gap-1"><Kbd>↵</Kbd> to open</span>
+            <span className="flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> {t("to move")}</span>
+            <span className="flex items-center gap-1"><Kbd>↵</Kbd> {t("to open")}</span>
           </div>
         </RDialog.Content>
       </RDialog.Portal>

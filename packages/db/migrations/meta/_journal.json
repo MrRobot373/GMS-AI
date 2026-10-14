@@ -134,6 +134,13 @@
       "when": 1791903828243,
       "tag": "0018_saml_sso",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791906291298,
+      "tag": "0019_locale",
+      "breakpoints": true
     }
   ]
 }

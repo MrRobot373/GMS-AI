@@ -53,6 +53,7 @@ import { cn } from "@/lib/cn";
 import { formatTokens, timeAgo, TIER_NAMES } from "@/lib/format";
 import { ACTIVE, describeCall, type TaskStatus, type WorkEvent, type WorkFile, type WorkTaskDetail } from "@/lib/work";
 import { StatusPill, WorkComposer, type WorkComposerHandle } from "./parts";
+import { useT } from "@/i18n";
 
 /* ───────────── Timeline model ───────────── */
 
@@ -151,6 +152,7 @@ function toolIcon(name: string) {
 const ReadOnly = createContext<string | null>(null);
 
 export function TaskView({ taskId }: { taskId: string }) {
+  const t = useT();
   const { workspaceId } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
@@ -259,7 +261,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     },
     onError: (e: Error, prompt) => {
       setInput(prompt);
-      toast.error(e instanceof ApiError && e.code === "quota_exceeded" ? "You've used your token allowance for this period." : e.message);
+      toast.error(e instanceof ApiError && e.code === "quota_exceeded" ? t("You've used your token allowance for this period.") : e.message);
     },
   });
   const stop = useMutation({
@@ -278,7 +280,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       void qc.invalidateQueries({ queryKey: ["work-tasks", workspaceId] });
       if (body.sharedToProject !== undefined) {
         if (proj) void qc.invalidateQueries({ queryKey: ["project", proj.id] });
-        toast(body.sharedToProject ? `Shared to ${proj?.name ?? "the project"}` : "No longer shared to the project");
+        toast(body.sharedToProject ? (proj ? t("Shared to {project}", { project: proj.name }) : t("Shared to the project")) : t("No longer shared to the project"));
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -288,7 +290,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     mutationFn: (path: string) => post<{ name: string }>(`/api/work/tasks/${taskId}/save-to-project`, { path }),
     onSuccess: (d) => {
       if (proj) void qc.invalidateQueries({ queryKey: ["project", proj.id] });
-      toast.success(`Saved ${d.name} to ${proj?.name ?? "the project"}`);
+      toast.success(proj ? t("Saved {file} to {project}", { file: d.name, project: proj.name }) : t("Saved {file} to the project", { file: d.name }));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -296,7 +298,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     mutationFn: (text: string) => post(`/api/projects/${proj!.id}/sources/note`, { title: detail.data?.task.title ?? "Task result", content: text, kind: "answer" }),
     onSuccess: () => {
       if (proj) void qc.invalidateQueries({ queryKey: ["project", proj.id] });
-      toast.success(`Saved to ${proj?.name ?? "the project"}`);
+      toast.success(proj ? t("Saved to {project}", { project: proj.name }) : t("Saved to the project"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -304,7 +306,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     mutationFn: () => del(`/api/work/tasks/${taskId}`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["work-tasks", workspaceId] });
-      toast("Task deleted");
+      toast(t("Task deleted"));
       router.push("/app/work");
     },
   });
@@ -315,19 +317,19 @@ export function TaskView({ taskId }: { taskId: string }) {
       const res = await fetch(`/api/work/tasks/${taskId}/files`, { method: "POST", body: form, credentials: "include" });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        toast.error(d.error ?? `Couldn't add ${f.name}`);
+        toast.error(d.error ?? t("Couldn't add {name}", { name: f.name }));
       }
     }
     void qc.invalidateQueries({ queryKey: ["work-files", taskId] });
-    toast.success(list.length === 1 ? `Added ${list[0]!.name} to the task folder` : `Added ${list.length} files to the task folder`);
+    toast.success(list.length === 1 ? t("Added {file} to the task folder", { file: list[0]!.name }) : t.n(list.length, "Added {n} file to the task folder", "Added {n} files to the task folder"));
     setPanel("files");
   };
 
   if (detail.error) {
     return (
       <div className="flex h-full flex-col">
-        <TopBar icon={<Workflow />} title="Work AI" />
-        <div className="flex flex-1 items-center justify-center text-[13px] text-fg-subtle">This task doesn&apos;t exist or was deleted.</div>
+        <TopBar icon={<Workflow />} title={t("Work AI")} />
+        <div className="flex flex-1 items-center justify-center text-[13px] text-fg-subtle">{t("This task doesn't exist or was deleted.")}</div>
       </div>
     );
   }
@@ -347,13 +349,19 @@ export function TaskView({ taskId }: { taskId: string }) {
                 <span>/</span>
               </Link>
             )}
-            <span className="truncate" data-testid="task-title">{task?.title ?? "Task"}</span>
+            <span className="truncate" data-testid="task-title">{task?.title ?? t("Task")}</span>
             {task && <StatusPill status={status} />}
             {task?.routing && (
-              <Tooltip content={`Auto picked the ${TIER_NAMES[task.routing.tier].toLowerCase()} model: ${task.routing.reason}${task.routing.thinking ? ", with thinking on" : ""}.`}>
+              <Tooltip
+                content={
+                  task.routing.thinking
+                    ? t("Auto picked the {tier} model: {reason}, with thinking on.", { tier: t(TIER_NAMES[task.routing.tier]).toLowerCase(), reason: task.routing.reason })
+                    : t("Auto picked the {tier} model: {reason}.", { tier: t(TIER_NAMES[task.routing.tier]).toLowerCase(), reason: task.routing.reason })
+                }
+              >
                 <span className="hidden shrink-0 items-center gap-1 rounded-full bg-surface-2 px-1.5 py-px text-[11px] text-fg-muted sm:inline-flex" data-testid="task-routed">
                   <Sparkles className="size-3 text-accent" />
-                  Auto · {TIER_NAMES[task.routing.tier].toLowerCase()}
+                  {t("Auto · {tier}", { tier: t(TIER_NAMES[task.routing.tier]).toLowerCase() })}
                 </span>
               </Tooltip>
             )}
@@ -362,18 +370,18 @@ export function TaskView({ taskId }: { taskId: string }) {
         actions={
           <>
             <TopBarButton onClick={() => setPanel((p) => (p === "files" ? null : "files"))} data-testid="files-toggle">
-              <FolderOpen /> <span className="hidden sm:inline">Files</span>
+              <FolderOpen /> <span className="hidden sm:inline">{t("Files")}</span>
               {fileCount > 0 && <span className="text-fg-subtle tabular-nums">{fileCount}</span>}
             </TopBarButton>
             <Tooltip content={panel ? "Hide panel" : "Show progress"}>
-              <TopBarButton aria-label="Toggle panel" onClick={() => setPanel((p) => (p ? null : "progress"))}>
+              <TopBarButton aria-label={t("Toggle panel")} onClick={() => setPanel((p) => (p ? null : "progress"))}>
                 <PanelRight />
               </TopBarButton>
             </Tooltip>
             {own && (
               <Menu>
                 <MenuTrigger asChild>
-                  <TopBarButton aria-label="Task options">
+                  <TopBarButton aria-label={t("Task options")}>
                     <MoreHorizontal />
                   </TopBarButton>
                 </MenuTrigger>
@@ -385,19 +393,19 @@ export function TaskView({ taskId }: { taskId: string }) {
                       setRenaming(true);
                     }}
                   >
-                    Rename
+                    {t("Rename")}
                   </MenuItem>
                   <MenuItem icon={task?.pinned ? <PinOff /> : <Pin />} onSelect={() => update.mutate({ pinned: !task?.pinned })}>
-                    {task?.pinned ? "Unpin" : "Pin"}
+                    {task?.pinned ? t("Unpin") : t("Pin")}
                   </MenuItem>
-                  <MenuItem icon={<Upload />} onSelect={() => uploadRef.current?.click()}>Add files</MenuItem>
+                  <MenuItem icon={<Upload />} onSelect={() => uploadRef.current?.click()}>{t("Add files")}</MenuItem>
                   {task?.projectId && proj && (
                     <MenuItem icon={<Share2 />} onSelect={() => update.mutate({ sharedToProject: !task.sharedToProject })}>
-                      {task.sharedToProject ? "Stop sharing to project" : "Share to project"}
+                      {task.sharedToProject ? t("Stop sharing to project") : t("Share to project")}
                     </MenuItem>
                   )}
                   <MenuSeparator />
-                  <MenuItem icon={<Trash2 />} danger onSelect={() => setConfirmDelete(true)}>Delete task</MenuItem>
+                  <MenuItem icon={<Trash2 />} danger onSelect={() => setConfirmDelete(true)}>{t("Delete task")}</MenuItem>
                 </MenuContent>
               </Menu>
             )}
@@ -455,8 +463,9 @@ export function TaskView({ taskId }: { taskId: string }) {
             <div className="mx-auto max-w-[760px]">
               {!own ? (
                 <div className="rounded-xl border border-border bg-surface px-4 py-3 text-center text-[13px] text-fg-muted" data-testid="shared-task-note">
-                  Shared by {detail.data?.ownerName ?? "a colleague"}
-                  {proj ? ` in ${proj.name}` : ""}. You can read it and its files; only they can continue it.
+                  {proj
+                    ? t("Shared by {owner} in {project}. You can read it and its files; only they can continue it.", { owner: detail.data?.ownerName ?? t("a colleague"), project: proj.name })
+                    : t("Shared by {owner}. You can read it and its files; only they can continue it.", { owner: detail.data?.ownerName ?? t("a colleague") })}
                 </div>
               ) : (
                 <WorkComposer
@@ -464,7 +473,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   value={input}
                   onChange={setInput}
                   onSubmit={() => send.mutate(input.trim())}
-                  placeholder={active ? "Add to the task while it works…" : "Ask for changes or a next step…"}
+                  placeholder={active ? t("Add to the task while it works…") : t("Ask for changes or a next step…")}
                   busy={active}
                   onStop={() => stop.mutate()}
                   sending={send.isPending}
@@ -472,8 +481,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                 />
               )}
               <div className="mt-2 flex flex-wrap justify-center gap-x-3 text-[11.5px] text-fg-subtle">
-                <span>Runs in a private folder on your organization&apos;s servers.</span>
-                {task && task.inputTokens + task.outputTokens > 0 && <span className="tabular-nums">{formatTokens(task.inputTokens + task.outputTokens)} tokens</span>}
+                <span>{t("Runs in a private folder on your organization's servers.")}</span>
+                {task && task.inputTokens + task.outputTokens > 0 && <span className="tabular-nums">{t("{count} tokens", { count: formatTokens(task.inputTokens + task.outputTokens) })}</span>}
               </div>
             </div>
           </div>
@@ -490,13 +499,13 @@ export function TaskView({ taskId }: { taskId: string }) {
               className="absolute inset-y-0 right-0 z-20 flex w-[min(380px,100%)] flex-col border-l border-border bg-bg shadow-soft xl:relative xl:shadow-none"
             >
               <div className="flex h-10 shrink-0 items-end gap-5 border-b border-border px-4">
-                {(["progress", "files"] as const).map((t) => (
+                {(["progress", "files"] as const).map((p) => (
                   <button
-                    key={t}
-                    onClick={() => setPanel(t)}
-                    className={cn("-mb-px border-b-2 pb-2 text-[12.5px] capitalize transition-colors", panel === t ? "border-fg text-fg" : "border-transparent text-fg-subtle hover:text-fg-muted")}
+                    key={p}
+                    onClick={() => setPanel(p)}
+                    className={cn("-mb-px border-b-2 pb-2 text-[12.5px] capitalize transition-colors", panel === p ? "border-fg text-fg" : "border-transparent text-fg-subtle hover:text-fg-muted")}
                   >
-                    {t === "files" ? `Files${fileCount ? ` · ${fileCount}` : ""}` : "Progress"}
+                    {p === "files" ? `${t("Files")}${fileCount ? ` · ${fileCount}` : ""}` : t("Progress")}
                   </button>
                 ))}
               </div>
@@ -524,10 +533,10 @@ export function TaskView({ taskId }: { taskId: string }) {
       <Dialog
         open={renaming}
         onOpenChange={setRenaming}
-        title="Rename task"
+        title={t("Rename task")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRenaming(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setRenaming(false)}>{t("Cancel")}</Button>
             <Button
               variant="primary"
               disabled={!newTitle.trim()}
@@ -536,7 +545,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                 setRenaming(false);
               }}
             >
-              Save
+              {t("Save")}
             </Button>
           </>
         }
@@ -546,12 +555,12 @@ export function TaskView({ taskId }: { taskId: string }) {
       <Dialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title="Delete this task?"
-        description="Its timeline and every file in its folder are deleted. This can't be undone."
+        title={t("Delete this task?")}
+        description={t("Its timeline and every file in its folder are deleted. This can't be undone.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-            <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>Delete task</Button>
+            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button>
+            <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>{t("Delete task")}</Button>
           </>
         }
       />
@@ -574,6 +583,7 @@ function TimelineItem({
   deciding?: string;
   onSaveAnswer?: (text: string) => void;
 }) {
+  const t = useT();
   switch (item.kind) {
     case "user":
       return (
@@ -591,7 +601,7 @@ function TimelineItem({
             <Markdown content={item.text} />
             {onSaveAnswer && (
               <Button variant="ghost" size="sm" className="mt-1 -ml-2 text-fg-subtle" onClick={() => onSaveAnswer(item.text)} data-testid="save-answer">
-                <BookmarkPlus className="size-3.5" /> Save to project
+                <BookmarkPlus className="size-3.5" /> {t("Save to project")}
               </Button>
             )}
           </div>
@@ -617,16 +627,17 @@ function TimelineItem({
     case "stopped":
       return (
         <div className="mb-5 flex items-center gap-2 text-[12.5px] text-fg-subtle">
-          <XCircle className="size-3.5" /> Stopped. Send a message to continue.
+          <XCircle className="size-3.5" /> {t("Stopped. Send a message to continue.")}
         </div>
       );
   }
 }
 
 function StepRow({ step, active, onDecide, deciding }: { step: Step; active: boolean; onDecide: (id: string, d: "approve" | "reject") => void; deciding?: string }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const Icon = toolIcon(step.name);
-  const { verb, target } = describeCall(step.name, step.args);
+  const { verb, params, target } = describeCall(step.name, step.args);
   const pending = !step.result && active && step.approval?.status !== "pending";
   const failed = step.result?.isError;
   return (
@@ -637,9 +648,9 @@ function StepRow({ step, active, onDecide, deciding }: { step: Step; active: boo
         className="group flex w-full min-w-0 items-center gap-2.5 rounded-md py-1 pr-1 text-left text-[13px] text-fg-muted transition-colors hover:text-fg"
       >
         {pending ? <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" /> : <Icon className={cn("size-3.5 shrink-0", failed ? "text-danger" : "text-fg-subtle")} />}
-        <span className="shrink-0">{verb}</span>
+        <span className="shrink-0">{t(verb, params)}</span>
         {target && <span className="min-w-0 truncate font-mono text-[12px] text-fg-subtle">{target}</span>}
-        {failed && step.approval?.status !== "rejected" && <span className="shrink-0 text-[11.5px] text-danger">failed</span>}
+        {failed && step.approval?.status !== "rejected" && <span className="shrink-0 text-[11.5px] text-danger">{t("failed")}</span>}
         <ChevronRight className={cn("ml-auto size-3.5 shrink-0 text-fg-subtle opacity-0 transition-all group-hover:opacity-100", open && "rotate-90 opacity-100")} />
       </button>
       {step.approval && (step.approval.status === "pending" ? <ApprovalCard approval={step.approval} onDecide={onDecide} deciding={deciding} /> : <ApprovalNote approval={step.approval} />)}
@@ -647,8 +658,8 @@ function StepRow({ step, active, onDecide, deciding }: { step: Step; active: boo
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="my-1.5 ml-6 overflow-hidden rounded-lg border border-border bg-surface">
-              <Pre label={step.name === "bash" ? "Command" : "Input"}>{step.name === "bash" ? String(step.args?.command ?? "") : JSON.stringify(step.args, null, 2)}</Pre>
-              {step.result && <Pre label={step.result.isError ? "Error" : "Output"} danger={step.result.isError}>{step.result.text || "(no output)"}</Pre>}
+              <Pre label={step.name === "bash" ? t("Command") : t("Input")}>{step.name === "bash" ? String(step.args?.command ?? "") : JSON.stringify(step.args, null, 2)}</Pre>
+              {step.result && <Pre label={step.result.isError ? t("Error") : t("Output")} danger={step.result.isError}>{step.result.text || t("(no output)")}</Pre>}
             </div>
           </motion.div>
         )}
@@ -667,20 +678,21 @@ function Pre({ label, children, danger }: { label: string; children: ReactNode; 
 }
 
 function ApprovalCard({ approval: a, onDecide, deciding }: { approval: Approval; onDecide: (id: string, d: "approve" | "reject") => void; deciding?: string }) {
+  const t = useT();
   const readOnlyOwner = useContext(ReadOnly);
-  const { verb, target } = describeCall(a.toolName, a.detail);
+  const { verb, params, target } = describeCall(a.toolName, a.detail);
   const command = a.toolName === "bash" ? String(a.detail?.command ?? "") : null;
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="my-2 ml-6 rounded-xl border border-warning/40 bg-surface p-4" data-testid="approval-card">
       <div className="flex items-center gap-2 text-[13px] text-fg">
-        <ShieldAlert className="size-4 text-warning" /> {readOnlyOwner ? `Waiting for ${readOnlyOwner}'s approval` : "Waiting for your approval"}
+        <ShieldAlert className="size-4 text-warning" /> {readOnlyOwner ? t("Waiting for {owner}'s approval", { owner: readOnlyOwner }) : t("Waiting for your approval")}
       </div>
       <p className="mt-1.5 text-[13px] text-fg-muted">
-        {a.reason ?? "This action needs a person to allow it."}
+        {a.reason ?? t("This action needs a person to allow it.")}
         {!command && (
           <>
             {" · "}
-            {verb}
+            {t(verb, params)}
             {target && <span className="font-mono text-[12px]"> {target}</span>}
           </>
         )}
@@ -693,10 +705,10 @@ function ApprovalCard({ approval: a, onDecide, deciding }: { approval: Approval;
       {!readOnlyOwner && (
         <div className="mt-3 flex gap-2">
           <Button variant="primary" size="sm" loading={deciding === a.id} onClick={() => onDecide(a.id, "approve")} data-testid="approve">
-            Approve
+            {t("Approve")}
           </Button>
           <Button variant="outline" size="sm" disabled={deciding === a.id} onClick={() => onDecide(a.id, "reject")} data-testid="reject">
-            Reject
+            {t("Reject")}
           </Button>
         </div>
       )}
@@ -741,16 +753,17 @@ function Working({ status, draft, thinking }: { status: TaskStatus; draft: strin
 /* ───────────── Side panel ───────────── */
 
 function ProgressPanel({ plan, task, status, steps }: { plan: { content: string; status: string }[]; task?: WorkTaskDetail["task"]; status: TaskStatus; steps: number }) {
+  const t = useT();
   const done = plan.filter((p) => p.status === "completed").length;
   return (
     <div className="space-y-6 text-[13px]">
       <div>
         <div className="flex items-center justify-between text-[12px] text-fg-subtle">
-          <span>Plan</span>
-          {plan.length > 0 && <span className="tabular-nums">{done} of {plan.length}</span>}
+          <span>{t("Plan")}</span>
+          {plan.length > 0 && <span className="tabular-nums">{t("{done} of {total}", { done, total: plan.length })}</span>}
         </div>
         {plan.length === 0 ? (
-          <p className="mt-2 text-[12.5px] leading-relaxed text-fg-subtle">For longer tasks the agent writes a plan here and checks items off as it goes.</p>
+          <p className="mt-2 text-[12.5px] leading-relaxed text-fg-subtle">{t("For longer tasks the agent writes a plan here and checks items off as it goes.")}</p>
         ) : (
           <ol className="mt-2 space-y-2" data-testid="plan">
             {plan.map((p, i) => (
@@ -770,14 +783,14 @@ function ProgressPanel({ plan, task, status, steps }: { plan: { content: string;
       </div>
       {task && (
         <div>
-          <div className="text-[12px] text-fg-subtle">Details</div>
+          <div className="text-[12px] text-fg-subtle">{t("Details")}</div>
           <dl className="mt-2 divide-y divide-border rounded-lg border border-border">
             {[
-              ["Status", <StatusPill key="s" status={status} />],
-              ["Steps", steps],
-              ["Tokens", formatTokens(task.inputTokens + task.outputTokens)],
-              ["Started", timeAgo(task.createdAt)],
-              ...(task.finishedAt && !ACTIVE.includes(status) ? [["Finished", timeAgo(task.finishedAt)]] : []),
+              [t("Status"), <StatusPill key="s" status={status} />],
+              [t("Steps"), steps],
+              [t("Tokens"), formatTokens(task.inputTokens + task.outputTokens)],
+              [t("Started"), timeAgo(task.createdAt, t)],
+              ...(task.finishedAt && !ACTIVE.includes(status) ? [[t("Finished"), timeAgo(task.finishedAt, t)]] : []),
             ].map(([k, v]) => (
               <div key={String(k)} className="flex items-center justify-between gap-3 px-3 py-2">
                 <dt className="text-fg-subtle">{k}</dt>
@@ -808,19 +821,20 @@ function FilesPanel({
   onSave?: (f: WorkFile) => void;
   projectName?: string;
 }) {
+  const t = useT();
   if (!files) return <Skeleton className="h-24 rounded-lg" />;
   return (
     <div>
       <div className="flex h-8 items-center justify-between">
-        <span className="text-[12px] text-fg-subtle">Task folder</span>
+        <span className="text-[12px] text-fg-subtle">{t("Task folder")}</span>
         {onUpload && (
           <Button variant="ghost" size="sm" onClick={onUpload}>
-            <Upload className="size-3.5" /> Add
+            <Upload className="size-3.5" /> {t("Add")}
           </Button>
         )}
       </div>
       {files.length === 0 ? (
-        <p className="mt-2 text-[12.5px] leading-relaxed text-fg-subtle">Files the agent creates appear here. You can also add files for it to work on.</p>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-fg-subtle">{t("Files the agent creates appear here. You can also add files for it to work on.")}</p>
       ) : (
         <ul className="mt-1 space-y-px" data-testid="files">
           {files.map((f) => (
@@ -831,11 +845,11 @@ function FilesPanel({
               </button>
               <span className="shrink-0 text-[11.5px] text-fg-subtle tabular-nums">{formatBytes(f.size)}</span>
               {onSave && !f.path.startsWith("project/") && (
-                <Tooltip content={`Save to ${projectName ?? "the project"}`}>
+                <Tooltip content={projectName ? t("Save to {project}", { project: projectName }) : t("Save to the project")}>
                   <button
                     type="button"
                     onClick={() => onSave(f)}
-                    aria-label={`Save ${f.path} to the project`}
+                    aria-label={t("Save {path} to the project", { path: f.path })}
                     className="rounded p-0.5 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:text-fg focus:opacity-100"
                     data-testid="save-file"
                   >
@@ -845,7 +859,7 @@ function FilesPanel({
               )}
               <a
                 href={`/api/work/tasks/${taskId}/files/content?path=${encodeURIComponent(f.path)}&download=1`}
-                aria-label={`Download ${f.path}`}
+                aria-label={t("Download {path}", { path: f.path })}
                 className="rounded p-0.5 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:text-fg focus:opacity-100"
               >
                 <Download className="size-3.5" />
@@ -854,7 +868,7 @@ function FilesPanel({
           ))}
         </ul>
       )}
-      {truncated && <p className="mt-2 text-[12px] text-fg-subtle">Showing the first 1,000 files.</p>}
+      {truncated && <p className="mt-2 text-[12px] text-fg-subtle">{t("Showing the first 1,000 files.")}</p>}
     </div>
   );
 }
@@ -863,6 +877,7 @@ const TEXT_EXT = /\.(txt|md|csv|json|log|py|js|ts|tsx|jsx|html|css|svg|ya?ml|sh|
 const IMG_EXT = /\.(png|jpe?g|gif|webp)$/i;
 
 function FilePreview({ taskId, file, onClose }: { taskId: string; file: WorkFile | null; onClose: () => void }) {
+  const t = useT();
   const url = file ? `/api/work/tasks/${taskId}/files/content?path=${encodeURIComponent(file.path)}` : "";
   const isText = !!file && TEXT_EXT.test(file.path) && file.size < 2_000_000;
   const isImage = !!file && IMG_EXT.test(file.path);
@@ -880,11 +895,11 @@ function FilePreview({ taskId, file, onClose }: { taskId: string; file: WorkFile
           <FileIcon name={file?.path ?? ""} className="size-4" /> {file?.path}
         </span>
       }
-      description={file ? `${formatBytes(file.size)} · changed ${timeAgo(file.modifiedAt)}` : undefined}
+      description={file ? t("{size} · changed {modifiedAt}", { size: formatBytes(file.size), modifiedAt: timeAgo(file.modifiedAt, t) }) : undefined}
       className="max-w-3xl"
       footer={
         <a href={`${url}&download=1`} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-fg">
-          <Download className="size-3.5" /> Download
+          <Download className="size-3.5" /> {t("Download")}
         </a>
       }
     >
@@ -897,7 +912,7 @@ function FilePreview({ taskId, file, onClose }: { taskId: string; file: WorkFile
         <img src={url} alt={file?.path} className="max-h-[60vh] w-full rounded-lg border border-border object-contain" />
       ) : (
         <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-6 text-[13px] text-fg-subtle">
-          <Eye className="size-4" /> No preview for this file type. Download it to open it.
+          <Eye className="size-4" /> {t("No preview for this file type. Download it to open it.")}
         </div>
       )}
     </Dialog>

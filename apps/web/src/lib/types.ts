@@ -9,6 +9,8 @@ export interface Me {
     orgRole: OrgRole;
     jobTitle: string | null;
     customInstructions: string | null;
+    /** null: the organization's default. */
+    locale: "en" | "hi" | null;
     createdAt: string;
     emailVerified: boolean;
     /** The org requires two-step sign-in and it isn't set up yet: only the setup page works. */
@@ -20,7 +22,7 @@ export interface Me {
   emailEnabled: boolean;
   isAdmin: boolean;
   isWorkspaceAdmin: boolean;
-  org: { name: string; productName: string; accentColor: string; promptLogging: boolean; logoUrl: string | null };
+  org: { name: string; productName: string; accentColor: string; promptLogging: boolean; logoUrl: string | null; defaultLocale: "en" | "hi" };
   workspaces: { id: string; name: string; icon: string | null; role: WorkspaceRole; sections: Section[] }[];
   unreadNotifications: number;
   license?: {
@@ -37,7 +39,7 @@ export interface PublicStatus {
   setupRequired: boolean;
   licenseRequired?: boolean;
   ssoRequired?: boolean;
-  org: { name: string | null; productName: string; accentColor: string; loginMessage: string | null; logoUrl: string | null };
+  org: { name: string | null; productName: string; accentColor: string; loginMessage: string | null; logoUrl: string | null; defaultLocale: "en" | "hi" };
 }
 
 export interface QuotaStatus {

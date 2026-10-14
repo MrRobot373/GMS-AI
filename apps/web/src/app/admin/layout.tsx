@@ -13,6 +13,7 @@ import { LicenseBanner } from "@/components/admin/license";
 import { OrgLogo } from "@/components/org-logo";
 import { get } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { I18nProvider } from "@/i18n";
 
 const GROUPS = [
   {
@@ -143,6 +144,8 @@ function Crumbs() {
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <SessionGate requireAdmin="any">
+      {/* The admin console is in English (docs/14-languages.md). */}
+      <I18nProvider locale="en">
       <SidebarStateProvider>
         <AppFrame className="flex-col md:flex-row">
           <AdminNav />
@@ -157,6 +160,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </main>
         </AppFrame>
       </SidebarStateProvider>
+      </I18nProvider>
     </SessionGate>
   );
 }

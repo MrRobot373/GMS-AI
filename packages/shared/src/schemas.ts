@@ -123,8 +123,15 @@ export const brandingSchema = z.object({
   loginMessage: z.string().max(280).optional(),
 });
 
+/** Interface languages. English is the source; the others translate what people use (not the admin console). */
+export const LOCALES = ["en", "hi"] as const;
+export type Locale = (typeof LOCALES)[number];
+export const LOCALE_NAMES: Record<Locale, string> = { en: "English", hi: "हिन्दी" };
+
 export const orgSettingsSchema = z.object({
   promptLogging: z.boolean().optional(),
+  /** The language for people who haven't picked one. */
+  defaultLocale: z.enum(LOCALES).optional(),
   retentionDays: z.number().int().positive().nullable().optional(),
 });
 
@@ -167,6 +174,8 @@ export const profileSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   jobTitle: z.string().max(80).optional(),
   customInstructions: z.string().max(4000).optional(),
+  /** null: the organization's default. */
+  locale: z.enum(LOCALES).nullable().optional(),
 });
 
 /**

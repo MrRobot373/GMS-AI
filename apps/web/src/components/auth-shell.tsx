@@ -8,6 +8,7 @@ import { OrgLogo } from "@/components/org-logo";
 import { get } from "@/lib/api";
 import { applyAccent, applyFavicon } from "@/lib/theme";
 import type { PublicStatus } from "@/lib/types";
+import { useT } from "@/i18n";
 
 export function usePublicStatus() {
   const q = useQuery({ queryKey: ["public-status"], queryFn: () => get<PublicStatus>("/api/public/status") });
@@ -17,12 +18,13 @@ export function usePublicStatus() {
 }
 
 export function AuthShell({ title, subtitle, children, footer }: { title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+  const t = useT();
   const { data } = usePublicStatus();
   const product = data?.org.productName ?? "Aatmiq";
   return (
     <div className="relative flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-12">
       <div className="relative w-full max-w-[400px] animate-rise">
-        <Link href="/" className="mb-6 flex items-center justify-center gap-2" aria-label={`${product} home`}>
+        <Link href="/" className="mb-6 flex items-center justify-center gap-2" aria-label={t("{product} home", { product: product })}>
           <OrgLogo src={data?.org.logoUrl} className="size-7" />
           <span className="text-[14px] text-fg">{data?.org.name || product}</span>
         </Link>
@@ -37,7 +39,7 @@ export function AuthShell({ title, subtitle, children, footer }: { title: ReactN
         {footer && <div className="mt-5 text-center text-[13px] text-fg-subtle">{footer}</div>}
       </div>
       <p className="absolute bottom-5 flex items-center gap-1.5 text-xs text-fg-subtle">
-        <ShieldCheck className="size-3.5" /> Private deployment · your data stays on your servers
+        <ShieldCheck className="size-3.5" /> {t("Private deployment · your data stays on your servers")}
       </p>
     </div>
   );

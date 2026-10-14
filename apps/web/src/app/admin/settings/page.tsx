@@ -26,6 +26,7 @@ interface OrgSettings {
   budgetPeriod: "day" | "week" | "month";
   promptLogging: boolean;
   retentionDays: number | null;
+  defaultLocale: "en" | "hi";
   hasLicense: boolean;
   logoUrl: string | null;
 }
@@ -136,6 +137,20 @@ export default function SettingsPage() {
             </Select>
           </Field>
           <Button onClick={() => save.mutate({ budgetPeriod: form.budgetPeriod })}>Save</Button>
+        </Card>
+      </Section>
+
+      <Section title="Language" description="The interface language for people who haven't picked their own (Settings → Appearance). The admin console stays in English.">
+        <Card className="flex flex-wrap items-end gap-4 p-5">
+          <Field label="Default language" className="w-56">
+            <Select value={form.defaultLocale} onChange={(e) => set("defaultLocale", e.target.value as OrgSettings["defaultLocale"])} data-testid="default-locale">
+              <option value="en">English</option>
+              <option value="hi">हिन्दी (Hindi)</option>
+            </Select>
+          </Field>
+          <Button onClick={() => save.mutate({ defaultLocale: form.defaultLocale })} data-testid="save-default-locale">
+            Save
+          </Button>
         </Card>
       </Section>
 

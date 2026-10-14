@@ -16,8 +16,10 @@ import { Skeleton } from "@/components/ui/spinner";
 import { del, patch, post } from "@/lib/api";
 import { useCodeStatus, useCodeWorkspaces, type CodeWorkspace } from "@/lib/code";
 import { timeAgo } from "@/lib/format";
+import { msg, useT } from "@/i18n";
 
 export default function CodePage() {
+  const t = useT();
   const { workspaceId } = useSession();
   const qc = useQueryClient();
   const router = useRouter();
@@ -32,7 +34,7 @@ export default function CodePage() {
     onSuccess: () => {
       refresh();
       setRemoving(null);
-      toast("Workspace deleted");
+      toast(t("Workspace deleted"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -44,26 +46,28 @@ export default function CodePage() {
     <div className="flex h-full min-h-0 flex-col">
       <TopBar
         icon={<Code2 />}
-        title="Code"
+        title={t("Code")}
         actions={
           <Button variant="primary" size="sm" onClick={() => setCreating(true)} disabled={notInstalled} data-testid="new-code-workspace">
-            <Plus className="size-3.5" /> New workspace
+            <Plus className="size-3.5" /> {t("New workspace")}
           </Button>
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
-          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">Code</h1>
+          <h1 className="font-serif text-[30px] leading-tight tracking-[-0.02em]">{t("Code")}</h1>
           <p className="mt-1 max-w-2xl text-[13px] text-fg-subtle">
-            Aatmiq Code is a full VS Code–based editor running on your organization&apos;s servers, with terminals, Git and Open VSX extensions. The Aatmiq panel on the right is a coding agent that works in your workspace.
+            {t("Aatmiq Code is a full VS Code–based editor running on your organization's servers, with terminals, Git and Open VSX extensions. The Aatmiq panel on the right is a coding agent that works in your workspace.")}
           </p>
 
           {notInstalled && (
             <div className="mt-6 flex items-start gap-3 rounded-xl border border-warning/40 bg-surface px-4 py-3 text-[13px]">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
               <div>
-                <div className="text-fg">Aatmiq Code isn&apos;t installed on this server yet.</div>
-                <div className="text-fg-subtle">An administrator can build it with <code className="font-mono text-[12px]">pnpm --filter @aatmiq/code build</code> (the Docker image includes it).</div>
+                <div className="text-fg">{t("Aatmiq Code isn't installed on this server yet.")}</div>
+                <div className="text-fg-subtle">
+                  {t("An administrator can build it with {command} (the Docker image includes it).", { command: <code className="font-mono text-[12px]">pnpm --filter @aatmiq/code build</code> })}
+                </div>
               </div>
             </div>
           )}
@@ -78,12 +82,12 @@ export default function CodePage() {
             <EmptyState
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<Code2 className="size-5" />}
-              title="No workspaces yet"
-              description="Start an empty workspace or clone a Git repository. Each workspace is a folder only you can open."
+              title={t("No workspaces yet")}
+              description={t("Start an empty workspace or clone a Git repository. Each workspace is a folder only you can open.")}
               action={
                 !notInstalled && (
                   <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
-                    <Plus className="size-3.5" /> New workspace
+                    <Plus className="size-3.5" /> {t("New workspace")}
                   </Button>
                 )
               }
@@ -92,7 +96,7 @@ export default function CodePage() {
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="code-workspaces">
               {rows.map((w) => (
                 <div key={w.id} className="group relative flex min-w-0 flex-col rounded-xl border border-border bg-surface p-4 transition-colors hover:border-border-strong" data-testid="code-workspace">
-                  <Link href={w.status === "ready" ? `/app/code/${w.id}` : "#"} className="absolute inset-0 rounded-xl" aria-label={`Open ${w.name}`} onClick={(e) => w.status !== "ready" && e.preventDefault()} />
+                  <Link href={w.status === "ready" ? `/app/code/${w.id}` : "#"} className="absolute inset-0 rounded-xl" aria-label={t("Open {name}", { name: w.name })} onClick={(e) => w.status !== "ready" && e.preventDefault()} />
                   <div className="flex items-center gap-2.5">
                     <span className="flex size-8 items-center justify-center rounded-lg border border-border bg-bg">
                       {w.status === "cloning" ? <Loader2 className="size-4 animate-spin text-fg-subtle" /> : w.gitUrl ? <FolderGit2 className="size-4 text-fg-muted" /> : <Folder className="size-4 text-fg-muted" />}
@@ -100,25 +104,25 @@ export default function CodePage() {
                     <span className="min-w-0 flex-1 truncate text-[14px] text-fg">{w.name}</span>
                     <Menu>
                       <MenuTrigger asChild>
-                        <button className="relative z-10 rounded p-1 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-2 hover:text-fg focus:opacity-100" aria-label={`Options for ${w.name}`}>
+                        <button className="relative z-10 rounded p-1 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-2 hover:text-fg focus:opacity-100" aria-label={t("Options for {name}", { name: w.name })}>
                           <MoreHorizontal className="size-4" />
                         </button>
                       </MenuTrigger>
                       <MenuContent align="end">
-                        <MenuItem icon={<Pencil />} onSelect={() => setRenaming(w)}>Rename</MenuItem>
+                        <MenuItem icon={<Pencil />} onSelect={() => setRenaming(w)}>{t("Rename")}</MenuItem>
                         <MenuSeparator />
-                        <MenuItem icon={<Trash2 />} danger onSelect={() => setRemoving(w)}>Delete</MenuItem>
+                        <MenuItem icon={<Trash2 />} danger onSelect={() => setRemoving(w)}>{t("Delete")}</MenuItem>
                       </MenuContent>
                     </Menu>
                   </div>
                   <p className="mt-2.5 truncate font-mono text-[11.5px] text-fg-subtle">{w.gitUrl ?? `~/workspaces/${w.slug}`}</p>
                   <div className="mt-auto pt-3 text-[12px]">
                     {w.status === "cloning" ? (
-                      <span className="text-fg-muted">Cloning…</span>
+                      <span className="text-fg-muted">{t("Cloning…")}</span>
                     ) : w.status === "failed" ? (
-                      <span className="line-clamp-2 text-danger">{w.error ?? "Couldn't create this workspace."}</span>
+                      <span className="line-clamp-2 text-danger">{w.error ?? t("Couldn't create this workspace.")}</span>
                     ) : (
-                      <span className="text-fg-subtle">{w.lastOpenedAt ? `Opened ${timeAgo(w.lastOpenedAt)}` : "Not opened yet"}</span>
+                      <span className="text-fg-subtle">{w.lastOpenedAt ? t("Opened {lastOpenedAt}", { lastOpenedAt: timeAgo(w.lastOpenedAt, t) }) : t("Not opened yet")}</span>
                     )}
                   </div>
                 </div>
@@ -128,14 +132,14 @@ export default function CodePage() {
 
           <div className="mt-10 grid gap-3 sm:grid-cols-3">
             {[
-              { icon: Terminal, title: "Terminals and Git", text: "A real shell on the server, Git with your name on commits, and extensions from Open VSX." },
-              { icon: Sparkles, title: "Aatmiq panel", text: "Ask the agent to explain, change or test code. It edits your files and asks before anything risky." },
-              { icon: Folder, title: "Private to you", text: "Your workspaces run as your own user on the server. Nobody else can open them." },
+              { icon: Terminal, title: msg("Terminals and Git"), text: msg("A real shell on the server, Git with your name on commits, and extensions from Open VSX.") },
+              { icon: Sparkles, title: msg("Aatmiq panel"), text: msg("Ask the agent to explain, change or test code. It edits your files and asks before anything risky.") },
+              { icon: Folder, title: msg("Private to you"), text: msg("Your workspaces run as your own user on the server. Nobody else can open them.") },
             ].map((f) => (
               <div key={f.title} className="rounded-xl border border-border p-4">
                 <f.icon className="size-4 text-fg-subtle" />
-                <div className="mt-2 text-[13px] text-fg">{f.title}</div>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-fg-subtle">{f.text}</p>
+                <div className="mt-2 text-[13px] text-fg">{t(f.title)}</div>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-fg-subtle">{t(f.text)}</p>
               </div>
             ))}
           </div>
@@ -150,7 +154,7 @@ export default function CodePage() {
             refresh();
             setCreating(false);
             if (w.status === "ready") router.push(`/app/code/${w.id}`);
-            else toast("Cloning the repository. It opens when it's ready.");
+            else toast(t("Cloning the repository. It opens when it's ready."));
           }}
         />
       )}
@@ -158,12 +162,12 @@ export default function CodePage() {
       <Dialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title={`Delete “${removing?.name}”?`}
-        description="The folder and everything in it is deleted from the server, including changes you haven't pushed. This can't be undone."
+        title={t("Delete “{name}”?", { name: removing?.name })}
+        description={t("The folder and everything in it is deleted from the server, including changes you haven't pushed. This can't be undone.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
-            <Button variant="danger" loading={remove.isPending} onClick={() => removing && remove.mutate(removing)}>Delete workspace</Button>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>{t("Cancel")}</Button>
+            <Button variant="danger" loading={remove.isPending} onClick={() => removing && remove.mutate(removing)}>{t("Delete workspace")}</Button>
           </>
         }
       />
@@ -172,6 +176,7 @@ export default function CodePage() {
 }
 
 function NewWorkspaceDialog({ workspaceId, onClose, onCreated }: { workspaceId: string; onClose: () => void; onCreated: (w: CodeWorkspace) => void }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [gitUrl, setGitUrl] = useState("");
   const create = useMutation({
@@ -184,19 +189,19 @@ function NewWorkspaceDialog({ workspaceId, onClose, onCreated }: { workspaceId: 
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title="New workspace"
-      description="Start empty, or clone a repository. Private repositories work over https with a token in the address, for now."
+      title={t("New workspace")}
+      description={t("Start empty, or clone a repository. Private repositories work over https with a token in the address, for now.")}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" disabled={!name.trim()} loading={create.isPending} onClick={() => create.mutate()} data-testid="create-code-workspace">
-            {gitUrl.trim() ? "Clone" : "Create"}
+            {gitUrl.trim() ? t("Clone") : t("Create")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Git repository (optional)">
+        <Field label={t("Git repository (optional)")}>
           <Input
             value={gitUrl}
             onChange={(e) => {
@@ -209,7 +214,7 @@ function NewWorkspaceDialog({ workspaceId, onClose, onCreated }: { workspaceId: 
             data-testid="code-git-url"
           />
         </Field>
-        <Field label="Name">
+        <Field label={t("Name")}>
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="billing-service" data-testid="code-workspace-name" />
         </Field>
       </div>
@@ -218,6 +223,7 @@ function NewWorkspaceDialog({ workspaceId, onClose, onCreated }: { workspaceId: 
 }
 
 function RenameDialog({ w, onClose, onSaved }: { w: CodeWorkspace; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
   const [name, setName] = useState(w.name);
   const save = useMutation({
     mutationFn: () => patch(`/api/code/workspaces/${w.id}`, { name: name.trim() }),
@@ -231,12 +237,12 @@ function RenameDialog({ w, onClose, onSaved }: { w: CodeWorkspace; onClose: () =
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title="Rename workspace"
-      description="The folder name stays the same."
+      title={t("Rename workspace")}
+      description={t("The folder name stays the same.")}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim()} loading={save.isPending} onClick={() => save.mutate()}>Save</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
+          <Button variant="primary" disabled={!name.trim()} loading={save.isPending} onClick={() => save.mutate()}>{t("Save")}</Button>
         </>
       }
     >

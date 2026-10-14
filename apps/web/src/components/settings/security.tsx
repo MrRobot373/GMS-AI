@@ -12,6 +12,7 @@ import { Dialog } from "@/components/ui/overlay";
 import { Spinner } from "@/components/ui/spinner";
 import { api, del, get, post } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
+import { useT } from "@/i18n";
 
 interface Security {
   hasPassword: boolean;
@@ -26,6 +27,7 @@ interface Security {
 
 /** Settings → Security: password, two-step sign-in and other devices. */
 export function SecuritySettings() {
+  const t = useT();
   const q = useQuery({ queryKey: ["me-security"], queryFn: () => get<Security>("/api/me/security") });
   if (!q.data) return <Spinner className="size-4" />;
   const s = q.data;
@@ -34,7 +36,7 @@ export function SecuritySettings() {
     <div className="space-y-5">
       {!usesPassword && (
         <Card className="p-4 text-[13px] text-fg-muted">
-          You sign in with your organization&apos;s single sign-on, so your password and two-step sign-in are managed there.
+          {t("You sign in with your organization's single sign-on, so your password and two-step sign-in are managed there.")}
         </Card>
       )}
       <EmailAddress email={s.email} verified={s.emailVerified} emailEnabled={s.emailEnabled} />
@@ -65,31 +67,34 @@ function Section({ icon: Icon, title, description, aside, children }: { icon: ty
 
 /** Sends a link that confirms the person's address. */
 export function useSendConfirmation() {
+  const t = useT();
   return useMutation({
     mutationFn: () => post<{ to?: string; alreadyVerified?: boolean }>("/api/me/email/verify"),
-    onSuccess: (r) => (r.alreadyVerified ? toast.success("Your email is already confirmed") : toast.success(`Link sent to ${r.to}. It works for 24 hours.`)),
+    onSuccess: (r) =>
+      r.alreadyVerified ? toast.success(t("Your email is already confirmed")) : toast.success(t("Link sent to {email}. It works for 24 hours.", { email: r.to ?? "" })),
     onError: (e: Error) => toast.error(e.message),
   });
 }
 
 function EmailAddress({ email, verified, emailEnabled }: { email: string; verified: boolean; emailEnabled: boolean }) {
+  const t = useT();
   const send = useSendConfirmation();
   return (
     <Section
       icon={Mail}
-      title="Email address"
+      title={t("Email address")}
       description={
         verified
-          ? `${email} is confirmed.`
+          ? t("{email} is confirmed.", { email: email })
           : emailEnabled
-            ? `Confirm ${email} so password resets and notices reach you.`
-            : `${email} isn't confirmed yet. You can confirm it once your admin sets up email.`
+            ? t("Confirm {email} so password resets and notices reach you.", { email: email })
+            : t("{email} isn't confirmed yet. You can confirm it once your admin sets up email.", { email: email })
       }
-      aside={verified ? <Badge tone="success">Confirmed</Badge> : <Badge>Not confirmed</Badge>}
+      aside={verified ? <Badge tone="success">{t("Confirmed")}</Badge> : <Badge>{t("Not confirmed")}</Badge>}
     >
       {!verified && emailEnabled && (
         <Button onClick={() => send.mutate()} loading={send.isPending} data-testid="send-confirmation">
-          Send confirmation link
+          {t("Send confirmation link")}
         </Button>
       )}
     </Section>
@@ -97,6 +102,7 @@ function EmailAddress({ email, verified, emailEnabled }: { email: string; verifi
 }
 
 function ChangePassword() {
+  const t = useT();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [open, setOpen] = useState(false);
@@ -104,16 +110,16 @@ function ChangePassword() {
   const save = useMutation({
     mutationFn: () => api("/api/auth/change-password", { method: "POST", json: { currentPassword: current, newPassword: next, revokeOtherSessions: true } }),
     onSuccess: () => {
-      toast.success("Password changed. Other devices were signed out.");
+      toast.success(t("Password changed. Other devices were signed out."));
       setCurrent("");
       setNext("");
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["me-security"] });
     },
-    onError: (e: Error & { status?: number }) => toast.error(/invalid password/i.test(e.message) ? "Your current password isn't right." : e.message),
+    onError: (e: Error & { status?: number }) => toast.error(/invalid password/i.test(e.message) ? t("Your current password isn't right.") : e.message),
   });
   return (
-    <Section icon={KeyRound} title="Password" description="Changing it signs you out on your other devices.">
+    <Section icon={KeyRound} title={t("Password")} description={t("Changing it signs you out on your other devices.")}>
       {open ? (
         <form
           className="space-y-3"
@@ -122,24 +128,24 @@ function ChangePassword() {
             save.mutate();
           }}
         >
-          <Field label="Current password">
+          <Field label={t("Current password")}>
             <Input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} data-testid="current-password" />
           </Field>
-          <Field label="New password" hint="At least 10 characters.">
+          <Field label={t("New password")} hint={t("At least 10 characters.")}>
             <Input type="password" autoComplete="new-password" required minLength={10} maxLength={128} value={next} onChange={(e) => setNext(e.target.value)} data-testid="new-password" />
           </Field>
           <div className="flex gap-2">
             <Button type="submit" variant="primary" loading={save.isPending}>
-              Change password
+              {t("Change password")}
             </Button>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
+              {t("Cancel")}
             </Button>
           </div>
         </form>
       ) : (
         <Button onClick={() => setOpen(true)} data-testid="change-password">
-          Change password
+          {t("Change password")}
         </Button>
       )}
     </Section>
@@ -148,6 +154,7 @@ function ChangePassword() {
 
 /** Asks for the password before a two-step sign-in change (Better Auth requires it). */
 function PasswordPrompt({ open, title, description, action, danger, onClose, onConfirm }: { open: boolean; title: string; description: string; action: string; danger?: boolean; onClose: () => void; onConfirm: (password: string) => Promise<void> }) {
+  const t = useT();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,18 +172,18 @@ function PasswordPrompt({ open, title, description, action, danger, onClose, onC
           try {
             await onConfirm(password);
           } catch (err) {
-            setError(/password/i.test((err as Error).message) ? "That password isn't right." : (err as Error).message);
+            setError(/password/i.test((err as Error).message) ? t("That password isn't right.") : (err as Error).message);
           } finally {
             setBusy(false);
           }
         }}
       >
-        <Field label="Your password" error={error}>
+        <Field label={t("Your password")} error={error}>
           <Input type="password" autoComplete="current-password" autoFocus required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="confirm-with-password" />
         </Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button type="submit" variant={danger ? "danger" : "primary"} loading={busy} data-testid="password-prompt-submit">
             {action}
@@ -188,6 +195,7 @@ function PasswordPrompt({ open, title, description, action, danger, onClose, onC
 }
 
 function TwoStep({ enabled, required }: { enabled: boolean; required: boolean }) {
+  const t = useT();
   const qc = useQueryClient();
   const [prompt, setPrompt] = useState<null | "enable" | "disable" | "codes">(null);
   const [setup, setSetup] = useState<{ uri: string; backupCodes: string[] } | null>(null);
@@ -197,34 +205,34 @@ function TwoStep({ enabled, required }: { enabled: boolean; required: boolean })
   return (
     <Section
       icon={Smartphone}
-      title="Two-step sign-in"
-      description="After your password, enter a code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…)."
-      aside={enabled ? <Badge tone="success">On</Badge> : <Badge>Off</Badge>}
+      title={t("Two-step sign-in")}
+      description={t("After your password, enter a code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…).")}
+      aside={enabled ? <Badge tone="success">{t("On")}</Badge> : <Badge>{t("Off")}</Badge>}
     >
       <div className="flex flex-wrap gap-2">
         {enabled ? (
           <>
             <Button onClick={() => setPrompt("codes")} data-testid="new-backup-codes">
-              New backup codes
+              {t("New backup codes")}
             </Button>
             {required ? (
-              <span className="self-center text-[12.5px] text-fg-subtle">Your organization requires it, so it can&apos;t be turned off.</span>
+              <span className="self-center text-[12.5px] text-fg-subtle">{t("Your organization requires it, so it can't be turned off.")}</span>
             ) : (
               <Button variant="ghost" onClick={() => setPrompt("disable")} data-testid="two-factor-off">
-                Turn off
+                {t("Turn off")}
               </Button>
             )}
           </>
         ) : (
           <Button variant="primary" onClick={() => setPrompt("enable")} data-testid="two-factor-on">
-            Set up
+            {t("Set up")}
           </Button>
         )}
       </div>
       <PasswordPrompt
         open={prompt === "enable"}
-        title="Set up two-step sign-in"
-        description="Confirm it's you first."
+        title={t("Set up two-step sign-in")}
+        description={t("Confirm it's you first.")}
         action="Continue"
         onClose={() => setPrompt(null)}
         onConfirm={async (password) => {
@@ -235,22 +243,22 @@ function TwoStep({ enabled, required }: { enabled: boolean; required: boolean })
       />
       <PasswordPrompt
         open={prompt === "disable"}
-        title="Turn off two-step sign-in?"
-        description="Your password alone will sign you in again."
+        title={t("Turn off two-step sign-in?")}
+        description={t("Your password alone will sign you in again.")}
         action="Turn off"
         danger
         onClose={() => setPrompt(null)}
         onConfirm={async (password) => {
           await post("/api/auth/two-factor/disable", { password });
           setPrompt(null);
-          toast.success("Two-step sign-in is off");
+          toast.success(t("Two-step sign-in is off"));
           refresh();
         }}
       />
       <PasswordPrompt
         open={prompt === "codes"}
-        title="Make new backup codes?"
-        description="Your old backup codes stop working."
+        title={t("Make new backup codes?")}
+        description={t("Your old backup codes stop working.")}
         action="Make new codes"
         onClose={() => setPrompt(null)}
         onConfirm={async (password) => {
@@ -270,12 +278,12 @@ function TwoStep({ enabled, required }: { enabled: boolean; required: boolean })
         />
       )}
       {codes && (
-        <Dialog open onOpenChange={(o) => !o && setCodes(null)} title="Your new backup codes" description="Each one works once, if you can't use your phone. Keep them somewhere safe.">
+        <Dialog open onOpenChange={(o) => !o && setCodes(null)} title={t("Your new backup codes")} description={t("Each one works once, if you can't use your phone. Keep them somewhere safe.")}>
           <div className="px-5 pb-5">
             <BackupCodes codes={codes} />
             <div className="mt-4 flex justify-end">
               <Button variant="primary" onClick={() => setCodes(null)}>
-                Done
+                {t("Done")}
               </Button>
             </div>
           </div>
@@ -287,17 +295,18 @@ function TwoStep({ enabled, required }: { enabled: boolean; required: boolean })
 
 /** The setup flow alone, for the page shown when the organization requires two-step sign-in. */
 export function RequiredTwoStepSetup({ onDone }: { onDone: () => void }) {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   const [setup, setSetup] = useState<{ uri: string; backupCodes: string[] } | null>(null);
   return (
     <>
       <Button variant="primary" size="lg" className="w-full" onClick={() => setAsking(true)} data-testid="two-factor-on">
-        Set up two-step sign-in
+        {t("Set up two-step sign-in")}
       </Button>
       <PasswordPrompt
         open={asking}
-        title="Set up two-step sign-in"
-        description="Confirm it's you first."
+        title={t("Set up two-step sign-in")}
+        description={t("Confirm it's you first.")}
         action="Continue"
         onClose={() => setAsking(false)}
         onConfirm={async (password) => {
@@ -312,6 +321,7 @@ export function RequiredTwoStepSetup({ onDone }: { onDone: () => void }) {
 }
 
 function SetupDialog({ uri, backupCodes, onClose, onDone = onClose }: { uri: string; backupCodes: string[]; onClose: () => void; onDone?: () => void }) {
+  const t = useT();
   const [qr, setQr] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"scan" | "codes">("scan");
@@ -330,7 +340,7 @@ function SetupDialog({ uri, backupCodes, onClose, onDone = onClose }: { uri: str
       await post("/api/auth/two-factor/verify-totp", { code: code.replace(/\s/g, "") });
       setStep("codes");
     } catch {
-      setError("That code isn't right. Enter the newest code from the app.");
+      setError(t("That code isn't right. Enter the newest code from the app."));
     } finally {
       setBusy(false);
     }
@@ -340,30 +350,30 @@ function SetupDialog({ uri, backupCodes, onClose, onDone = onClose }: { uri: str
     <Dialog
       open
       onOpenChange={(o) => !o && step === "codes" && onDone()}
-      title={step === "scan" ? "Scan with your authenticator app" : "Save your backup codes"}
-      description={step === "scan" ? "Then enter the 6-digit code it shows." : "Two-step sign-in is on. If you lose your phone, each of these codes signs you in once."}
+      title={step === "scan" ? t("Scan with your authenticator app") : t("Save your backup codes")}
+      description={step === "scan" ? t("Then enter the 6-digit code it shows.") : t("Two-step sign-in is on. If you lose your phone, each of these codes signs you in once.")}
     >
       <div className="px-5 pb-5">
         {step === "scan" ? (
           <form onSubmit={verify} className="space-y-4">
             <div className="flex flex-col items-center gap-3">
-              <div className="rounded-xl bg-white p-2">{qr ? <img src={qr} alt="QR code for your authenticator app" className="size-[180px]" /> : <div className="size-[180px]" />}</div>
+              <div className="rounded-xl bg-white p-2">{qr ? <img src={qr} alt={t("QR code for your authenticator app")} className="size-[180px]" /> : <div className="size-[180px]" />}</div>
               <details className="w-full text-[12px] text-fg-subtle">
-                <summary className="cursor-pointer text-center hover:text-fg">Can&apos;t scan? Enter this key instead</summary>
+                <summary className="cursor-pointer text-center hover:text-fg">{t("Can't scan? Enter this key instead")}</summary>
                 <code className="mt-2 block rounded-md bg-surface-2 px-2 py-1.5 text-center font-mono text-[12px] break-all text-fg" data-testid="totp-secret">
                   {secret.replace(/(.{4})/g, "$1 ").trim()}
                 </code>
               </details>
             </div>
-            <Field label="Code from the app" error={error}>
+            <Field label={t("Code from the app")} error={error}>
               <Input autoFocus required inputMode="numeric" autoComplete="one-time-code" maxLength={7} placeholder="123 456" value={code} onChange={(e) => setCode(e.target.value)} className="font-mono tracking-[0.2em]" data-testid="setup-code" />
             </Field>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={onClose}>
-                Cancel
+                {t("Cancel")}
               </Button>
               <Button type="submit" variant="primary" loading={busy} data-testid="setup-verify">
-                Turn on
+                {t("Turn on")}
               </Button>
             </div>
           </form>
@@ -372,7 +382,7 @@ function SetupDialog({ uri, backupCodes, onClose, onDone = onClose }: { uri: str
             <BackupCodes codes={backupCodes} />
             <div className="mt-4 flex justify-end">
               <Button variant="primary" onClick={onDone} data-testid="setup-done">
-                I saved them
+                {t("I saved them")}
               </Button>
             </div>
           </>
@@ -383,6 +393,7 @@ function SetupDialog({ uri, backupCodes, onClose, onDone = onClose }: { uri: str
 }
 
 function BackupCodes({ codes }: { codes: string[] }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <div>
@@ -401,7 +412,7 @@ function BackupCodes({ codes }: { codes: string[] }) {
           });
         }}
       >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy codes"}
+        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? t("Copied") : t("Copy codes")}
       </button>
     </div>
   );
@@ -418,6 +429,7 @@ interface Device {
 
 /** Where you're signed in, with sign-out for any other device (or all of them). */
 function OtherDevices({ count }: { count: number }) {
+  const t = useT();
   const qc = useQueryClient();
   const devices = useQuery({ queryKey: ["me-sessions", count], queryFn: () => get<Device[]>("/api/me/sessions") });
   const done = (msg: string) => {
@@ -431,8 +443,8 @@ function OtherDevices({ count }: { count: number }) {
   return (
     <Section
       icon={others ? LogOut : ShieldCheck}
-      title="Signed-in devices"
-      description={others ? `You're signed in here and on ${others === 1 ? "1 other device" : `${others} other devices`}. Sign out of any you don't recognise.` : "You're only signed in here."}
+      title={t("Signed-in devices")}
+      description={others ? t.n(others, "You're signed in here and on {n} other device. Sign out of any you don't recognise.", "You're signed in here and on {n} other devices. Sign out of any you don't recognise.") : t("You're only signed in here.")}
     >
       <ul className="divide-y divide-border rounded-lg border border-border" data-testid="devices">
         {(devices.data ?? []).map((d) => (
@@ -441,16 +453,16 @@ function OtherDevices({ count }: { count: number }) {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="truncate">{d.device}</span>
-                {d.current && <Badge tone="success">This device</Badge>}
+                {d.current && <Badge tone="success">{t("This device")}</Badge>}
               </div>
               <div className="text-xs text-fg-subtle">
-                {d.current ? "Active now" : `Last active ${timeAgo(d.lastActiveAt)}`}
-                {d.ip ? ` · ${d.ip}` : ""} · signed in {timeAgo(d.signedInAt)}
+                {d.current ? t("Active now") : t("Last active {lastActiveAt}", { lastActiveAt: timeAgo(d.lastActiveAt, t) })}
+                {d.ip ? ` · ${d.ip}` : ""} {t("· signed in {signedInAt}", { signedInAt: timeAgo(d.signedInAt, t) })}
               </div>
             </div>
             {!d.current && (
               <Button variant="ghost" size="sm" onClick={() => outOne.mutate(d.id)} loading={outOne.isPending && outOne.variables === d.id} data-testid="device-sign-out">
-                Sign out
+                {t("Sign out")}
               </Button>
             )}
           </li>
@@ -458,7 +470,7 @@ function OtherDevices({ count }: { count: number }) {
       </ul>
       {others > 1 && (
         <Button className="mt-3" onClick={() => outAll.mutate()} loading={outAll.isPending} data-testid="sign-out-others">
-          Sign out everywhere else
+          {t("Sign out everywhere else")}
         </Button>
       )}
     </Section>

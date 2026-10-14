@@ -3,6 +3,7 @@
 import { PanelLeft } from "lucide-react";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n";
 
 const KEY = "aatmiq.sidebar";
 const Ctx = createContext<{ open: boolean; setOpen: (v: boolean | ((o: boolean) => boolean)) => void }>({
@@ -37,10 +38,11 @@ export const useSidebarState = () => useContext(Ctx);
 
 /** Shown in the top bar while the sidebar is hidden. */
 export function SidebarOpenButton() {
+  const t = useT();
   const { open, setOpen } = useSidebarState();
   if (open) return null;
   return (
-    <Button variant="ghost" size="icon-sm" onClick={() => setOpen(true)} aria-label="Open sidebar">
+    <Button variant="ghost" size="icon-sm" onClick={() => setOpen(true)} aria-label={t("Open sidebar")}>
       <PanelLeft className="size-4" />
     </Button>
   );

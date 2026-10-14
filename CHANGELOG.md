@@ -11,6 +11,8 @@ without one.
 
 - Single sign-on with any SAML 2.0 identity provider (Okta, Entra ID, Google Workspace, ADFS…):
   import its metadata in Admin → Authentication; the provider's app tile works too.
+- The interface in Hindi (हिन्दी): each person picks it in Settings → Appearance, or admins make it
+  the organization's default; the admin console stays in English.
 - Accessibility: every page meets WCAG 2.1 AA in both themes (contrast, names for controls), a
   "Skip to content" link, and long dialogs scroll with their buttons in view.
 

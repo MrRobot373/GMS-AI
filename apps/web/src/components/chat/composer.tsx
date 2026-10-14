@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { formatTokens } from "@/lib/format";
 import { TIER_NAMES } from "@/lib/format";
 import type { AvailableModel, DocumentRow } from "@/lib/types";
+import { useT } from "@/i18n";
 
 export interface Attachment {
   key: string;
@@ -63,6 +64,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   },
   ref,
 ) {
+  const t = useT();
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   useImperativeHandle(ref, () => ({ focus: () => ta.current?.focus() }));
@@ -107,7 +109,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               <span className="truncate">{a.name}</span>
               <button
                 type="button"
-                aria-label={`Remove ${a.name}`}
+                aria-label={t("Remove {name}", { name: a.name })}
                 onClick={() => onRemoveAttachment(a.key)}
                 className="rounded p-0.5 text-fg-subtle hover:bg-surface-2 hover:text-fg"
               >
@@ -148,7 +150,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         )}
       />
       <div className="flex items-center gap-0.5 px-2 pt-1 pb-2">
-        <ToolButton label="Upload files" onClick={() => fileRef.current?.click()} disabled={disabled}>
+        <ToolButton label={t("Upload files")} onClick={() => fileRef.current?.click()} disabled={disabled}>
           <Plus />
         </ToolButton>
         <DocumentPicker
@@ -159,22 +161,22 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         />
         <span className="mx-1.5 h-4 w-px bg-border max-sm:hidden" />
         <span className="max-sm:hidden">
-          <ToolButton label="Skills · coming with Work AI" disabled wide>
-            <Sparkles /> <span>Skills</span>
+          <ToolButton label={t("Skills · coming with Work AI")} disabled wide>
+            <Sparkles /> <span>{t("Skills")}</span>
           </ToolButton>
         </span>
         <ModelPicker models={models} value={model} onChange={onModelChange} />
         <span className="flex-1" />
         <span className="max-sm:hidden">
-          <ToolButton label="Voice input · coming soon" disabled>
+          <ToolButton label={t("Voice input · coming soon")} disabled>
             <Mic />
           </ToolButton>
         </span>
         {streaming ? (
-          <Tooltip content="Stop generating">
+          <Tooltip content={t("Stop generating")}>
             <button
               type="button"
-              aria-label="Stop"
+              aria-label={t("Stop")}
               onClick={onStop}
               className="ml-1 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-fg transition-opacity hover:opacity-90"
             >
@@ -184,7 +186,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         ) : (
           <button
             type="submit"
-            aria-label="Send"
+            aria-label={t("Send")}
             disabled={!canSend}
             className="ml-1 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:bg-surface-3 disabled:text-fg-subtle"
           >
@@ -237,7 +239,8 @@ function ModelDot({ name }: { name: string }) {
 }
 
 function ModelPicker({ models, value, onChange }: { models?: AvailableModel[]; value?: AvailableModel; onChange: (m: AvailableModel) => void }) {
-  if (!models || models.length === 0) return <span className="px-2 text-[13px] text-fg-subtle">No model</span>;
+  const t = useT();
+  if (!models || models.length === 0) return <span className="px-2 text-[13px] text-fg-subtle">{t("No model")}</span>;
   return (
     <Menu>
       <MenuTrigger asChild>
@@ -257,7 +260,7 @@ function ModelPicker({ models, value, onChange }: { models?: AvailableModel[]; v
         </button>
       </MenuTrigger>
       <MenuContent side="top" className="w-72">
-        <MenuLabel>Models in this workspace</MenuLabel>
+        <MenuLabel>{t("Models in this workspace")}</MenuLabel>
         {models.map((m) =>
           m.id === "auto" ? (
             <MenuItem
@@ -266,10 +269,10 @@ function ModelPicker({ models, value, onChange }: { models?: AvailableModel[]; v
               icon={<Sparkles className="size-3.5 text-accent" />}
               shortcut={m.id === value?.id ? <Check className="size-3.5" /> : null}
             >
-              <span className="block truncate">Auto</span>
-              <span className="block truncate text-[11px] text-fg-subtle" title={m.tiers?.map((t) => `${TIER_NAMES[t.tier]}: ${t.displayName}`).join("\n")}>
-                Picks the model for each message: {m.tiers?.map((t) => `${TIER_NAMES[t.tier].toLowerCase()} ${t.displayName}`).join(", ")}
-                {m.isDefault ? " · default" : ""}
+              <span className="block truncate">{t("Auto")}</span>
+              <span className="block truncate text-[11px] text-fg-subtle" title={m.tiers?.map((x) => `${t(TIER_NAMES[x.tier])}: ${x.displayName}`).join("\n")}>
+                {t("Picks the model for each message: {models}", { models: m.tiers?.map((x) => `${t(TIER_NAMES[x.tier]).toLowerCase()} ${x.displayName}`).join(", ") ?? "" })}
+                {m.isDefault ? ` · ${t("default")}` : ""}
               </span>
             </MenuItem>
           ) : (
@@ -282,9 +285,9 @@ function ModelPicker({ models, value, onChange }: { models?: AvailableModel[]; v
               <span className="block truncate">{m.displayName}</span>
               <span className="block truncate text-[11px] text-fg-subtle">
                 {m.providerName}
-                {m.contextLength ? ` · ${formatTokens(m.contextLength)} context` : ""}
-                {m.isDefault ? " · default" : ""}
-                {m.groups?.length ? ` · via ${m.groups.map((g) => g.name).join(", ")}` : ""}
+                {m.contextLength ? ` · ${t("{size} context", { size: formatTokens(m.contextLength) })}` : ""}
+                {m.isDefault ? ` · ${t("default")}` : ""}
+                {m.groups?.length ? ` · ${t("via {groups}", { groups: m.groups.map((g) => g.name).join(", ") })}` : ""}
               </span>
             </MenuItem>
           ),
@@ -306,16 +309,17 @@ function DocumentPicker({
   onPick: (d: DocumentRow) => void;
   disabled?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const docs = (library ?? []).filter((d) => d.status === "ready" && d.name.toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Tooltip content="Attach a document from your library">
+      <Tooltip content={t("Attach a document from your library")}>
         <Popover.Trigger asChild>
           <button
             type="button"
-            aria-label="Attach a document"
+            aria-label={t("Attach a document")}
             disabled={disabled}
             className="flex size-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:pointer-events-none disabled:text-fg-subtle"
           >
@@ -336,14 +340,14 @@ function DocumentPicker({
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search documents"
+              placeholder={t("Search documents")}
               className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-subtle"
             />
           </label>
           <div className="max-h-64 overflow-y-auto py-1">
             {docs.length === 0 && (
               <p className="px-3 py-6 text-center text-[12.5px] text-fg-subtle">
-                {(library ?? []).length === 0 ? "No documents yet. Use + to upload one." : "No documents match."}
+                {(library ?? []).length === 0 ? t("No documents yet. Use + to upload one.") : t("No documents match.")}
               </p>
             )}
             {docs.map((d) => {
@@ -362,7 +366,7 @@ function DocumentPicker({
                 >
                   <FileIcon name={d.name} />
                   <span className="min-w-0 flex-1 truncate">{d.name}</span>
-                  {attached ? <Check className="size-3.5 text-fg-subtle" /> : d.scope === "workspace" && <span className="text-[11px] text-fg-subtle">Shared</span>}
+                  {attached ? <Check className="size-3.5 text-fg-subtle" /> : d.scope === "workspace" && <span className="text-[11px] text-fg-subtle">{t("Shared")}</span>}
                 </button>
               );
             })}

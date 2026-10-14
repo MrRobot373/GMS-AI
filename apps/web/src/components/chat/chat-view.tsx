@@ -51,13 +51,14 @@ import { MoveToProjectDialog, ProjectIcon } from "@/components/projects/projects
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/overlay";
 import { ApiError, get, patch, post, readSse, uploadDocument } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { greeting, timeAgo, TIER_NAMES } from "@/lib/format";
+import { chatTitle, greeting, timeAgo, TIER_NAMES } from "@/lib/format";
 import type { Routing } from "@aatmiq/shared";
 import type { AvailableModel, ChatDetail, Citation, DocumentRow, QuotaStatus } from "@/lib/types";
 import { SourcesRow, useSourceDialog } from "./citations";
 import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import { Markdown } from "./markdown";
 import { RequestTokensDialog } from "./request-tokens";
+import { msg, useT } from "@/i18n";
 
 interface UiMessage {
   id: string;
@@ -73,21 +74,23 @@ interface UiMessage {
   routing?: Routing | null;
 }
 
-const PERIOD_ADJ = { day: "daily", week: "weekly", month: "monthly" } as const;
+const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
+/** As in "this month's allowance". */
+const PERIOD_NOUN = { day: msg("day"), week: msg("week"), month: msg("month") } as const;
 
 /** Quick actions put a starter prompt into the composer for the user to finish. */
 const QUICK_ACTIONS = [
-  { icon: PenLine, label: "Draft an email", prompt: "Draft a polite email to " },
-  { icon: FileText, label: "Summarize text", prompt: "Summarize the key points of the following:\n\n" },
-  { icon: Code2, label: "Write code", prompt: "Write a function that " },
-  { icon: Lightbulb, label: "Brainstorm ideas", prompt: "Give me 10 ideas for " },
+  { icon: PenLine, label: msg("Draft an email"), prompt: msg("Draft a polite email to ") },
+  { icon: FileText, label: msg("Summarize text"), prompt: msg("Summarize the key points of the following:\n\n") },
+  { icon: Code2, label: msg("Write code"), prompt: msg("Write a function that ") },
+  { icon: Lightbulb, label: msg("Brainstorm ideas"), prompt: msg("Give me 10 ideas for ") },
 ];
 
 const APPS = [
-  { name: "Slack", icon: Slack, hue: 300, desc: "Read channels, post summaries and reply to threads on your behalf." },
-  { name: "Google Drive", icon: HardDrive, hue: 145, desc: "Search, read and organize documents and spreadsheets." },
-  { name: "Gmail", icon: Mail, hue: 25, desc: "Draft replies, triage your inbox and follow up automatically." },
-  { name: "GitHub", icon: Github, hue: 260, desc: "Review pull requests, open issues and work in repositories." },
+  { name: "Slack", icon: Slack, hue: 300, desc: msg("Read channels, post summaries and reply to threads on your behalf.") },
+  { name: "Google Drive", icon: HardDrive, hue: 145, desc: msg("Search, read and organize documents and spreadsheets.") },
+  { name: "Gmail", icon: Mail, hue: 25, desc: msg("Draft replies, triage your inbox and follow up automatically.") },
+  { name: "GitHub", icon: Github, hue: 260, desc: msg("Review pull requests, open issues and work in repositories.") },
 ];
 
 export function ChatView({
@@ -103,6 +106,7 @@ export function ChatView({
   /** Replace the default home screen (used by project pages). */
   renderHome?: (parts: { composer: ReactNode; notices: ReactNode }) => ReactNode;
 }) {
+  const t = useT();
   const { me, workspaceId } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
@@ -233,7 +237,6 @@ export function ChatView({
   useEffect(() => {
     if (quota.data) setQuotaBlocked(!quota.data.result.allowed);
   }, [quota.data]);
-
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -388,7 +391,7 @@ export function ChatView({
     try {
       await patch(`/api/chats/${chatId}`, { sharedToProject: !shared });
       setShared(!shared);
-      toast(shared ? "Chat is private again" : `Shared with everyone in ${project?.name}`);
+      toast(shared ? t("Chat is private again") : t("Shared with everyone in {name}", { name: project?.name }));
       if (project) qc.invalidateQueries({ queryKey: ["project", project.id] });
     } catch (e) {
       toast.error((e as Error).message);
@@ -401,7 +404,7 @@ export function ChatView({
       qc.invalidateQueries({ queryKey: ["chats", workspaceId] });
       qc.invalidateQueries({ queryKey: ["archived", workspaceId] });
       if (project) qc.invalidateQueries({ queryKey: ["project", project.id] });
-      toast("Chat archived");
+      toast(t("Chat archived"));
       router.push(project ? `/app/projects/${project.id}` : "/app/chat");
     } catch (e) {
       toast.error((e as Error).message);
@@ -417,7 +420,7 @@ export function ChatView({
         kind: "answer",
       });
       qc.invalidateQueries({ queryKey: ["project", project.id] });
-      toast(`Saved to ${project.name} sources`);
+      toast(t("Saved to {name} sources", { name: project.name }));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -437,7 +440,7 @@ export function ChatView({
       setKept(true);
       qc.invalidateQueries({ queryKey: ["chats", workspaceId] });
       if (project) qc.invalidateQueries({ queryKey: ["project", project.id] });
-      toast("Chat saved to your history");
+      toast(t("Chat saved to your history"));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -470,10 +473,10 @@ export function ChatView({
       disabled={quotaBlocked || !!noModels}
       placeholder={
         quotaBlocked
-          ? "You've reached your token allowance"
+          ? t("You've reached your token allowance")
           : size === "home"
-            ? "Example: Summarize this contract and list every renewal date…"
-            : "Reply to Aatmiq…"
+            ? t("Example: Summarize this contract and list every renewal date…")
+            : t("Reply to Aatmiq…")
       }
       models={models.data}
       model={model}
@@ -491,13 +494,13 @@ export function ChatView({
       {quotaBlocked && quota.data && <QuotaBanner quota={quota.data} onRequest={() => setRequestOpen(true)} />}
       {noModels && (
         <div className="mb-3 rounded-xl border border-border bg-surface px-4 py-3 text-[13px] text-fg-muted">
-          No models are enabled in this workspace yet. Ask your admin to add one.
+          {t("No models are enabled in this workspace yet. Ask your admin to add one.")}
         </div>
       )}
       {isTemporary && (
         <div className="mb-3 flex items-center gap-2.5 rounded-xl border border-dashed border-border-strong px-4 py-2.5 text-[13px] text-fg-muted" data-testid="temporary-notice">
           <Ghost className="size-4 shrink-0 text-fg-subtle" />
-          <span>Temporary chat: it won&apos;t appear in your history, search or project memory, and is deleted after 24 hours.</span>
+          <span>{t("Temporary chat: it won't appear in your history, search or project memory, and is deleted after 24 hours.")}</span>
         </div>
       )}
     </>
@@ -514,60 +517,60 @@ export function ChatView({
                 {project.name}
               </Link>
               <ChevronRight className="size-3.5 shrink-0 text-fg-subtle" />
-              <span className={cn("truncate", isHome && "text-fg-muted")}>{title}</span>
+              <span className={cn("truncate", isHome && "text-fg-muted")}>{chatTitle(title, t)}</span>
             </span>
           ) : (
-            <span className={cn(isHome && "text-fg-muted")}>{title}</span>
+            <span className={cn(isHome && "text-fg-muted")}>{chatTitle(title, t)}</span>
           )
         }
         actions={
           <>
             {!isHome && chatDocs.length > 0 && <ChatDocsButton docs={chatDocs} />}
             {isHome && !project && (
-              <Tooltip content={temporary ? "This chat won't be saved" : "Start a chat that isn't saved to history"}>
+              <Tooltip content={temporary ? t("This chat won't be saved") : t("Start a chat that isn't saved to history")}>
                 <TopBarButton onClick={() => setTemporary((t) => !t)} aria-pressed={temporary} className={cn(temporary && "bg-surface-2 text-fg")} data-testid="temporary-toggle">
-                  <Ghost /> Temporary
+                  <Ghost /> {t("Temporary")}
                 </TopBarButton>
               </Tooltip>
             )}
             {!isHome && isTemporary && !readOnly && (
               <TopBarButton onClick={keepChat} data-testid="keep-chat">
-                <Ghost /> Keep chat
+                <Ghost /> {t("Keep chat")}
               </TopBarButton>
             )}
             {project && !isHome && !readOnly && chatId && !isTemporary && (
               <TopBarButton onClick={toggleShare} data-testid="share-to-project" className={cn(shared && "text-fg")}>
-                <Share2 /> {shared ? "Shared to project" : "Share to project"}
+                <Share2 /> {shared ? t("Shared to project") : t("Share to project")}
               </TopBarButton>
             )}
-            <Tooltip content="Conversations stay on your organization's servers">
+            <Tooltip content={t("Conversations stay on your organization's servers")}>
               <span className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-subtle">
-                <Lock className="size-3.5" /> Private
+                <Lock className="size-3.5" /> {t("Private")}
               </span>
             </Tooltip>
             {!isHome && (
               <TopBarButton onClick={() => router.push(newChatHref)}>
-                <SquarePen /> New
+                <SquarePen /> {t("New")}
               </TopBarButton>
             )}
             {!isHome && !readOnly && chatId && (
               <Menu>
                 <MenuTrigger asChild>
-                  <TopBarButton aria-label="Chat options">
+                  <TopBarButton aria-label={t("Chat options")}>
                     <MoreHorizontal />
                   </TopBarButton>
                 </MenuTrigger>
                 <MenuContent align="end" className="min-w-44">
                   {!isTemporary && (
                     <MenuItem icon={<FolderInput />} onSelect={() => setMoving(true)}>
-                      {project ? "Move to another project" : "Move to project"}
+                      {project ? t("Move to another project") : t("Move to project")}
                     </MenuItem>
                   )}
-                  <MenuItem icon={<FileText />} onSelect={() => exportChat("docx")}>Download as Word</MenuItem>
-                  <MenuItem icon={<Printer />} onSelect={() => exportChat("pdf")}>Download as PDF</MenuItem>
-                  <MenuItem icon={<Code2 />} onSelect={() => exportChat("md")}>Download as Markdown</MenuItem>
+                  <MenuItem icon={<FileText />} onSelect={() => exportChat("docx")}>{t("Download as Word")}</MenuItem>
+                  <MenuItem icon={<Printer />} onSelect={() => exportChat("pdf")}>{t("Download as PDF")}</MenuItem>
+                  <MenuItem icon={<Code2 />} onSelect={() => exportChat("md")}>{t("Download as Markdown")}</MenuItem>
                   <MenuSeparator />
-                  <MenuItem icon={<Archive />} onSelect={archive}>Archive</MenuItem>
+                  <MenuItem icon={<Archive />} onSelect={archive}>{t("Archive")}</MenuItem>
                 </MenuContent>
               </Menu>
             )}
@@ -576,7 +579,7 @@ export function ChatView({
       />
       {me.org.promptLogging && (
         <div className="flex items-center justify-center gap-2 border-b border-border px-4 py-1.5 text-center text-xs text-warning">
-          <TriangleAlert className="size-3.5 shrink-0" /> Your organization records chat conversations for compliance.
+          <TriangleAlert className="size-3.5 shrink-0" /> {t("Your organization records chat conversations for compliance.")}
         </div>
       )}
 
@@ -587,9 +590,9 @@ export function ChatView({
           <div className="mx-auto flex w-full max-w-[760px] flex-col px-4 pt-[12vh] pb-10 sm:px-6">
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }} className="text-center">
               <h1 className="font-serif text-[38px] leading-tight tracking-[-0.02em] text-fg">
-                {greeting()}, {firstName}
+                {greeting(t)}, {firstName}
               </h1>
-              <p className="mt-2 text-[13px] text-fg-subtle">I&apos;m {me.org.productName}, where should we start today?</p>
+              <p className="mt-2 text-[13px] text-fg-subtle">{t("I'm {productName}, where should we start today?", { productName: me.org.productName })}</p>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.45 }} className="mt-8">
               {notices}
@@ -598,18 +601,18 @@ export function ChatView({
             <div className="mt-3 flex flex-wrap justify-center gap-2">
               {QUICK_ACTIONS.map((a, i) => (
                 <motion.button
-                  key={a.label}
+                  key={t(a.label)}
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.15 + i * 0.04 }}
                   onClick={() => {
-                    setInput(a.prompt);
+                    setInput(t(a.prompt));
                     composerRef.current?.focus();
                   }}
                   className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:bg-surface hover:text-fg"
                 >
                   <a.icon className="size-3.5" />
-                  {a.label}
+                  {t(a.label)}
                 </motion.button>
               ))}
             </div>
@@ -620,7 +623,7 @@ export function ChatView({
               <section>
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-[13px] text-fg">
-                    Previous chats <span className="text-fg-subtle">({chats.data?.length})</span>
+                    {t("Previous chats")} <span className="text-fg-subtle">({chats.data?.length})</span>
                   </h2>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -632,8 +635,8 @@ export function ChatView({
                     >
                       <MessageSquare className="size-3.5 text-fg-subtle" />
                       <div>
-                        <div className="truncate text-[13px] text-fg">{c.title}</div>
-                        <div className="mt-0.5 text-[11.5px] text-fg-subtle">{timeAgo(c.updatedAt)}</div>
+                        <div className="truncate text-[13px] text-fg">{chatTitle(c.title, t)}</div>
+                        <div className="mt-0.5 text-[11.5px] text-fg-subtle">{timeAgo(c.updatedAt, t)}</div>
                       </div>
                     </Link>
                   ))}
@@ -642,8 +645,8 @@ export function ChatView({
             )}
             <section>
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-[13px] text-fg">Connect your tools</h2>
-                <Link href="/app/work" className="text-[12px] text-fg-subtle transition-colors hover:text-fg">Through Work AI connectors</Link>
+                <h2 className="text-[13px] text-fg">{t("Connect your tools")}</h2>
+                <Link href="/app/work" className="text-[12px] text-fg-subtle transition-colors hover:text-fg">{t("Through Work AI connectors")}</Link>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {APPS.map((a) => (
@@ -658,7 +661,7 @@ export function ChatView({
                       <span className="flex-1 text-[13px] text-fg">{a.name}</span>
                       <span className="rounded border border-border px-1.5 py-px text-[10.5px] text-fg-subtle">MCP</span>
                     </div>
-                    <p className="mt-2.5 line-clamp-2 text-[12px] leading-relaxed text-fg-subtle">{a.desc}</p>
+                    <p className="mt-2.5 line-clamp-2 text-[12px] leading-relaxed text-fg-subtle">{t(a.desc)}</p>
                   </div>
                 ))}
               </div>
@@ -722,10 +725,10 @@ export function ChatView({
                 <div className="mb-1 flex items-center gap-2.5 rounded-xl border border-border bg-surface px-4 py-3 text-[13px] text-fg-muted" data-testid="read-only">
                   <Eye className="size-4 shrink-0 text-fg-subtle" />
                   <span className="min-w-0 flex-1">
-                    Shared to this project by <span className="text-fg">{existing.data?.authorName}</span>. You can read it; replies stay with its author.
+                    {t("Shared to this project by {author}. You can read it; replies stay with its author.", { author: <span className="text-fg">{existing.data?.authorName}</span> })}
                   </span>
                   <Button variant="outline" size="sm" onClick={() => router.push(newChatHref)}>
-                    Start your own chat
+                    {t("Start your own chat")}
                   </Button>
                 </div>
               ) : (
@@ -754,15 +757,16 @@ export function ChatView({
 }
 
 function BranchNav({ branch }: { branch: NonNullable<BranchInfo> }) {
+  const t = useT();
   return (
     <span className="inline-flex items-center gap-0.5 text-[12px] text-fg-subtle" data-testid="branch-nav">
-      <Button variant="ghost" size="icon-sm" aria-label="Previous version" disabled={!branch.onPrev} onClick={branch.onPrev}>
+      <Button variant="ghost" size="icon-sm" aria-label={t("Previous version")} disabled={!branch.onPrev} onClick={branch.onPrev}>
         <ChevronLeft className="size-3.5" />
       </Button>
       <span className="min-w-8 text-center tabular-nums">
         {branch.index + 1}/{branch.total}
       </span>
-      <Button variant="ghost" size="icon-sm" aria-label="Next version" disabled={!branch.onNext} onClick={branch.onNext}>
+      <Button variant="ghost" size="icon-sm" aria-label={t("Next version")} disabled={!branch.onNext} onClick={branch.onNext}>
         <ChevronRight className="size-3.5" />
       </Button>
     </span>
@@ -792,6 +796,7 @@ function MessageBlock({
   onExport?: (format: "docx" | "md" | "pdf") => void;
   branch?: BranchInfo;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
@@ -818,9 +823,9 @@ function MessageBlock({
             className="block w-full resize-none bg-transparent px-1 text-[14px] leading-relaxed text-fg outline-none"
           />
           <div className="mt-2 flex items-center justify-end gap-2">
-            <span className="mr-auto text-[12px] text-fg-subtle">Sending starts a new version of this conversation. The old one stays.</span>
-            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
-            <Button variant="primary" size="sm" disabled={!draft.trim()} onClick={submit}>Send</Button>
+            <span className="mr-auto text-[12px] text-fg-subtle">{t("Sending starts a new version of this conversation. The old one stays.")}</span>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>{t("Cancel")}</Button>
+            <Button variant="primary" size="sm" disabled={!draft.trim()} onClick={submit}>{t("Send")}</Button>
           </div>
         </div>
       );
@@ -844,11 +849,11 @@ function MessageBlock({
           <div className={cn("mt-1 flex items-center justify-end gap-0.5 transition-opacity", branch ? "opacity-100" : "opacity-0 group-hover/user:opacity-100 focus-within:opacity-100")}>
             {branch && <BranchNav branch={branch} />}
             {onEdit && (
-              <Tooltip content="Edit">
+              <Tooltip content={t("Edit")}>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Edit message"
+                  aria-label={t("Edit message")}
                   onClick={() => {
                     setDraft(m.content);
                     setEditing(true);
@@ -869,16 +874,22 @@ function MessageBlock({
         <AppLogo className="size-4" />
         <span>{modelLabel}</span>
         {m.routing && (
-          <Tooltip content={`Auto picked ${modelLabel}: ${m.routing.reason}${m.routing.thinking ? ", so it thought it through first" : ""}.`}>
+          <Tooltip
+            content={
+              m.routing.thinking
+                ? t("Auto picked {model}: {reason}, so it thought it through first.", { model: modelLabel, reason: m.routing.reason })
+                : t("Auto picked {model}: {reason}.", { model: modelLabel, reason: m.routing.reason })
+            }
+          >
             <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-1.5 py-px text-[11px] text-fg-muted" data-testid="routed" data-tier={m.routing.tier}>
               <Sparkles className="size-3 text-accent" />
-              Auto · {TIER_NAMES[m.routing.tier].toLowerCase()}
+              {t("Auto · {tier}", { tier: t(TIER_NAMES[m.routing.tier]).toLowerCase() })}
             </span>
           </Tooltip>
         )}
         {m.streaming && (
           <span className="bg-[linear-gradient(90deg,var(--fg-subtle)_0%,var(--fg)_50%,var(--fg-subtle)_100%)] bg-[length:200%_100%] bg-clip-text text-transparent animate-shimmer">
-            {m.content ? "Writing…" : m.routing?.thinking ? "Thinking it through…" : "Thinking…"}
+            {m.content ? t("Writing…") : m.routing?.thinking ? t("Thinking it through…") : t("Thinking…")}
           </span>
         )}
       </div>
@@ -899,7 +910,7 @@ function MessageBlock({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Copy"
+                aria-label={t("Copy")}
                 onClick={() => {
                   navigator.clipboard.writeText(m.content);
                   setCopied(true);
@@ -910,31 +921,31 @@ function MessageBlock({
               </Button>
             </Tooltip>
             {onSave && m.content && !m.error && (
-              <Tooltip content="Save to project sources">
-                <Button variant="ghost" size="icon-sm" aria-label="Save to project" onClick={() => onSave(m.content)}>
+              <Tooltip content={t("Save to project sources")}>
+                <Button variant="ghost" size="icon-sm" aria-label={t("Save to project")} onClick={() => onSave(m.content)}>
                   <BookmarkPlus className="size-3.5" />
                 </Button>
               </Tooltip>
             )}
             {onExport && m.content && !m.error && (
               <Menu>
-                <Tooltip content="Download">
+                <Tooltip content={t("Download")}>
                   <MenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" aria-label="Download answer">
+                    <Button variant="ghost" size="icon-sm" aria-label={t("Download answer")}>
                       <FileDown className="size-3.5" />
                     </Button>
                   </MenuTrigger>
                 </Tooltip>
                 <MenuContent align="start" className="min-w-44">
-                  <MenuItem icon={<FileText />} onSelect={() => onExport("docx")}>Word document</MenuItem>
-                  <MenuItem icon={<Printer />} onSelect={() => onExport("pdf")}>PDF (print)</MenuItem>
-                  <MenuItem icon={<Code2 />} onSelect={() => onExport("md")}>Markdown</MenuItem>
+                  <MenuItem icon={<FileText />} onSelect={() => onExport("docx")}>{t("Word document")}</MenuItem>
+                  <MenuItem icon={<Printer />} onSelect={() => onExport("pdf")}>{t("PDF (print)")}</MenuItem>
+                  <MenuItem icon={<Code2 />} onSelect={() => onExport("md")}>{t("Markdown")}</MenuItem>
                 </MenuContent>
               </Menu>
             )}
             {isLast && onRegenerate && (
-              <Tooltip content="Regenerate">
-                <Button variant="ghost" size="icon-sm" aria-label="Regenerate" onClick={onRegenerate}>
+              <Tooltip content={t("Regenerate")}>
+                <Button variant="ghost" size="icon-sm" aria-label={t("Regenerate")} onClick={onRegenerate}>
                   <RefreshCw className="size-3.5" />
                 </Button>
               </Tooltip>
@@ -947,54 +958,57 @@ function MessageBlock({
 }
 
 function QuotaBanner({ quota, onRequest }: { quota: QuotaStatus; onRequest: () => void }) {
-  const resets = new Date(quota.resetsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const t = useT();
+  const resets = t.date(quota.resetsAt, { month: "short", day: "numeric" });
+  const period = t(PERIOD_NOUN[quota.period]);
   if (quota.scope?.kind === "group") {
-    const who = quota.result.blockedBy === "group" ? `The ${quota.scope.name} group has` : "You've";
-    const what = quota.result.blockedBy === "group" ? "its" : `your share of the ${quota.scope.name} group's`;
+    const group = quota.scope.name;
     return (
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3" data-testid="group-quota-banner">
         <TriangleAlert className="size-4 shrink-0 text-warning" />
         <div className="min-w-0 flex-1">
           <div className="text-[13px] text-fg">
-            {who} used {what} tokens for this {quota.period}
+            {quota.result.blockedBy === "group"
+              ? t("The {group} group has used its tokens for this {period}", { group, period })
+              : t("You've used your share of the {group} group's tokens for this {period}", { group, period })}
           </div>
-          <div className="text-xs text-fg-subtle">Resets {resets}. Pick another model, or ask your admin to raise the group&apos;s budget.</div>
+          <div className="text-xs text-fg-subtle">{t("Resets {resets}. Pick another model, or ask your admin to raise the group's budget.", { resets: resets })}</div>
         </div>
       </motion.div>
     );
   }
-  const who = quota.result.blockedBy === "workspace" ? "This workspace has" : "You've";
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
       <TriangleAlert className="size-4 shrink-0 text-warning" />
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] text-fg">{who} used this {quota.period}&apos;s token allowance</div>
-        <div className="text-xs text-fg-subtle">
-          Resets {new Date(quota.resetsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}. You can ask your admin for more now.
+        <div className="text-[13px] text-fg">
+          {quota.result.blockedBy === "workspace" ? t("This workspace has used this {period}'s token allowance", { period }) : t("You've used this {period}'s token allowance", { period })}
         </div>
+        <div className="text-xs text-fg-subtle">{t("Resets {resets}. You can ask your admin for more now.", { resets })}</div>
       </div>
       <Button variant="primary" size="sm" onClick={onRequest}>
-        Request more
+        {t("Request more")}
       </Button>
     </motion.div>
   );
 }
 
 function FooterHint({ quota, blocked, orgName, onRequest }: { quota?: QuotaStatus; blocked: boolean; orgName: string; onRequest: () => void }) {
+  const t = useT();
   const f = quota?.result.usedFraction ?? null;
   return (
     <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11.5px] text-fg-subtle">
-      <span className="whitespace-nowrap">Private to {orgName || "your organization"}. AI can make mistakes.</span>
+      <span className="whitespace-nowrap">{t("Private to {org}. AI can make mistakes.", { org: orgName || t("your organization") })}</span>
       {quota && f !== null && f >= 0.5 && !blocked && quota.scope?.kind === "group" && (
         <span className="inline-flex items-center gap-2 whitespace-nowrap">
           <Meter value={f} className="w-12" />
-          {Math.round(f * 100)}% of your {PERIOD_ADJ[quota.period]} share of {quota.scope.name}
+          {t("{percent}% of your {period} share of {group}", { percent: Math.round(f * 100), period: t(PERIOD_ADJ[quota.period]), group: quota.scope.name })}
         </span>
       )}
       {quota && f !== null && f >= 0.5 && !blocked && quota.scope?.kind !== "group" && (
         <button onClick={onRequest} className="inline-flex items-center gap-2 whitespace-nowrap transition-colors hover:text-fg">
           <Meter value={f} className="w-12" />
-          {Math.round(f * 100)}% of your {PERIOD_ADJ[quota.period]} allowance
+          {t("{percent}% of your {period} allowance", { percent: Math.round(f * 100), period: t(PERIOD_ADJ[quota.period]) })}
           <ArrowUpRight className="size-3" />
         </button>
       )}
@@ -1003,16 +1017,17 @@ function FooterHint({ quota, blocked, orgName, onRequest }: { quota?: QuotaStatu
 }
 
 function ChatDocsButton({ docs }: { docs: { id: string; name: string }[] }) {
+  const t = useT();
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
         <button className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg">
-          <FileText className="size-3.5" /> {docs.length} {docs.length === 1 ? "document" : "documents"}
+          <FileText className="size-3.5" /> {t.n(docs.length, "{n} document", "{n} documents")}
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={6} className="z-50 w-72 animate-rise rounded-xl border border-border-strong bg-surface p-1 shadow-soft outline-none">
-          <div className="px-2 pt-1.5 pb-1 text-[11.5px] text-fg-subtle">Answers in this chat can use</div>
+          <div className="px-2 pt-1.5 pb-1 text-[11.5px] text-fg-subtle">{t("Answers in this chat can use")}</div>
           {docs.map((d) => (
             <a
               key={d.id}
