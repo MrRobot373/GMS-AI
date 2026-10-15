@@ -68,7 +68,8 @@ export function Art({
   if (!show || !art) return null;
   const largest = art.widths[art.widths.length - 1];
   return (
-    <span aria-hidden className={cn("relative block select-none", className)}>
+    // .art (globals.css) sets display and position in a lower layer, so the caller's classes win.
+    <span aria-hidden className={cn("art select-none", className)}>
       {art.variants.map((v) => (
         // Static files with their own 1× and 2× sizes; next/image would only add a resizing server.
         // eslint-disable-next-line @next/next/no-img-element

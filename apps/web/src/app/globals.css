@@ -4,6 +4,15 @@
 /* Shared components live in packages/ui. */
 @source "../../../../packages/ui/src";
 
+/* Generated images (components/art): a block by default; in a layer, so classes like `absolute` or
+   `hidden lg:block` passed to <Art> override it. */
+@layer components {
+  .art {
+    display: block;
+    position: relative;
+  }
+}
+
 /* Generated images (components/art): their edges fade into whatever is behind them. */
 .art-fade-radial {
   mask-image: radial-gradient(closest-side, #000 58%, transparent 100%);
