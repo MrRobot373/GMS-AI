@@ -192,7 +192,7 @@ is the largest it appears at, so we export 1× and 2× WebP from it. **Light** i
 - **File:** `apps/web/public/images/landing/hero-{dark,light}.webp`
 
 ```text
-A vast, perfectly calm, empty plain at dusk, seen from a low eye level. Far away and small in the frame, exactly in the horizontal centre, a single tall, slender monolith of smooth stone stands alone, its base at about 80% of the frame's height, a small soft glow of light emanating from within its lower third. A thin layer of low mist lies on the ground around it. Above it the sky is enormous, empty and smooth, filling the top 70% of the frame, so a headline can sit there, and fading seamlessly into the plain background colour at the top and side edges. The ground fades the same way at the bottom edge. Wide, cinematic, serene, a lot of empty space.
+A vast, perfectly calm, empty plain at nightfall under a deep, dark charcoal sky, seen from a low eye level. Far away and small in the frame, exactly in the horizontal centre, a single tall, slender monolith of smooth stone stands alone, its base at about 80% of the frame's height, a small soft glow of light emanating from within its lower third. A faint, low mist lies on the ground around it. Above it the sky is enormous, empty and smooth, filling the top 70% of the frame, so a headline can sit there, and fading seamlessly into the plain background colour at the top and side edges. The ground fades the same way at the bottom edge. Wide, cinematic, serene, a lot of empty space.
 ```
 
 #### `landing-chat`
@@ -378,7 +378,7 @@ A single empty square stone pedestal with clean edges, its flat top bare and sof
 - **Where:** Admin → Groups when there are none.
 
 ```text
-A small, close cluster of seven smooth pebbles of varied sizes nestled together, touching, forming one rounded group.
+A small, tidy cluster of seven smooth river pebbles of different sizes, arranged closely together as one rounded group.
 ```
 
 #### `health-ok`
@@ -428,13 +428,17 @@ A tall smooth monolith standing in thick soft fog, its outline faint and partly 
 
 ## 5. How they're shown (the code)
 
-- **Making them:** `scripts/generate-images.mjs generate` (with `POLLINATIONS_API_KEY`) makes each
-  dark variant with `openai/gpt-image-2`, then the light variant by converting the dark image, so
-  both have the same composition. Scenes at high quality, objects (shown small) at medium. The
-  originals stay in `design/generated/` (not committed). `--only <id> --seed <n> --force` makes a
-  new candidate of one image.
-- **Exporting:** `scripts/generate-images.mjs export` writes WebP files at 1× and 2× of the size
-  each image is shown at into `apps/web/public/images/`, the list the app reads
+- **Making them:** `scripts/generate-images.mjs generate` makes each image with FLUX.1-dev through
+  NVIDIA's API (`NVIDIA_API_KEY`), or with `openai/gpt-image-2` through Pollinations
+  (`POLLINATIONS_API_KEY`). FLUX can't take our image as input, so its light variant is made from the
+  same words and seed; gpt-image-2 converts the dark image. FLUX draws whatever a prompt names, so it
+  gets no "avoid" list, and empty-state objects are asked for from a high angle (no horizon).
+  `--candidates n` makes several dark versions to choose from (`design/generated/candidates/`),
+  `pick id=seed` keeps one. The originals stay in `design/generated/` (not committed).
+- **Exporting:** `scripts/generate-images.mjs export` grades every image the same way (neutral grey,
+  the dark variant a little deeper and the light one brighter, the glow in the brand cyan or white),
+  centres each empty-state object in its square, and writes WebP files at 1× and 2× of the size each
+  image is shown at into `apps/web/public/images/`, the list the app reads
   (`apps/web/src/components/art/manifest.json`), the link-preview art and the desktop app's copies.
 - **Showing:** `<Art name="…">` (`apps/web/src/components/art/art.tsx`) shows the variant for the
   current theme, is decorative (`alt=""`, hidden from screen readers), loads lazily with fixed
