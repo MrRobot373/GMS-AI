@@ -324,13 +324,22 @@ async function layers(sharp, img, variant) {
   for (let y = 0; y < info.height; y += 4) border.push(chroma(y * info.width * 3), chroma((y * info.width + info.width - 1) * 3));
   border.sort((a, b) => a - b);
   const ground = border[Math.floor(border.length / 2)];
+  // The background's brightness, mapped onto the page's own colour so the picture melts into the page
+  // instead of sitting in a lighter or darker box.
+  const lum = (i) => (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+  const edge = [];
+  for (let x = 0; x < info.width; x += 4) edge.push(lum(x * 3), lum(((info.height - 1) * info.width + x) * 3));
+  for (let y = 0; y < info.height; y += 4) edge.push(lum(y * info.width * 3), lum((y * info.width + info.width - 1) * 3));
+  edge.sort((a, b) => a - b);
+  const groundL = Math.min(0.97, Math.max(0.02, edge[Math.floor(edge.length / 2)]));
+  const pageL = variant === "dark" ? 15 / 255 : 251 / 255;
+  const remap = (x) => (x <= groundL ? (x * pageL) / groundL : pageL + ((x - groundL) * (1 - pageL)) / (1 - groundL));
   let accentPixels = 0;
   for (let i = 0, j = 0, k = 0; i < data.length; i += 3, j += 4, k++) {
     const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
     const c = max - min;
-    let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    l = variant === "dark" ? Math.pow(l, 1.15) : 1 - Math.pow(1 - l, 1.15);
+    const l = remap(0.2126 * r + 0.7152 * g + 0.0722 * b);
     let hue = 0;
     if (c > 0) hue = (max === r ? ((g - b) / c + 6) % 6 : max === g ? (b - r) / c + 2 : (r - g) / c + 4) * 60;
     const cyanish = smooth(130, 155, hue) * (1 - smooth(215, 240, hue));
@@ -342,6 +351,12 @@ async function layers(sharp, img, variant) {
     for (let c = 0; c < 3; c++) colour[i + c] = Math.round((l * (1 - m) + CYAN[c] * m) * 255);
   }
   const raw = { raw: { width: info.width, height: info.height, channels: 3 } };
+  // Specks of tinted background aren't accent: a median filter on the layer's transparency drops them.
+  // Then only solid areas stay: grainy, half-coloured floors fall below the cut, real accent shapes don't.
+  const alpha = await sharp(mask, { raw: { width: info.width, height: info.height, channels: 4 } }).extractChannel(3).median(9).raw().toBuffer();
+  for (let k = 0; k < n; k++) mask[k * 4 + 3] = Math.round(smooth(0.55, 0.85, alpha[k] / 255) * 255);
+  const soft = await sharp(mask, { raw: { width: info.width, height: info.height, channels: 4 } }).extractChannel(3).blur(0.6).raw().toBuffer();
+  for (let k = 0; k < n; k++) mask[k * 4 + 3] = soft[k];
   return {
     base: await sharp(base, raw).png().toBuffer(),
     mask: await sharp(mask, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer(),
