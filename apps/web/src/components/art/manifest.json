@@ -10,7 +10,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "landing-chat": {
     "src": "/images/landing/chat",
@@ -23,7 +24,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "landing-work": {
     "src": "/images/landing/work",
@@ -36,7 +38,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "landing-code": {
     "src": "/images/landing/code",
@@ -49,7 +52,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "landing-steps": {
     "src": "/images/landing/steps",
@@ -62,7 +66,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "landing-cta": {
     "src": "/images/landing/cta",
@@ -75,7 +80,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "auth-panel": {
     "src": "/images/auth/panel",
@@ -88,7 +94,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "auth-setup": {
     "src": "/images/auth/setup",
@@ -101,7 +108,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-documents": {
     "src": "/images/empty/documents",
@@ -114,7 +122,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-projects": {
     "src": "/images/empty/projects",
@@ -127,7 +136,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-project-chats": {
     "src": "/images/empty/project-chats",
@@ -140,7 +150,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-work": {
     "src": "/images/empty/work",
@@ -153,7 +164,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-skills": {
     "src": "/images/empty/skills",
@@ -166,7 +178,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-connections": {
     "src": "/images/empty/connections",
@@ -179,7 +192,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-schedules": {
     "src": "/images/empty/schedules",
@@ -192,7 +206,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-code": {
     "src": "/images/empty/code",
@@ -205,7 +220,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-inbox": {
     "src": "/images/empty/inbox",
@@ -218,7 +234,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-models": {
     "src": "/images/empty/models",
@@ -231,7 +248,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "empty-groups": {
     "src": "/images/empty/groups",
@@ -244,7 +262,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "health-ok": {
     "src": "/images/empty/health-ok",
@@ -257,7 +276,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "license-none": {
     "src": "/images/empty/license-none",
@@ -270,7 +290,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "not-found": {
     "src": "/images/system/not-found",
@@ -283,7 +304,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "error": {
     "src": "/images/system/error",
@@ -296,7 +318,8 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   },
   "offline": {
     "src": "/images/system/offline",
@@ -309,6 +332,7 @@
     "variants": [
       "dark",
       "light"
-    ]
+    ],
+    "accent": true
   }
 }

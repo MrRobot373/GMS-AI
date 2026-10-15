@@ -77,6 +77,7 @@ export function Landing() {
         eager
         fit="cover"
         fade="bottom"
+        accentStrength={0.45}
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[760px] opacity-80"
       />
       <Section className="pt-16 pb-20 text-center sm:pt-24">
@@ -255,7 +256,7 @@ export function Landing() {
       {/* CTA */}
       <Section className="py-24">
         <div className="relative overflow-hidden rounded-2xl border border-border bg-surface px-6 py-16 text-center sm:px-12">
-          <Art name="landing-cta" always fit="cover" fade="edges" sizes="1150px" className="pointer-events-none absolute inset-0 opacity-70" />
+          <Art name="landing-cta" always fit="cover" fade="edges" sizes="1150px" accentStrength={0.45} className="pointer-events-none absolute inset-0 opacity-70" />
           <LogoMark className="relative mx-auto mb-6 size-10" />
           <h2 className="relative font-serif text-[36px] leading-tight tracking-[-0.02em] sm:text-[48px]">Give your team AI they can trust.</h2>
           <p className="relative mx-auto mt-4 max-w-xl text-fg-muted">

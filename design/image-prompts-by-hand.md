@@ -264,7 +264,7 @@ No words, letters, numbers or logos; no people, faces or hands; no photographs, 
 Dark:
 
 ```text
-A tall composition of simple building blocks being put together: a few rounded blocks stacked into a small structure, one block in cyan being placed on top, with a little empty space around it. Tall portrait composition, the blocks in the lower half.
+A tall composition: a small low wall made of three wide flat rectangular blocks seen from the front, with one cyan square block resting on top and a tiny four-point star beside it. Tall portrait composition, the blocks in the lower half.
 
 Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
@@ -276,7 +276,7 @@ No words, letters, numbers or logos; no people, faces or hands; no photographs, 
 Light:
 
 ```text
-A tall composition of simple building blocks being put together: a few rounded blocks stacked into a small structure, one block in cyan being placed on top, with a little empty space around it. Tall portrait composition, the blocks in the lower half.
+A tall composition: a small low wall made of three wide flat rectangular blocks seen from the front, with one cyan square block resting on top and a tiny four-point star beside it. Tall portrait composition, the blocks in the lower half.
 
 Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 

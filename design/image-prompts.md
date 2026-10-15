@@ -267,7 +267,7 @@ A tall, calm composition: an open doorway with a pale shape of light falling thr
 - **File:** `apps/web/public/images/auth/setup-{dark,light}.webp`
 
 ```text
-A tall composition of simple building blocks being put together: a few rounded blocks stacked into a small structure, one block in cyan being placed on top, with a little empty space around it. Tall portrait composition, the blocks in the lower half.
+A tall composition: a small low wall made of three wide flat rectangular blocks seen from the front, with one cyan square block resting on top and a tiny four-point star beside it. Tall portrait composition, the blocks in the lower half.
 ```
 
 ### Empty states in the app

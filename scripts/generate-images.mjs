@@ -316,14 +316,25 @@ async function layers(sharp, img, variant) {
   const base = Buffer.alloc(n * 3);
   const mask = Buffer.alloc(n * 4);
   const colour = Buffer.alloc(n * 3);
+  // How colourful the background is (the median along the border): models tint it a little, light
+  // variants use a pastel accent, so the accent is what's clearly more colourful than that, in a cyan hue.
+  const chroma = (i) => (Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2])) / 255;
+  const border = [];
+  for (let x = 0; x < info.width; x += 4) border.push(chroma(x * 3), chroma(((info.height - 1) * info.width + x) * 3));
+  for (let y = 0; y < info.height; y += 4) border.push(chroma(y * info.width * 3), chroma((y * info.width + info.width - 1) * 3));
+  border.sort((a, b) => a - b);
+  const ground = border[Math.floor(border.length / 2)];
   let accentPixels = 0;
   for (let i = 0, j = 0, k = 0; i < data.length; i += 3, j += 4, k++) {
     const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const sat = max ? (max - min) / max : 0;
+    const c = max - min;
     let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     l = variant === "dark" ? Math.pow(l, 1.15) : 1 - Math.pow(1 - l, 1.15);
-    const m = smooth(0.18, 0.38, sat) * smooth(0.22, 0.45, max);
+    let hue = 0;
+    if (c > 0) hue = (max === r ? ((g - b) / c + 6) % 6 : max === g ? (b - r) / c + 2 : (r - g) / c + 4) * 60;
+    const cyanish = smooth(130, 155, hue) * (1 - smooth(215, 240, hue));
+    const m = smooth(ground + 0.06, ground + 0.14, c) * cyanish;
     if (m > 0.5) accentPixels++;
     base[i] = base[i + 1] = base[i + 2] = Math.round(l * 255);
     mask[j] = mask[j + 1] = mask[j + 2] = 255;

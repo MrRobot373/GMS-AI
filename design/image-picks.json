@@ -1,1 +1,27 @@
-{}
+{
+  "landing-hero": 2,
+  "landing-chat": 2,
+  "landing-work": 1,
+  "landing-code": 1,
+  "landing-steps": 2,
+  "landing-cta": 2,
+  "og-image": 1,
+  "auth-panel": 1,
+  "auth-setup": 6,
+  "empty-documents": 2,
+  "empty-projects": 1,
+  "empty-project-chats": 1,
+  "empty-work": 1,
+  "empty-skills": 2,
+  "empty-connections": 1,
+  "empty-schedules": 2,
+  "empty-code": 1,
+  "empty-inbox": 2,
+  "empty-models": 1,
+  "empty-groups": 1,
+  "health-ok": 2,
+  "license-none": 2,
+  "not-found": 1,
+  "error": 1,
+  "offline": 1
+}

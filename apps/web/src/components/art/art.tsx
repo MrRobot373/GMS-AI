@@ -51,6 +51,7 @@ export function Art({
   fit = "contain",
   fade = "none",
   position = "center",
+  accentStrength = 1,
   eager,
   always,
 }: {
@@ -63,6 +64,8 @@ export function Art({
   fade?: keyof typeof FADES;
   /** Which part stays in view when it's cropped (`fit="cover"`), as CSS object-position. */
   position?: string;
+  /** How strongly the accent shows (0–1): softer behind text. */
+  accentStrength?: number;
   /** Load straight away (above the fold) instead of when scrolled near. */
   eager?: boolean;
   /** Show even when the organization turned illustrations off (the public site). */
@@ -104,6 +107,7 @@ export function Art({
                 WebkitMaskSize: fit,
                 maskPosition: position,
                 WebkitMaskPosition: position,
+                opacity: accentStrength,
               }}
             />
           )}
