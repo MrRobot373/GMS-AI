@@ -122,10 +122,14 @@ const FLUX_ONLY = "Only the objects described, nothing else in the frame.";
 const FLUX_SPOT =
   "Product shot from a high angle, looking down at about 50 degrees, so the background is only the seamless floor surface: no wall, no horizon and no floor edge anywhere in the frame. The object sits exactly in the middle of the square frame and fills about half of it, with equal empty space above, below and on both sides, and a soft shadow right under it.";
 
+// FLUX makes the light variant from words alone, so a subject set at night needs its daytime wording.
+const LIGHT_SWAPS = [[/at nightfall under a deep, dark charcoal sky/g, "in soft, bright overcast daylight under a pale, empty sky"]];
+const subjectFor = (img, variant) => (FLUX && variant === "light" ? LIGHT_SWAPS.reduce((t, [a, b]) => t.replace(a, b), img.subject) : img.subject);
+
 function prompt({ shared }, img, variant) {
   const bg = shared.bg[img.kind].replaceAll("{BG}", FLUX ? BG_WORDS[variant] : BG[variant]);
   if (FLUX) {
-    return [img.subject, img.spot ? FLUX_SPOT : null, hasGlow(img.subject) ? GLOW[img.light] : null, fluxMono(img), FLUX_TONE[variant], shared.style[variant], bg, FLUX_ONLY]
+    return [subjectFor(img, variant), img.spot ? FLUX_SPOT : null, hasGlow(img.subject) ? GLOW[img.light] : null, fluxMono(img), FLUX_TONE[variant], shared.style[variant], bg, FLUX_ONLY]
       .filter(Boolean)
       .join("\n\n");
   }
@@ -149,7 +153,9 @@ function prompt({ shared }, img, variant) {
 
 const rawFile = (img, variant) => join(RAW, `${img.id}-${variant}.jpg`);
 const candidateFile = (img, seed) => join(RAW, "candidates", `${img.id}-dark@${seed}.jpg`);
-const PICKS = join(RAW, "picks.json");
+// The chosen seed of each image (and of its light variant where it differs): FLUX makes the same picture
+// again from the same words and seed, so the set can be remade.
+const PICKS = join(ROOT, "design/image-picks.json");
 const picks = () => (existsSync(PICKS) ? JSON.parse(readFileSync(PICKS, "utf8")) : {});
 
 // FLUX.1-dev takes sides from 768 to 1344 in steps of 64.
@@ -235,6 +241,7 @@ function makeProvider(parsed) {
  * generate                    each image's dark variant (seed from picks.json, or --seed), then its light one
  * generate --candidates n     n dark candidates per image in design/generated/candidates/, to choose from
  * pick id=seed …              use that candidate (its light variant is made on the next generate)
+ * generate --only id --light-seed n   remake only the light variant, with its own seed (FLUX)
  */
 async function generate() {
   const parsed = parse();
@@ -251,7 +258,15 @@ async function generate() {
     if (candidates) {
       const first = Number(opt("seed", 1));
       for (let seed = first; seed < first + candidates; seed++) jobs.push({ img, seed, candidate: true });
-    } else jobs.push({ img, seed: chosen[img.id] ?? Number(opt("seed", 1)) });
+    } else {
+      const seed = chosen[img.id] ?? Number(opt("seed", 1));
+      const lightSeed = opt("light-seed", null);
+      if (lightSeed !== null) {
+        chosen[`${img.id}:light`] = Number(lightSeed);
+        rmSync(rawFile(img, "light"), { force: true });
+      }
+      jobs.push({ img, seed, lightSeed: chosen[`${img.id}:light`] ?? seed });
+    }
   }
   const failures = [];
   async function worker() {
@@ -272,7 +287,7 @@ async function generate() {
         }
         if (img.variants.includes("light") && (force || !existsSync(rawFile(img, "light")))) {
           const t2 = Date.now();
-          writeFileSync(rawFile(img, "light"), await provider.light(img, seed));
+          writeFileSync(rawFile(img, "light"), await provider.light(img, job.lightSeed ?? seed));
           console.log(`✓ ${img.id} light (${Math.round((Date.now() - t2) / 1000)} s)`);
         }
       } catch (e) {
@@ -283,6 +298,7 @@ async function generate() {
     }
   }
   await Promise.all(Array.from({ length: Number(opt("jobs", 3)) }, worker));
+  if (opt("light-seed", null) !== null) writeFileSync(PICKS, JSON.stringify(chosen, null, 2) + "\n");
   if (!candidates) {
     const ready = todo.filter((img) => img.variants.every((v) => existsSync(rawFile(img, v)))).length;
     console.log(`${ready}/${todo.length} images ready in ${RAW}`);
@@ -369,23 +385,19 @@ async function subjectSquare(sharp, pipeline, width, height) {
   return { cx: ((x0 + x1) / 2) * (width / N), cy: ((y0 + y1) / 2) * (height / N), side: side * (Math.max(width, height) / N) };
 }
 
-/** The picture with its object in the middle: the backdrop is extended (mirrored at its edge) where needed. */
+/**
+ * The picture with its object nearer the middle: a square crop of 55–80% of the frame around it, kept
+ * inside the picture (extending the backdrop shows seams), so an object low in the frame moves up.
+ */
 async function centredSquare(sharp, source) {
   const { width, height } = await sharp(source).metadata();
   const box = await subjectSquare(sharp, sharp(source), width, height);
   if (!box) return source;
-  const half = Math.round(box.side / 2);
-  const pad = {
-    left: Math.max(0, half - Math.round(box.cx)),
-    right: Math.max(0, Math.round(box.cx) + half - width),
-    top: Math.max(0, half - Math.round(box.cy)),
-    bottom: Math.max(0, Math.round(box.cy) + half - height),
-  };
-  const extended = await sharp(source).extend({ ...pad, extendWith: "mirror" }).png().toBuffer();
-  return sharp(extended)
-    .extract({ left: Math.round(box.cx) + pad.left - half, top: Math.round(box.cy) + pad.top - half, width: half * 2, height: half * 2 })
-    .png()
-    .toBuffer();
+  const full = Math.min(width, height);
+  const side = Math.round(Math.min(full * 0.8, Math.max(full * 0.55, box.side)));
+  const left = Math.round(Math.min(width - side, Math.max(0, box.cx - side / 2)));
+  const top = Math.round(Math.min(height - side, Math.max(0, box.cy - side / 2)));
+  return sharp(source).extract({ left, top, width: side, height: side }).png().toBuffer();
 }
 
 async function exportAll() {
@@ -409,8 +421,12 @@ async function exportAll() {
       await (await graded(sharp, img, "dark")).resize(1200, 630, { fit: "cover", position: "centre" }).jpeg({ quality: 86, mozjpeg: true }).toFile(out);
       continue;
     }
-    // 1× and 2× of the largest size it's shown at, never larger than the original.
-    const widths = img.shown ? [...new Set([img.shown[0], Math.min(img.shown[0] * 2, img.w)])] : [960, img.w];
+    // 1× and 2× of the largest size it's shown at, never larger than what the model made (its own size,
+    // not the one asked for: FLUX makes 1344×896 for 3:2). Empty states are cropped to a square.
+    const real = await sharp(rawFile(img, "dark")).metadata();
+    const w = img.spot ? Math.min(real.width, real.height) : real.width;
+    const h = img.spot ? w : real.height;
+    const widths = img.shown ? [...new Set([Math.min(img.shown[0], w), Math.min(img.shown[0] * 2, w)])] : [Math.min(960, w), w];
     for (const variant of img.variants) {
       // Graded once, into a buffer, then cropped (empty states) and resized for each width.
       let source = await (await graded(sharp, img, variant)).png().toBuffer();
@@ -421,7 +437,7 @@ async function exportAll() {
         bytes += info.size;
       }
     }
-    manifest[img.id] = { src: `/images/${img.dir}/${img.base}`, width: img.w, height: img.h, widths, variants: img.variants };
+    manifest[img.id] = { src: `/images/${img.dir}/${img.base}`, width: w, height: h, widths, variants: img.variants };
   }
   mkdirSync(dirname(MANIFEST), { recursive: true });
   writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2) + "\n");

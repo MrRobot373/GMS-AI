@@ -378,7 +378,7 @@ A single empty square stone pedestal with clean edges, its flat top bare and sof
 - **Where:** Admin → Groups when there are none.
 
 ```text
-A small, tidy cluster of seven smooth river pebbles of different sizes, arranged closely together as one rounded group.
+Five smooth stones of different sizes set close together in a neat circle on a shallow round stone plate.
 ```
 
 #### `health-ok`
@@ -434,7 +434,8 @@ A tall smooth monolith standing in thick soft fog, its outline faint and partly 
   same words and seed; gpt-image-2 converts the dark image. FLUX draws whatever a prompt names, so it
   gets no "avoid" list, and empty-state objects are asked for from a high angle (no horizon).
   `--candidates n` makes several dark versions to choose from (`design/generated/candidates/`),
-  `pick id=seed` keeps one. The originals stay in `design/generated/` (not committed).
+  `pick id=seed` keeps one; the chosen seeds are in `design/image-picks.json`, so `generate` makes the
+  same set again. The originals stay in `design/generated/` (not committed).
 - **Exporting:** `scripts/generate-images.mjs export` grades every image the same way (neutral grey,
   the dark variant a little deeper and the light one brighter, the glow in the brand cyan or white),
   centres each empty-state object in its square, and writes WebP files at 1× and 2× of the size each

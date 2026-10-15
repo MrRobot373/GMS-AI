@@ -1,1 +1,314 @@
-{}
+{
+  "landing-hero": {
+    "src": "/images/landing/hero",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      960,
+      1344
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "landing-chat": {
+    "src": "/images/landing/chat",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      380,
+      760
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "landing-work": {
+    "src": "/images/landing/work",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      380,
+      760
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "landing-code": {
+    "src": "/images/landing/code",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      380,
+      760
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "landing-steps": {
+    "src": "/images/landing/steps",
+    "width": 896,
+    "height": 1344,
+    "widths": [
+      420,
+      840
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "landing-cta": {
+    "src": "/images/landing/cta",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      1150,
+      1344
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "auth-panel": {
+    "src": "/images/auth/panel",
+    "width": 896,
+    "height": 1344,
+    "widths": [
+      720,
+      896
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "auth-setup": {
+    "src": "/images/auth/setup",
+    "width": 896,
+    "height": 1344,
+    "widths": [
+      720,
+      896
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-documents": {
+    "src": "/images/empty/documents",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-projects": {
+    "src": "/images/empty/projects",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-project-chats": {
+    "src": "/images/empty/project-chats",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-work": {
+    "src": "/images/empty/work",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-skills": {
+    "src": "/images/empty/skills",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-connections": {
+    "src": "/images/empty/connections",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-schedules": {
+    "src": "/images/empty/schedules",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-code": {
+    "src": "/images/empty/code",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-inbox": {
+    "src": "/images/empty/inbox",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-models": {
+    "src": "/images/empty/models",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "empty-groups": {
+    "src": "/images/empty/groups",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "health-ok": {
+    "src": "/images/empty/health-ok",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "license-none": {
+    "src": "/images/empty/license-none",
+    "width": 1024,
+    "height": 1024,
+    "widths": [
+      176,
+      352
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "not-found": {
+    "src": "/images/system/not-found",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      560,
+      1120
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "error": {
+    "src": "/images/system/error",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      560,
+      1120
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  },
+  "offline": {
+    "src": "/images/system/offline",
+    "width": 1344,
+    "height": 896,
+    "widths": [
+      560,
+      1120
+    ],
+    "variants": [
+      "dark",
+      "light"
+    ]
+  }
+}
