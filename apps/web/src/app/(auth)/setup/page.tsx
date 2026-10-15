@@ -67,6 +67,7 @@ export default function SetupPage() {
 
   return (
     <AuthShell
+      art="auth-setup"
       title={step === 0 ? "Welcome to Aatmiq" : "Create the owner account"}
       subtitle={step === 0 ? "Let's set up your organization's private AI workspace." : "You'll be the owner and first admin."}
     >

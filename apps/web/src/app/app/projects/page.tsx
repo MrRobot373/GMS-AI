@@ -7,6 +7,7 @@ import { TopBar } from "@/components/app/frame";
 import { useSession } from "@/components/app/session";
 import { NewProjectDialog, ProjectIcon, useProjects } from "@/components/projects/projects";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/spinner";
 import { timeAgo } from "@/lib/format";
 import { useT } from "@/i18n";
@@ -35,7 +36,20 @@ export default function ProjectsPage() {
             {t("A project keeps the chats, files and instructions for one piece of work together. Chats inside a project remember each other and can use its files.")}
           </p>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {projects.data?.length === 0 && (
+            <EmptyState
+              art="empty-projects"
+              className="mt-6 rounded-xl border border-dashed border-border"
+              icon={<FolderOpen className="size-5" />}
+              title={t("No projects yet")}
+              action={
+                <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+                  <Plus className="size-3.5" /> {t("New project")}
+                </Button>
+              }
+            />
+          )}
+          <div className="mt-6 grid gap-3 empty:hidden sm:grid-cols-2 lg:grid-cols-3">
             {projects.isLoading &&
               [0, 1, 2].map((i) => <Skeleton key={i} className="h-[132px] rounded-xl" />)}
             {projects.data?.map((p) => (
@@ -71,7 +85,7 @@ export default function ProjectsPage() {
                 </div>
               </Link>
             ))}
-            {projects.data && (
+            {!!projects.data?.length && (
               <button
                 onClick={() => setCreating(true)}
                 className="flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"

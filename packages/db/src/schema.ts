@@ -74,6 +74,8 @@ export const organization = pgTable("organization", {
   /** Interface language for people who haven't picked one. */
   defaultLocale: text("default_locale").notNull().default("en"),
   retentionDays: integer("retention_days"),
+  /** Pictures on the sign-in pages, empty states and error pages; off for a plainer look. */
+  illustrations: boolean("illustrations").notNull().default(true),
   licenseKey: text("license_key"),
   /** When on, only the owner may still sign in with a password (break-glass); everyone else uses SSO. */
   ssoRequired: boolean("sso_required").notNull().default(false),

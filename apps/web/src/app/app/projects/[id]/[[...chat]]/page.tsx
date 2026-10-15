@@ -31,6 +31,7 @@ import { useParams, usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/app/frame";
+import { Art } from "@/components/art/art";
 import { useCanUse, useSession } from "@/components/app/session";
 import { StatusIcon } from "@/components/work/parts";
 import { ChatView } from "@/components/chat/chat-view";
@@ -198,8 +199,9 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
               {t("Chats")} <span className="text-fg-subtle">({p.chats.length})</span>
             </h2>
             {p.chats.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-[13px] text-fg-subtle">
-                {t("Chats you start here stay in this project and can use its files and each other.")}
+              <div className="flex flex-col items-center rounded-xl border border-dashed border-border px-4 py-8 text-center text-[13px] text-fg-subtle">
+                <Art name="empty-project-chats" className="-mt-4 mb-1 size-28" sizes="112px" fade="radial" />
+                <p>{t("Chats you start here stay in this project and can use its files and each other.")}</p>
               </div>
             ) : (
               <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface" data-testid="project-chats">

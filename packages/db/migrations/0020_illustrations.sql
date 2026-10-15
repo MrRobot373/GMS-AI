@@ -1,0 +1,1 @@
+ALTER TABLE "organization" ADD COLUMN "illustrations" boolean DEFAULT true NOT NULL;

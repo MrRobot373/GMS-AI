@@ -22,3 +22,6 @@ dump.rdb
 
 # Generated in the web image (scripts/third-party-notices.mjs)
 apps/web/public/third-party-notices.txt
+
+# Originals from scripts/generate-images.mjs (the web app uses the exported WebP files)
+design/generated/

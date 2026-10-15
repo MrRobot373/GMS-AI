@@ -442,6 +442,7 @@ export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
       promptLogging: org.promptLogging,
       retentionDays: org.retentionDays,
       defaultLocale: org.defaultLocale,
+      illustrations: org.illustrations,
       hasLicense: !!org.licenseKey,
       logoUrl: logoUrl(org.logo),
     };

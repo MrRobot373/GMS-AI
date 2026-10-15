@@ -185,14 +185,14 @@ is the largest it appears at, so we export 1× and 2× WebP from it. **Light** i
 
 #### `landing-hero`
 - **Kind:** scene
-- **Where:** Landing page, behind the headline "Your own AI. Nowhere else.", full width, fading
-  into the page at the bottom; the product replica overlaps its lower edge.
-- **Generate:** 1536×1024 (3:2), or 16:9 · **Shown:** full width × 720 px · **Variants:** dark,
+- **Where:** Landing page, the top of the page, full width: the headline "Your own AI. Nowhere else."
+  sits in its sky, the monolith stands below the buttons, and the product replica follows under it.
+- **Generate:** 1536×1024 (3:2), or 16:9 · **Shown:** full width × 860 px · **Variants:** dark,
   light · **Light:** cyan
 - **File:** `apps/web/public/images/landing/hero-{dark,light}.webp`
 
 ```text
-A vast, perfectly calm, empty plain at dusk, seen from a low eye level. Far away, slightly right of centre, a single tall, slender monolith of smooth stone stands alone, a small soft glow of light emanating from within its lower third. A thin layer of low mist lies on the ground around it. The sky is enormous, empty and smooth, filling the top 65% of the frame and fading seamlessly into the plain background colour at the top and side edges, so text can sit over it. The ground fades the same way at the bottom edge. Wide, cinematic, serene, a lot of empty space.
+A vast, perfectly calm, empty plain at dusk, seen from a low eye level. Far away and small in the frame, exactly in the horizontal centre, a single tall, slender monolith of smooth stone stands alone, its base at about 80% of the frame's height, a small soft glow of light emanating from within its lower third. A thin layer of low mist lies on the ground around it. Above it the sky is enormous, empty and smooth, filling the top 70% of the frame, so a headline can sit there, and fading seamlessly into the plain background colour at the top and side edges. The ground fades the same way at the bottom edge. Wide, cinematic, serene, a lot of empty space.
 ```
 
 #### `landing-chat`
@@ -426,15 +426,21 @@ A tall smooth monolith standing in thick soft fog, its outline faint and partly 
 
 ---
 
-## 5. How they'll be shown (for the code)
+## 5. How they're shown (the code)
 
-- One `<Art name="…">` component: picks the variant from the theme (`[data-theme]`), decorative
-  (`alt=""`, `aria-hidden`), lazy-loaded with fixed sizes so nothing jumps, a soft radial mask on
-  the edges so any background tint blends in, and `prefers-reduced-motion` respected for the
-  hero's fade-in.
-- `<EmptyState>` gets an `art` option and keeps today's icon as the fallback.
-- WebP at 1× and 2× (AVIF too where it's smaller); target under 120 KB for the hero, under 25 KB
-  for each spot illustration.
-- The images live in `apps/web/public/images/`; the web image already copies `public/`.
-- Admins who want a plainer look can turn illustrations off in Admin → Settings (a small switch,
-  added with the images).
+- **Making them:** `scripts/generate-images.mjs generate` (with `POLLINATIONS_API_KEY`) makes each
+  dark variant with `openai/gpt-image-2`, then the light variant by converting the dark image, so
+  both have the same composition. Scenes at high quality, objects (shown small) at medium. The
+  originals stay in `design/generated/` (not committed). `--only <id> --seed <n> --force` makes a
+  new candidate of one image.
+- **Exporting:** `scripts/generate-images.mjs export` writes WebP files at 1× and 2× of the size
+  each image is shown at into `apps/web/public/images/`, the list the app reads
+  (`apps/web/src/components/art/manifest.json`), the link-preview art and the desktop app's copies.
+- **Showing:** `<Art name="…">` (`apps/web/src/components/art/art.tsx`) shows the variant for the
+  current theme, is decorative (`alt=""`, hidden from screen readers), loads lazily with fixed
+  sizes so nothing jumps, and can fade its edges into whatever is behind it. `<EmptyState art="…">`
+  and `<ArtOr>` keep today's icon when there's no picture.
+- **Turning them off:** Admin → Settings → Organization & branding → Illustrations. The public
+  landing page always shows its pictures.
+- **Link preview:** `apps/web/src/app/(marketing)/opengraph-image.tsx` draws the logo and headline
+  over the generated art; it's in its own route group so customers' app pages never show it.

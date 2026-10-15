@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, type ReactNode } from "react";
+import { Art, useArt, type ArtName } from "@/components/art/art";
 import { OrgLogo } from "@/components/org-logo";
 import { get } from "@/lib/api";
 import { applyAccent, applyFavicon } from "@/lib/theme";
@@ -17,30 +18,53 @@ export function usePublicStatus() {
   return q;
 }
 
-export function AuthShell({ title, subtitle, children, footer }: { title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+export function AuthShell({
+  title,
+  subtitle,
+  children,
+  footer,
+  art = "auth-panel",
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+  /** The picture beside the form on wide screens. */
+  art?: ArtName;
+}) {
   const t = useT();
   const { data } = usePublicStatus();
   const product = data?.org.productName ?? "Aatmiq";
+  const showArt = useArt(art);
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-12">
-      <div className="relative w-full max-w-[400px] animate-rise">
-        <Link href="/" className="mb-6 flex items-center justify-center gap-2" aria-label={t("{product} home", { product: product })}>
-          <OrgLogo src={data?.org.logoUrl} className="size-7" />
-          <span className="text-[14px] text-fg">{data?.org.name || product}</span>
-        </Link>
-        <div className="rounded-2xl border border-border bg-bg p-7 shadow-soft">
-          <h1 className="text-center font-serif text-[30px] leading-tight tracking-[-0.02em]">{title}</h1>
-          {subtitle && <p className="mt-2 text-center text-[13px] text-fg-subtle">{subtitle}</p>}
-          <div className="mt-7">{children}</div>
+    <div className="flex min-h-dvh bg-canvas">
+      <div className="relative flex min-h-dvh flex-1 flex-col items-center justify-center px-4 py-12">
+        <div className="relative w-full max-w-[400px] animate-rise">
+          <Link href="/" className="mb-6 flex items-center justify-center gap-2" aria-label={t("{product} home", { product: product })}>
+            <OrgLogo src={data?.org.logoUrl} className="size-7" />
+            <span className="text-[14px] text-fg">{data?.org.name || product}</span>
+          </Link>
+          <div className="rounded-2xl border border-border bg-bg p-7 shadow-soft">
+            <h1 className="text-center font-serif text-[30px] leading-tight tracking-[-0.02em]">{title}</h1>
+            {subtitle && <p className="mt-2 text-center text-[13px] text-fg-subtle">{subtitle}</p>}
+            <div className="mt-7">{children}</div>
+          </div>
+          {data?.org.loginMessage && (
+            <p className="mt-4 text-center text-xs text-fg-subtle">{data.org.loginMessage}</p>
+          )}
+          {footer && <div className="mt-5 text-center text-[13px] text-fg-subtle">{footer}</div>}
         </div>
-        {data?.org.loginMessage && (
-          <p className="mt-4 text-center text-xs text-fg-subtle">{data.org.loginMessage}</p>
-        )}
-        {footer && <div className="mt-5 text-center text-[13px] text-fg-subtle">{footer}</div>}
+        <p className="absolute bottom-5 flex items-center gap-1.5 text-xs text-fg-subtle">
+          <ShieldCheck className="size-3.5" /> {t("Private deployment · your data stays on your servers")}
+        </p>
       </div>
-      <p className="absolute bottom-5 flex items-center gap-1.5 text-xs text-fg-subtle">
-        <ShieldCheck className="size-3.5" /> {t("Private deployment · your data stays on your servers")}
-      </p>
+      {showArt && (
+        <div className="hidden w-[46%] max-w-[760px] shrink-0 p-3 lg:block">
+          <div className="sticky top-3 h-[calc(100dvh-1.5rem)] overflow-hidden rounded-[20px] border border-border bg-bg">
+            <Art name={art} fit="cover" className="size-full" sizes="(min-width: 1660px) 760px, 46vw" eager />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

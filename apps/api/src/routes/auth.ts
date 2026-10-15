@@ -138,8 +138,9 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext) {
             loginMessage: org.loginMessage,
             logoUrl: logoUrl(org.logo),
             defaultLocale: org.defaultLocale,
+            illustrations: org.illustrations,
           }
-        : { name: null, productName: PRODUCT_NAME, accentColor: DEFAULT_ACCENT, loginMessage: null, logoUrl: null, defaultLocale: "en" },
+        : { name: null, productName: PRODUCT_NAME, accentColor: DEFAULT_ACCENT, loginMessage: null, logoUrl: null, defaultLocale: "en", illustrations: true },
     };
   });
 

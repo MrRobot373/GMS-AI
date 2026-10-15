@@ -3,3 +3,17 @@
 
 /* Shared components live in packages/ui. */
 @source "../../../../packages/ui/src";
+
+/* Generated images (components/art): their edges fade into whatever is behind them. */
+.art-fade-radial {
+  mask-image: radial-gradient(closest-side, #000 58%, transparent 100%);
+}
+.art-fade-edges {
+  mask-image:
+    linear-gradient(to right, transparent, #000 12%, #000 88%, transparent),
+    linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  mask-composite: intersect;
+}
+.art-fade-bottom {
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}

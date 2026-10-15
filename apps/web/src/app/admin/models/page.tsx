@@ -100,7 +100,7 @@ export default function ModelsPage() {
       <Section title="Providers" description="Servers that run models: Ollama, vLLM, LM Studio or any OpenAI-compatible endpoint.">
         {providers.data?.length === 0 ? (
           <Card>
-            <EmptyState icon={<Server className="size-5" />} title="No providers yet" description="Add your Ollama or vLLM server to start using models." action={<Button variant="primary" onClick={() => setAddProvider(true)}>Add provider</Button>} />
+            <EmptyState art="empty-models" icon={<Server className="size-5" />} title="No providers yet" description="Add your Ollama or vLLM server to start using models." action={<Button variant="primary" onClick={() => setAddProvider(true)}>Add provider</Button>} />
           </Card>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
@@ -268,7 +268,7 @@ export default function ModelsPage() {
           </Table>
         ) : (
           <Card>
-            <EmptyState icon={<Cpu className="size-5" />} title="No models yet" description="Add a provider, then pick the models it serves." />
+            <EmptyState art="empty-models" icon={<Cpu className="size-5" />} title="No models yet" description="Add a provider, then pick the models it serves." />
           </Card>
         )}
       </Section>

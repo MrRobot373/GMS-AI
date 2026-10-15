@@ -133,6 +133,8 @@ export const orgSettingsSchema = z.object({
   /** The language for people who haven't picked one. */
   defaultLocale: z.enum(LOCALES).optional(),
   retentionDays: z.number().int().positive().nullable().optional(),
+  /** Pictures on the sign-in pages, empty states and error pages. */
+  illustrations: z.boolean().optional(),
 });
 
 export const chatCreateSchema = z.object({

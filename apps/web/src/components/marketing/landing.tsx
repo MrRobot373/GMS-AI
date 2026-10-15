@@ -25,10 +25,14 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Art, type ArtName } from "@/components/art/art";
+import artManifest from "@/components/art/manifest.json";
 import { Logo, LogoMark } from "@/components/ui/logo";
 import { HeroVisual } from "./hero-visual";
 
 const CONTACT = "mailto:hello@aatmiq.com?subject=Aatmiq%20demo";
+/** With the hero picture, the product replica moves down to leave its monolith in view. */
+const HAS_HERO_ART = "landing-hero" in artManifest;
 
 function Section({ id, children, className = "" }: { id?: string; children: ReactNode; className?: string }) {
   return (
@@ -68,7 +72,16 @@ export function Landing() {
         </div>
       </header>
 
-      {/* Hero */}
+      {/* Hero: the headline in the picture's sky, its monolith under the buttons, then the product. */}
+      <div className="relative isolate">
+      <Art
+        name="landing-hero"
+        always
+        eager
+        fit="cover"
+        fade="bottom"
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[860px] [&_img]:object-[center_70%]"
+      />
       <Section className="pt-16 pb-20 text-center sm:pt-24">
         <div className="mx-auto mb-6 inline-flex animate-rise items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-[12.5px] text-fg-muted">
           <span className="size-1.5 rounded-full bg-accent" />
@@ -92,7 +105,7 @@ export function Landing() {
             <Link href="/login">Sign in to your workspace</Link>
           </Button>
         </div>
-        <div className="mt-16">
+        <div className={HAS_HERO_ART ? "mt-16 sm:mt-56" : "mt-16"}>
           <HeroVisual />
         </div>
         <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[13px] text-fg-subtle">
@@ -102,6 +115,7 @@ export function Landing() {
           ))}
         </div>
       </Section>
+      </div>
 
       {/* Three sections */}
       <Section id="product" className="py-20">
@@ -115,12 +129,14 @@ export function Landing() {
         </div>
         <div className="mt-14 grid gap-4 md:grid-cols-3">
           <Pillar
+            art="landing-chat"
             icon={<MessageSquare />}
             name="Chat"
             tagline="Ask, write, understand."
             points={["Private assistant for every employee", "Upload PDFs, docs and spreadsheets", "Answers cite your documents", "Folders, search and sharing"]}
           />
           <Pillar
+            art="landing-work"
             icon={<Workflow />}
             name="Work AI"
             tagline="Hand off a task. Get it done."
@@ -128,6 +144,7 @@ export function Landing() {
             soon
           />
           <Pillar
+            art="landing-code"
             icon={<Code2 />}
             name="Code"
             tagline="A full IDE, with an agent inside."
@@ -201,6 +218,7 @@ export function Landing() {
             <Eyebrow>Up and running in a day</Eyebrow>
             <h2 className="font-serif text-[36px] leading-tight tracking-[-0.02em] sm:text-[44px]">Install it. Connect your models. Invite your team.</h2>
             <p className="mt-4 text-fg-muted">We help you set it up and keep it updated. You keep full ownership of the server and the data.</p>
+            <Art name="landing-steps" always fit="cover" fade="edges" sizes="420px" className="mt-6 hidden aspect-[4/3] w-full max-w-[420px] lg:block [&_img]:object-bottom" />
           </div>
           <ol className="space-y-3">
             {[
@@ -240,6 +258,7 @@ export function Landing() {
       {/* CTA */}
       <Section className="py-24">
         <div className="relative overflow-hidden rounded-2xl border border-border bg-surface px-6 py-16 text-center sm:px-12">
+          <Art name="landing-cta" always fit="cover" fade="edges" sizes="1150px" className="pointer-events-none absolute inset-0 opacity-70" />
           <LogoMark className="relative mx-auto mb-6 size-10" />
           <h2 className="relative font-serif text-[36px] leading-tight tracking-[-0.02em] sm:text-[48px]">Give your team AI they can trust.</h2>
           <p className="relative mx-auto mt-4 max-w-xl text-fg-muted">
@@ -274,9 +293,10 @@ export function Landing() {
   );
 }
 
-function Pillar({ icon, name, tagline, points, soon }: { icon: ReactNode; name: string; tagline: string; points: string[]; soon?: boolean }) {
+function Pillar({ art, icon, name, tagline, points, soon }: { art: ArtName; icon: ReactNode; name: string; tagline: string; points: string[]; soon?: boolean }) {
   return (
-    <div className="group relative rounded-xl border border-border bg-surface p-6 transition-[border-color,transform] duration-300 hover:-translate-y-0.5 hover:border-border-strong">
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-surface p-6 transition-[border-color,transform] duration-300 hover:-translate-y-0.5 hover:border-border-strong">
+      <Art name={art} always fit="cover" fade="bottom" sizes="(min-width: 768px) 380px, 92vw" className="-mx-6 -mt-6 mb-4 aspect-[3/2]" />
       <div className="mb-5 flex items-center justify-between">
         <div className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-fg [&>svg]:size-4">{icon}</div>
         {soon && <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-subtle">Coming soon</span>}

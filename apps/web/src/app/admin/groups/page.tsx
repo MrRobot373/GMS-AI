@@ -70,7 +70,7 @@ export default function GroupsPage() {
       />
       {list.isLoading && <Skeleton className="h-40 rounded-xl" />}
       {list.data?.length === 0 && (
-        <EmptyState
+        <EmptyState art="empty-groups"
           icon={<Users className="size-5" />}
           title="No groups yet"
           description="For example “Engineering” with a larger coding model and its own monthly budget, whichever workspaces its people work in."

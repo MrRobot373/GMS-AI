@@ -66,7 +66,7 @@ export default function SkillsPage() {
           {skills.isLoading ? (
             <Skeleton className="mt-6 h-40 rounded-xl" />
           ) : all.length === 0 ? (
-            <EmptyState
+            <EmptyState art="empty-skills"
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<Sparkles className="size-5" />}
               title={t("No skills of your own yet")}

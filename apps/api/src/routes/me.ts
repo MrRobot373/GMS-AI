@@ -64,6 +64,7 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
         promptLogging: org?.promptLogging ?? false,
         logoUrl: logoUrl(org?.logo),
         defaultLocale: org?.defaultLocale ?? "en",
+        illustrations: org?.illustrations ?? true,
       },
       workspaces,
       unreadNotifications: unread?.n ?? 0,

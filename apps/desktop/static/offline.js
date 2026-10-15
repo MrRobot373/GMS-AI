@@ -7,3 +7,9 @@ try {
 } catch {}
 document.getElementById("what").textContent = `${host || "The server"} didn't answer${q.get("error") ? ` (${q.get("error")})` : ""}.`;
 document.getElementById("retry").setAttribute("href", /^https?:\/\//.test(url) ? url : "#");
+
+// Without the picture (an older build), leave the page as it was rather than show a broken image.
+for (const img of document.querySelectorAll("img.art")) {
+  if (img.complete && !img.naturalWidth) img.remove();
+  else img.addEventListener("error", () => img.remove());
+}

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { LICENSE_STATE } from "@/components/admin/license";
 import { Section } from "@/components/admin/table";
 import { PageHeader } from "@/components/app/page-header";
+import { Art } from "@/components/art/art";
 import { useSession } from "@/components/app/session";
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
@@ -121,6 +122,7 @@ export default function LicensePage() {
               )}
               {d.message && <p className="mt-3 text-[13px] text-warning">{d.message}</p>}
             </div>
+            {!l && <Art name="license-none" className="-my-4 size-28 justify-self-center" sizes="112px" fade="radial" />}
             {l && (
               <div className="w-full min-w-56 md:w-64">
                 <div className="flex items-baseline justify-between text-[13px]">

@@ -204,7 +204,7 @@ export default function UsersPage() {
           </Card>
         ) : (
           <Card>
-            <EmptyState title="No pending invitations" description="Invite teammates and they'll appear here until they accept." className="py-8" />
+            <EmptyState art="empty-inbox" title="No pending invitations" description="Invite teammates and they'll appear here until they accept." className="py-8" />
           </Card>
         )}
       </Section>

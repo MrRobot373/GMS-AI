@@ -79,7 +79,7 @@ export default function CodePage() {
               ))}
             </div>
           ) : rows.length === 0 ? (
-            <EmptyState
+            <EmptyState art="empty-code"
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<Code2 className="size-5" />}
               title={t("No workspaces yet")}

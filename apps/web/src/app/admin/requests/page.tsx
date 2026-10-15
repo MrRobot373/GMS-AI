@@ -93,7 +93,7 @@ export default function RequestsPage() {
           </div>
         ) : (
           <Card>
-            <EmptyState icon={<Inbox className="size-5" />} title="No pending requests" description="When someone runs out of tokens and asks for more, it shows up here." />
+            <EmptyState art="empty-inbox" icon={<Inbox className="size-5" />} title="No pending requests" description="When someone runs out of tokens and asks for more, it shows up here." />
           </Card>
         )}
       </Section>

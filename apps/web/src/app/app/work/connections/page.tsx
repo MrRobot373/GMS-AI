@@ -91,7 +91,7 @@ function Connections() {
           {list.isLoading ? (
             <Skeleton className="mt-6 h-40 rounded-xl" />
           ) : all.length === 0 ? (
-            <EmptyState
+            <EmptyState art="empty-connections"
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<Plug className="size-5" />}
               title={t("No apps yet")}

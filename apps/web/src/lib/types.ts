@@ -22,7 +22,7 @@ export interface Me {
   emailEnabled: boolean;
   isAdmin: boolean;
   isWorkspaceAdmin: boolean;
-  org: { name: string; productName: string; accentColor: string; promptLogging: boolean; logoUrl: string | null; defaultLocale: "en" | "hi" };
+  org: { name: string; productName: string; accentColor: string; promptLogging: boolean; logoUrl: string | null; defaultLocale: "en" | "hi"; illustrations: boolean };
   workspaces: { id: string; name: string; icon: string | null; role: WorkspaceRole; sections: Section[] }[];
   unreadNotifications: number;
   license?: {
@@ -39,7 +39,7 @@ export interface PublicStatus {
   setupRequired: boolean;
   licenseRequired?: boolean;
   ssoRequired?: boolean;
-  org: { name: string | null; productName: string; accentColor: string; loginMessage: string | null; logoUrl: string | null; defaultLocale: "en" | "hi" };
+  org: { name: string | null; productName: string; accentColor: string; loginMessage: string | null; logoUrl: string | null; defaultLocale: "en" | "hi"; illustrations: boolean };
 }
 
 export interface QuotaStatus {

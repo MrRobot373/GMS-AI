@@ -141,6 +141,13 @@
       "when": 1791906291298,
       "tag": "0019_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792048490328,
+      "tag": "0020_illustrations",
+      "breakpoints": true
     }
   ]
 }

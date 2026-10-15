@@ -131,7 +131,7 @@ export default function SchedulesPage() {
           {schedules.isLoading ? (
             <Skeleton className="mt-6 h-40 rounded-xl" />
           ) : list.length === 0 ? (
-            <EmptyState
+            <EmptyState art="empty-schedules"
               className="mt-6 rounded-xl border border-dashed border-border"
               icon={<CalendarClock className="size-5" />}
               title={t("Nothing scheduled")}

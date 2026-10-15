@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/app/frame";
+import { Art } from "@/components/art/art";
 import { useSession } from "@/components/app/session";
 import { ProjectIcon, useProject } from "@/components/projects/projects";
 import { Button } from "@/components/ui/button";
@@ -204,7 +205,10 @@ export function WorkHome() {
                 ))}
               </div>
             ) : list.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-[13px] text-fg-subtle">{t("Tasks you start appear here. They keep running if you close this page.")}</p>
+              <div className="flex flex-col items-center rounded-xl border border-dashed border-border px-4 py-6 text-center text-[13px] text-fg-subtle">
+                <Art name="empty-work" className="-mt-2 mb-1 size-32" sizes="128px" fade="radial" />
+                <p>{t("Tasks you start appear here. They keep running if you close this page.")}</p>
+              </div>
             ) : (
               <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface" data-testid="task-list">
                 {list.map((t) => (

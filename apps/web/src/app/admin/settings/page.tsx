@@ -27,6 +27,7 @@ interface OrgSettings {
   promptLogging: boolean;
   retentionDays: number | null;
   defaultLocale: "en" | "hi";
+  illustrations: boolean;
   hasLicense: boolean;
   logoUrl: string | null;
 }
@@ -101,6 +102,20 @@ export default function SettingsPage() {
             <Field label="Sign-in page message" hint="Optional. e.g. “For Acme employees only. Contact IT for access.”">
               <Textarea value={form.loginMessage ?? ""} onChange={(e) => set("loginMessage", e.target.value)} maxLength={280} rows={2} />
             </Field>
+            <div className="flex items-start justify-between gap-6 pt-1">
+              <div>
+                <div className="text-sm font-medium">Illustrations</div>
+                <p className="mt-1 max-w-md text-[13px] text-fg-muted">Pictures on the sign-in page, on empty pages and on error pages. Turn them off for a plainer look.</p>
+              </div>
+              <Switch
+                checked={form.illustrations}
+                onCheckedChange={(v) => {
+                  set("illustrations", v);
+                  save.mutate({ illustrations: v });
+                }}
+                label="Illustrations"
+              />
+            </div>
           </div>
           {/* Live preview */}
           <div className="rounded-xl border border-border bg-bg-subtle p-4">

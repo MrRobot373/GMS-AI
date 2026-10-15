@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/app/frame";
+import { ArtOr } from "@/components/art/art";
 import { useSession } from "@/components/app/session";
 import { ACCEPT, FileIcon, useDocuments } from "@/components/documents/use-documents";
 import { Button } from "@/components/ui/button";
@@ -179,9 +180,11 @@ export default function DocumentsPage() {
                 onClick={() => inputRef.current?.click()}
                 className="flex w-full flex-col items-center justify-center gap-2 px-6 py-16 text-center transition-colors hover:bg-surface-2/50"
               >
-                <span className="flex size-10 items-center justify-center rounded-xl border border-border bg-surface-2 text-fg-muted">
-                  <Upload className="size-4" />
-                </span>
+                {q || filter !== "all" ? (
+                  <UploadTile />
+                ) : (
+                  <ArtOr name="empty-documents" className="-my-4 size-40" sizes="160px" fade="radial" fallback={<UploadTile />} />
+                )}
                 <span className="text-[14px] text-fg">{q || filter !== "all" ? t("No documents match") : t("Drop files here or click to upload")}</span>
                 <span className="text-[12.5px] text-fg-subtle">{t("PDF (scans too), Word, Excel, images, text, CSV and code · up to 25 MB")}</span>
               </button>
@@ -310,6 +313,14 @@ function StatusPill({ doc }: { doc: DocumentRow }) {
   return (
     <span className="inline-flex max-w-56 items-center gap-1.5 text-[12px] text-danger" title={doc.error ?? undefined}>
       <CircleAlert className="size-3.5 shrink-0" /> <span className="truncate">{doc.error ?? t("Failed")}</span>
+    </span>
+  );
+}
+
+function UploadTile() {
+  return (
+    <span className="flex size-10 items-center justify-center rounded-xl border border-border bg-surface-2 text-fg-muted">
+      <Upload className="size-4" />
     </span>
   );
 }

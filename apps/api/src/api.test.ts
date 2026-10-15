@@ -224,6 +224,16 @@ d("Aatmiq API", () => {
     expect((await call(member, "PUT", `/api/admin/workspaces/${workspaceId}/budget`, { tokenLimit: null })).status).toBe(403);
   });
 
+  it("admins can turn the illustrations off, for the app and the sign-in pages", async () => {
+    expect((await call(owner, "GET", "/api/admin/settings")).json.illustrations).toBe(true);
+    expect((await call(null, "GET", "/api/public/status")).json.org.illustrations).toBe(true);
+    expect((await call(owner, "PUT", "/api/admin/settings", { illustrations: false })).status).toBe(200);
+    expect((await call(null, "GET", "/api/public/status")).json.org.illustrations).toBe(false);
+    expect((await call(member, "GET", "/api/me")).json.org.illustrations).toBe(false);
+    expect((await call(member, "PUT", "/api/admin/settings", { illustrations: true })).status).toBe(403);
+    expect((await call(owner, "PUT", "/api/admin/settings", { illustrations: true })).status).toBe(200);
+  });
+
   it("reports usage and writes an audit trail", async () => {
     const u = await call(owner, "GET", "/api/admin/usage?days=7");
     expect(u.json.totals.requests).toBeGreaterThanOrEqual(2);

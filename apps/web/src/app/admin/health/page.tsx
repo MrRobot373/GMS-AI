@@ -5,6 +5,7 @@ import { CircleAlert, CircleCheck, CircleX, RefreshCw, Send } from "lucide-react
 import Link from "next/link";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/app/page-header";
+import { ArtOr } from "@/components/art/art";
 import { useSession } from "@/components/app/session";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, Switch } from "@/components/ui/misc";
@@ -71,7 +72,8 @@ export default function HealthPage() {
         <Card className="flex items-center gap-4 p-5" data-testid="health-summary">
           {(() => {
             const L = LEVEL[d.level];
-            return <L.icon className={`size-8 shrink-0 ${L.className}`} />;
+            const icon = <L.icon className={`size-8 shrink-0 ${L.className}`} />;
+            return d.level === "ok" ? <ArtOr name="health-ok" className="-my-3 size-16 shrink-0" sizes="64px" fade="radial" fallback={icon} /> : icon;
           })()}
           <div className="min-w-0 flex-1">
             <div className="text-[15px] font-medium">

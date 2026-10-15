@@ -104,12 +104,15 @@ export function Tooltip({ content, children, side = "top" }: { content: ReactNod
 
 export function EmptyState({
   icon,
+  media,
   title,
   description,
   action,
   className,
 }: {
   icon?: ReactNode;
+  /** A picture shown instead of the icon, as it is (no tile around it). */
+  media?: ReactNode;
   title: string;
   description?: ReactNode;
   action?: ReactNode;
@@ -117,7 +120,7 @@ export function EmptyState({
 }) {
   return (
     <div className={cn("flex flex-col items-center justify-center px-6 py-14 text-center", className)}>
-      {icon && (
+      {media ? <div className="mb-3">{media}</div> : icon && (
         <div className="mb-4 flex size-11 items-center justify-center rounded-xl border border-border bg-surface-2 text-fg-muted">
           {icon}
         </div>

@@ -5,6 +5,7 @@ import { Bell } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Art } from "@/components/art/art";
 import { get, post } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { timeAgo } from "@/lib/format";
@@ -69,7 +70,10 @@ export function NotificationsButton() {
                 </button>
               ))
             ) : (
-              <p className="px-3 py-8 text-center text-sm text-fg-subtle">{t("You're all caught up.")}</p>
+              <div className="flex flex-col items-center px-3 py-6 text-center text-sm text-fg-subtle">
+                <Art name="empty-inbox" className="-mt-2 mb-1 size-24" sizes="96px" fade="radial" />
+                <p>{t("You're all caught up.")}</p>
+              </div>
             )}
           </div>
         </Popover.Content>
