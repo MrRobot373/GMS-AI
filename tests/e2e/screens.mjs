@@ -1,7 +1,8 @@
 /**
  * Screenshots of every page for a UI review (after work.mjs:
  * E2E_SCRIPT=tests/e2e/screens-after-work.mjs tests/e2e/run-work.sh). Adds a little sample data, then captures each
- * page in dark and light on desktop and dark on a phone. Writes PNGs and pages.json to $OUT.
+ * page in dark and light on desktop and dark on a phone, plus the empty states a new member sees. Writes PNGs and
+ * pages.json to $OUT.
  */
 import { chromium } from "playwright-core";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -69,7 +70,18 @@ const tasks = await api("GET", `/api/work/tasks?workspaceId=${ws}`);
 const taskId = tasks?.[0]?.id;
 await wait(2000); // let the document finish indexing
 await ctx.storageState({ path: `${OUT}state.json` });
+
+// A new member with nothing of their own yet, for the empty states.
+const fresh = await api("POST", "/api/admin/invites", { email: "new@acme.test", orgRole: "member", workspaces: [{ workspaceId: ws, role: "member" }] });
 await ctx.close();
+const freshCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const freshToken = fresh?.link ? new URL(fresh.link).pathname.split("/").pop() : null;
+if (freshToken) {
+  const r = await freshCtx.request.post(`${APP}/api/invites/${freshToken}/accept`, { data: { name: "Nina Rao", password: "correct-horse-battery" }, headers: { origin: APP } });
+  if (r.status() >= 400) console.log(`seed: accept invite → ${r.status()}`);
+}
+await freshCtx.storageState({ path: `${OUT}empty-state.json` });
+await freshCtx.close();
 
 /* ── The pages ── */
 const P = (group, name, path, opts = {}) => ({ group, name, path, ...opts });
@@ -79,6 +91,9 @@ const pages = [
   P("Public", "Setup (closed after setup)", "/setup", { signedOut: true }),
   P("Public", "Accept invite", invite?.link ? new URL(invite.link).pathname : "/invite/none", { signedOut: true }),
   P("Public", "Invalid invite", "/invite/not-a-real-token", { signedOut: true }),
+  P("Public", "Forgot password", "/forgot-password", { signedOut: true }),
+  P("Public", "Reset password (bad link)", "/reset-password?token=not-a-real-token", { signedOut: true }),
+  P("Public", "Page not found", "/no-such-page", { signedOut: true }),
   P("App", "Chat (new)", "/app/chat"),
   P("App", "Chat (conversation)", `/app/chat/${chatId}`),
   P("App", "Print view of a chat", `/print/chat/${chatId}`),
@@ -105,6 +120,16 @@ const pages = [
   P("Admin", "Authentication", "/admin/authentication"),
   P("Admin", "Settings", "/admin/settings"),
   P("Admin", "License", "/admin/license"),
+  P("Admin", "Groups", "/admin/groups"),
+  P("Admin", "Health", "/admin/health"),
+  P("Empty", "Chat (first visit)", "/app/chat", { as: "empty" }),
+  P("Empty", "Documents (none)", "/app/documents", { as: "empty" }),
+  P("Empty", "Projects (none)", "/app/projects", { as: "empty" }),
+  P("Empty", "Work AI (no tasks)", "/app/work", { as: "empty" }),
+  P("Empty", "Skills (none of your own)", "/app/work/skills", { as: "empty" }),
+  P("Empty", "Connections (none)", "/app/work/connections", { as: "empty" }),
+  P("Empty", "Schedules (none)", "/app/work/schedules", { as: "empty" }),
+  P("Empty", "Code (no workspaces)", "/app/code", { as: "empty" }),
 ];
 
 const VARIANTS = [
@@ -116,20 +141,21 @@ const VARIANTS = [
 const index = [];
 const errors = [];
 for (const v of VARIANTS) {
-  for (const signedOut of [true, false]) {
+  for (const who of ["out", "owner", "empty"]) {
+    const signedOut = who === "out";
     const c = await browser.newContext({
       viewport: v.viewport,
       isMobile: v.isMobile,
       hasTouch: v.hasTouch,
       deviceScaleFactor: v.deviceScaleFactor ?? 1,
       colorScheme: v.theme,
-      storageState: signedOut ? undefined : `${OUT}state.json`,
+      storageState: signedOut ? undefined : `${OUT}${who === "empty" ? "empty-state" : "state"}.json`,
     });
     await c.addInitScript((t) => localStorage.setItem("aatmiq.theme", t), v.theme);
     const p = await c.newPage();
     p.on("pageerror", (e) => errors.push(`${v.id} ${p.url()}: ${e.message}`));
     for (const [i, pg] of pages.entries()) {
-      if (!!pg.signedOut !== signedOut) continue;
+      if ((pg.signedOut ? "out" : (pg.as ?? "owner")) !== who) continue;
       const file = `${String(i + 1).padStart(2, "0")}-${pg.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-$/, "")}-${v.id}.png`;
       try {
         await p.goto(`${APP}${pg.path}`, { waitUntil: "load" });

@@ -129,7 +129,8 @@ tests/e2e/run-containers.sh
 ## Screenshots of every page
 
 `screens.mjs` captures each app page in dark, light and phone views with sample data (after
-`work.mjs`), and `screens-license.mjs` the license console and a licensed install:
+`work.mjs`), plus the empty states a new member sees, the 404 page and the password pages (set
+`OUT` to choose the folder); `screens-license.mjs` the license console and a licensed install:
 
 ```bash
 E2E_SCRIPT=$PWD/tests/e2e/screens-after-work.mjs tests/e2e/run-work.sh
