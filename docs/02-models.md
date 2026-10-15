@@ -111,5 +111,7 @@ when the model starts thinking. `GET /api/admin/routing`, `PUT /api/admin/routin
 | Nemotron 3 Nano 4B, Nano 30B A3B, Super 120B A12B | NVIDIA Nemotron Open Model License | Commercial use allowed; NVIDIA claims no rights to outputs. Whoever distributes the models passes on the license and its notice ("Licensed by NVIDIA Corporation under the NVIDIA Nemotron Open Model License"); NVIDIA's names and marks only to say where a model comes from |
 
 The servers download the models from Hugging Face or the Ollama library at first start; Aatmiq's
-own downloads don't bundle them. The offline bundle (see [11-rollout.md](11-rollout.md)) will,
-and must carry these licenses.
+own downloads don't bundle them. The offline bundle does, with the models' own license files and
+[legal/THIRD-PARTY.md](../legal/THIRD-PARTY.md), which carries the NVIDIA notice. The optional
+older embedding model (`EMBEDDING_MODEL=embeddinggemma`, EmbeddingGemma version 1) is under Google's
+Gemma Terms of Use instead of Apache-2.0.

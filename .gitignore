@@ -19,3 +19,6 @@ __pycache__/
 
 # Redis snapshots from a local redis-server
 dump.rdb
+
+# Generated in the web image (scripts/third-party-notices.mjs)
+apps/web/public/third-party-notices.txt

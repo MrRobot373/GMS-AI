@@ -10,6 +10,10 @@ contracts.
 | Correction | Settings → Profile (name, job title, instructions); an admin for the email address |
 | Erasure | **Admin → Users → ⋯ → Erase person and data…** |
 | Withdrawing consent, leaving | Deactivate (keeps their things, frees nothing) or erase (frees the seat) |
+| Storage limitation | **Admin → Settings → Data & privacy → Delete chats automatically after** N days: chats nobody has touched for that long are deleted within the hour (temporary chats always after a day) |
+
+Your people need a notice saying what Aatmiq stores about them and who can see it: there's a
+template in [legal/STAFF-NOTICE.md](../legal/STAFF-NOTICE.md).
 
 ## The download
 

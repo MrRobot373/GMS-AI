@@ -10,6 +10,10 @@ RUN pnpm install --frozen-lockfile --filter @aatmiq/web...
 COPY packages/shared packages/shared
 COPY packages/ui packages/ui
 COPY apps/web apps/web
+COPY scripts/third-party-notices.mjs scripts/
+COPY legal/third-party/licenses legal/third-party/licenses
+# The open-source notices, served at /third-party-notices.txt.
+RUN mkdir -p apps/web/public && node scripts/third-party-notices.mjs --filter @aatmiq/web --texts apps/web/public/third-party-notices.txt
 ENV NEXT_TELEMETRY_DISABLED=1
 # API_URL is read at build time for the /api rewrite; the compose service name is used.
 ARG API_URL=http://api:4000
@@ -21,6 +25,7 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=build /repo/apps/web/.next/standalone ./
 COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build /repo/apps/web/public ./apps/web/public
 USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]

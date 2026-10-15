@@ -15,18 +15,26 @@ COPY packages/skills/package.json packages/skills/
 RUN pnpm install --frozen-lockfile --filter @aatmiq/api...
 COPY packages packages
 COPY apps/api apps/api
+COPY scripts/third-party-notices.mjs scripts/
+COPY legal legal
 RUN pnpm --filter @aatmiq/api build \
  && pnpm --filter @aatmiq/api deploy --prod --legacy /out \
  && cp -r apps/api/dist /out/dist \
- && cp -r packages/db/migrations /out/migrations
+ && cp -r packages/db/migrations /out/migrations \
+ # The license agreement and the open-source notices travel with the API.
+ && cp -r legal /out/legal \
+ && node scripts/third-party-notices.mjs --filter @aatmiq/api --texts /out/THIRD_PARTY_NOTICES.txt
 
 # The agent runtime, pinned by deploy/dsh/package-lock.json. npm installs its plugins' peer packages.
 FROM node:22-bookworm AS dsh
 WORKDIR /opt/dsh
 COPY deploy/dsh/package.json deploy/dsh/package-lock.json ./
+COPY scripts/third-party-notices.mjs /tmp/notices/scripts/
+COPY legal/third-party/licenses /tmp/notices/legal/third-party/licenses
 RUN npm ci --omit=dev --no-audit --no-fund \
  # It also ships a browser UI (Next.js) that Aatmiq never starts.
- && rm -rf node_modules/next node_modules/@next
+ && rm -rf node_modules/next node_modules/@next \
+ && node /tmp/notices/scripts/third-party-notices.mjs --node-modules /opt/dsh/node_modules --texts /opt/dsh/THIRD_PARTY_NOTICES.txt --title "Work AI agent runtime third-party notices"
 
 # Aatmiq Code (the IDE): the pinned Code-OSS server build plus our branding and extensions.
 FROM node:22-bookworm AS code
@@ -35,8 +43,12 @@ COPY apps/code/package.json apps/code/base.json apps/code/product.json apps/code
 COPY apps/code/scripts scripts
 COPY apps/code/branding branding
 COPY apps/code/extensions extensions
+COPY scripts/third-party-notices.mjs /tmp/notices/scripts/
+COPY legal/third-party /tmp/notices/legal/third-party
 RUN npm install --no-save --no-audit --no-fund @napi-rs/canvas@1 \
- && node scripts/build.mjs --out /opt/aatmiq-code
+ && node scripts/build.mjs --out /opt/aatmiq-code \
+ && node /tmp/notices/scripts/third-party-notices.mjs --node-modules /opt/aatmiq-code --texts /opt/aatmiq-code/THIRD_PARTY_NOTICES.txt \
+      --title "Aatmiq Code third-party notices" --prepend /tmp/notices/legal/third-party/code-oss-LICENSE.txt
 
 FROM node:22-bookworm-slim
 # Tools the agent uses inside a task folder (the skill library's helper scripts rely on the Python

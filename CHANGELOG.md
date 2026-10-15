@@ -15,6 +15,12 @@ without one.
   the organization's default; the admin console stays in English.
 - Accessibility: every page meets WCAG 2.1 AA in both themes (contrast, names for controls), a
   "Skip to content" link, and long dialogs scroll with their buttons in view.
+- Open-source notices: the full license texts of every package ship in the images (and at
+  `/third-party-notices.txt` on your installation), and each release and the offline bundle carry
+  `legal/` with the list of open-source components and AI models and their licenses.
+- **Fixed:** Admin → Settings → *Delete chats automatically after* N days now deletes chats nobody
+  has touched for that long (it was saved but not applied). If you set it earlier, older chats are
+  deleted within an hour of updating.
 
 ## 1.0.0 — not yet released
 

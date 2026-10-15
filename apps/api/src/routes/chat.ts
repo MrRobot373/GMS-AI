@@ -64,8 +64,14 @@ async function branchPath(db: DB, leafId: string | null) {
 }
 
 /** Delete temporary chats nobody has touched for a day. */
+/**
+ * Hourly housekeeping: temporary chats after a day, and every chat untouched for longer than the
+ * organization keeps chats (Admin → Settings → Data & privacy; empty: until people delete them).
+ */
 export async function purgeTemporaryChats(db: DB) {
   await db.execute(sql`delete from chat where temporary and updated_at < now() - interval '24 hours'`);
+  const [org] = await db.select({ days: organization.retentionDays }).from(organization).limit(1);
+  if (org?.days && org.days > 0) await db.execute(sql`delete from chat where updated_at < now() - make_interval(days => ${org.days})`);
 }
 
 function titleFrom(text: string): string {

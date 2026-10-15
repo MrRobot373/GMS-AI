@@ -99,6 +99,8 @@ jobs:
           # Our own license server isn't part of what customers run.
           rm -rf "dist/aatmiq-$V/deploy/license"
           cp VERSION CHANGELOG.md "dist/aatmiq-$V/"
+          # The license agreement, privacy notice and the open-source and model licenses.
+          cp -r legal "dist/aatmiq-$V/legal"
           printf '%s\n' "Aatmiq $V" "" \
             "Install or update: docs at https://github.com/$GITHUB_REPOSITORY/blob/v$V/docs/13-releases.md" "" \
             "  cp deploy/.env.example deploy/.env    # new install: then edit it (it already names this release's images)" \

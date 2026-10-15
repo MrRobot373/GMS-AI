@@ -91,6 +91,8 @@ save() {
   mkdir -p "$out/deploy"
   (cd "$DIR" && tar --exclude=./.env --exclude=./license -cf - .) | tar -xf - -C "$out/deploy"
   cp "$DIR/../VERSION" "$DIR/../CHANGELOG.md" "$out/" 2>/dev/null || true
+  # The license agreement and the open-source and model licenses travel with what the bundle carries.
+  if [ -d "$DIR/../legal" ]; then rm -rf "$out/legal"; cp -r "$DIR/../legal" "$out/legal"; fi
 
   say "Checksums"
   (cd "$out" && find images models -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
@@ -102,6 +104,8 @@ save() {
     echo "On the server (no internet needed):"
     echo "  deploy/offline.sh load <this folder>   (from this folder's deploy/, or a copy of it)"
     echo "  deploy/team.sh up -d"
+    echo
+    echo "Licenses: legal/ (the license agreement; legal/THIRD-PARTY.md for the open-source software and models in here)."
   } > "$out/README.txt"
   du -sh "$out"
   echo "Done. Copy $out to the server and run: deploy/offline.sh load <the folder>"

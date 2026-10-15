@@ -54,6 +54,8 @@ jobs:
       # '!aatmiq': not the root package (its scripts run turbo over everything again).
       - name: Typecheck
         run: pnpm -r --if-present --filter '!aatmiq' typecheck
+      - name: Open-source licenses (the list is current, every license accepted)
+        run: node scripts/third-party-notices.mjs --check
       - name: Test databases
         run: |
           psql "$PG/aatmiq_test" -qc "create extension if not exists vector" -c "create database license_test"

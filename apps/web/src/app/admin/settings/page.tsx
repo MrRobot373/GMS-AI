@@ -172,7 +172,7 @@ export default function SettingsPage() {
             />
           </div>
           <div className="flex flex-wrap items-end justify-between gap-4 p-5">
-            <Field label="Delete chats automatically after" hint="Leave empty to keep chats until people delete them." className="w-64">
+            <Field label="Delete chats automatically after" hint="Chats nobody has touched for this many days are deleted. Leave empty to keep chats until people delete them." className="max-w-md">
               <div className="flex items-center gap-2">
                 <Input
                   inputMode="numeric"

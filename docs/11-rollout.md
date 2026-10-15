@@ -133,7 +133,7 @@ What we have, and what's left before a customer pays for it.
 | 2 | An independent security assessment (a penetration test of the server and the agent), and fixing what it finds | Customers will ask; we've done an internal review only |
 | 3 | Signed desktop apps: a Windows code-signing certificate and an Apple Developer ID (notarization); add them as CI secrets | Unsigned installers trigger warnings |
 | 4 | Tag `v1.0.0` (`node scripts/release.mjs 1.0.0`, then push the tag) once phases 0–3 are done; the release machinery is ready ([13-releases.md](13-releases.md)) | Customers update in place |
-| 5 | Legal: the license agreement (EULA), privacy notice, a data-processing addendum template, and the list of open-source licenses and model licenses we ship (Apache-2.0, NVIDIA Nemotron Open Model License: [02-models.md](02-models.md#model-licenses)) | Required to sell |
+| 5 | Legal: a lawyer reviews the drafts in [legal/](../legal/README.md) (license agreement, privacy notice, data processing addendum, a privacy-notice template for customers' staff, the open-source and model licenses) and we fill in the company details | Required to sell; the drafts follow the product but haven't been reviewed |
 | 6 | Support: where customers report issues, response times per plan, which versions we support | Part of what they buy |
 | 7 | Pricing and plans set up in the license server ([pricing-and-business.md](pricing-and-business.md)) | So orders turn into license keys |
 

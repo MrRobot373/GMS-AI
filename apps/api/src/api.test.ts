@@ -705,6 +705,21 @@ d("Phase B", () => {
     expect((await call(owner, "GET", `/api/chats/${chatId}`)).status).toBe(404);
   });
 
+  it("the organization's retention deletes chats nobody touched for longer", async () => {
+    const { purgeTemporaryChats } = await import("./routes/chat");
+    const old = (await call(owner, "POST", "/api/chats", { workspaceId })).json.id;
+    const recent = (await call(owner, "POST", "/api/chats", { workspaceId })).json.id;
+    await db.execute(sql`update chat set updated_at = now() - interval '40 days' where id = ${old}`);
+    // No retention set: kept.
+    await purgeTemporaryChats(db);
+    expect((await call(owner, "GET", `/api/chats/${old}`)).status).toBe(200);
+    expect((await call(owner, "PUT", "/api/admin/settings", { retentionDays: 30 })).status).toBe(200);
+    await purgeTemporaryChats(db);
+    expect((await call(owner, "GET", `/api/chats/${old}`)).status).toBe(404);
+    expect((await call(owner, "GET", `/api/chats/${recent}`)).status).toBe(200);
+    expect((await call(owner, "PUT", "/api/admin/settings", { retentionDays: null })).status).toBe(200);
+  });
+
   it("keeping a temporary chat saves it", async () => {
     chatId = (await call(owner, "POST", "/api/chats", { workspaceId, temporary: true })).json.id;
     await say("Keep me");

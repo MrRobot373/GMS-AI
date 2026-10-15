@@ -63,7 +63,7 @@ they're told). **Admin → Usage** shows who used what, by model and section, wi
 | Admin → Authentication | Require two-step sign-in (right away, or with a few days' grace and reminders); single sign-on with Google, Microsoft, any OpenID Connect or SAML 2.0 provider (import its metadata); require it for everyone but the owner |
 | Admin → Work AI | When the agent asks first (risky steps, always, never), how many tasks run at once, web search, the browser and which internal sites it may open, container limits |
 | Admin → Audit log | Who did what and when: sign-ins, changes, downloads, erasures |
-| Admin → Settings | The name, logo and colors; the default language (English or Hindi; the admin console stays English); prompt logging (off by default: say so to your people if you turn it on); how long chats are kept; email |
+| Admin → Settings | The name, logo and colors; the default language (English or Hindi; the admin console stays English); prompt logging (off by default: say so to your people if you turn it on); how long chats are kept (chats nobody has touched for that many days are deleted within the hour); email |
 
 Each Work AI task and each person's editor runs as its own user on the server and can't reach the
 database, the model servers or your office network: [10-team-server.md#security](../10-team-server.md#security).
