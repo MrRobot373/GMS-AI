@@ -1,95 +1,84 @@
 # Images: where they go, and the prompts
 
-Aatmiq's screens are clean but use the same icon tile for every empty state. The 404 page is
-Next.js's default, and the landing page is only text and boxes. That's what makes it feel generated.
+Aatmiq's screens are clean but use the same icon tile for every empty state. The 404 page was
+Next.js's default, and the landing page was only text and boxes. That's what made it feel generated.
 This file lists every place an image helps, every place it would hurt (and why), one art direction
 for all of them, and a ready prompt for each image.
 
 - **Baseline for "before" screenshots:** commit `4e53856` (`tests/e2e/screens.mjs` captures every
   page, including the empty states a new member sees).
-- **How the prompts are used:** `scripts/generate-images.mjs` (written once we have the image
-  model's API key) reads the image blocks below, builds each prompt as
-  **Subject + Style (dark or light) + Background (object or scene) + Avoid**, generates every
-  variant, converts it to WebP at the sizes given and writes it to `apps/web/public/images/`.
+- **How the prompts are used:** `scripts/generate-images.mjs` reads the image blocks below, builds each
+  prompt as **Subject + Style (dark or light) + Background + Avoid**, generates every variant,
+  exports it to WebP and writes it to `apps/web/public/images/`.
+- **To make them by hand:** `design/image-prompts-by-hand.md` has every full prompt ready to paste.
 
 ---
 
-## 1. Art direction: "Quiet stone"
+## 1. Art direction: flat geometric
 
-The logo is a standing stone with a light inside it ("the self"; the repository is even called
-Monolith). Every image is a variation on that one idea: **smooth, sculptural stone objects with a
-small inner light, photographed like a museum still life.** It looks calm, expensive and unlike
-the usual AI-product art (glowing brains, robots, purple gradients).
+**Simple, flat illustrations of the thing each screen is about**: a stack of documents, a folder, a
+calendar, two app tiles joined by a cable, an open door. Built from a few geometric shapes in three
+shades of grey and **one accent**, with crisp edges and a fine paper grain. It reads at 120 px, looks
+calm next to the interface, and feels designed rather than generated.
 
 | | |
 |---|---|
-| Subject | One stone object or a small group of stones (slabs, pebbles, arches, plinths, cairns) that tells what the screen is for |
-| Material | Dark theme: matte basalt and graphite. Light theme: pale limestone and travertine. Fine natural grain, no gloss |
-| Light | One soft, diffused key light from the upper left, gentle long shadows, deep but not crushed blacks |
-| The inner light | Marketing pages: a small cyan glow (`#22D3EE`, the brand accent) from inside one stone. **Inside the app: warm white (`#F3EFE6`) instead**, because every customer can change the accent color and a cyan glow would clash with theirs |
-| Composition | Subject centered or on a third, **lots of empty space**, nothing touching the edges, eye level or slightly above, 50–85 mm lens look, shallow depth of field on large images |
-| Background | Objects: seamless and plain, exactly the theme's page colour so the image melts into the page: **`#0F0F0F` (dark)**, **`#FBFBFB` (light)**; transparent if the model supports it. Scenes (the hero, the sign-in panel): an environment kept within those tones, fading towards that colour at the edges |
-| Colour | Near-monochrome. The only colour is the inner light |
-| Never | Text, letters, numbers, logos, watermarks, people, hands, faces, screens or UI, robots, brains, circuit boards, network lines, holograms, neon, lens flares, rainbow or purple gradients, glossy plastic, cartoon or clip-art style, busy textures |
+| Subject | One clear object or a small group of objects that says what the screen is for, drawn as simple geometric shapes |
+| Shapes | Rounded rectangles, circles, arcs and clean straight edges; flat fills, no outlines, no 3D, no perspective tricks beyond a simple three-quarter view |
+| Colour | Dark theme: three charcoal greys on near-black. Light theme: three soft greys on off-white. **One accent on one small part** (a folded corner, a dot, a tab), in the brand cyan |
+| Texture | A very fine paper grain; at most one soft, flat shadow shape |
+| Composition | Centred, about half the frame, lots of empty space; nothing touches the edges |
+| Background | Plain and solid, the theme's page colour: **`#0F0F0F` (dark)**, **`#FBFBFB` (light)** |
+| Never | Text, letters, numbers, logos, people or faces, hands, photographs, 3D renders, gradients, glows, neon, glass, clutter, extra objects |
 
-**Why it fits a white-label product:** customers rename and re-colour Aatmiq. Stone and light carry
-no brand, so the images suit any customer's name and logo; only the marketing images (Aatmiq's own
-site) use the cyan.
+**The accent follows the customer's colour.** The export splits every picture into a grey base and
+an accent layer; the app paints the accent layer in the organization's accent colour (Admin →
+Settings), so a customer who uses green gets green accents. Cyan is the default and the public site's
+colour. The desktop app and the link preview keep the cyan.
 
-**Dark and light:** every image that sits on a page background comes in two variants with the
-same composition: basalt on `#0F0F0F` and limestone on `#FBFBFB`. The app shows the one for the
-current theme.
+**Dark and light:** every image comes in both, with the same subject and layout: charcoal on
+near-black and soft grey on off-white.
 
-**Keeping the set consistent:**
-1. Generate **`landing-hero`** first and pick the best one. It's the style anchor.
-2. If the model accepts a reference image (most current ones do), pass the anchor with every other
-   prompt: "match the material, lighting and colour grading of the reference image".
-3. Use the same seed for both variants of an image, where the model has seeds.
-4. Generate 3–4 candidates for each image and keep one; reject any with text, extra objects or a
-   background that isn't plain.
+**Keeping the set consistent:** generate 2 candidates of each and keep the clearest; reject any with
+text, extra objects, gradients or shading that looks 3D.
 
 ---
 
 ## 2. The shared prompt blocks
 
-Each prompt is **Subject + Style + Background + Avoid**. The Subject, and whether the image is an
-object or a scene, is in each image's block in section 4.
+Each prompt is **Subject + Style + Background + Avoid**.
 
 **Style · dark** (`style-dark`)
 
 ```text
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 ```
 
 **Style · light** (`style-light`)
 
 ```text
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 ```
 
-**Background · object** (`bg-object`): the landing cards, empty states and system pages
+**Background · object** (`bg-object`): empty states, system pages, the product cards
 
 ```text
-Studio still life on a seamless plain background of solid {BG} that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of {BG} that fills the whole frame.
 ```
 
-**Background · scene** (`bg-scene`): the hero, the call to action, the sign-in panels and the link preview
+**Background · scene** (`bg-scene`): the hero, the call to action, the sign-in pictures, the link preview
 
 ```text
-The whole scene stays within tones close to {BG}, and every edge of the frame fades smoothly into solid {BG}, so the image blends into a page of that colour.
+On a plain solid background of {BG} that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 ```
 
-`{BG}` is `#0F0F0F` for the dark variant and `#FBFBFB` for the light one.
+`{BG}` is dark charcoal `#0F0F0F` for the dark variant and soft off-white `#FBFBFB` for the light one.
 
-**Avoid** (`avoid`; also the negative prompt, where the model takes one)
+**Avoid** (`avoid`)
 
 ```text
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
-
-**The inner light, by where the image is used:**
-- marketing images: `a small soft glow of cyan light (#22D3EE) emanating from within the stone`
-- app images: `a small soft glow of warm white light (#F3EFE6) emanating from within the stone`
 
 ---
 
@@ -101,7 +90,7 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 
 | Page / section | Decision |
 |---|---|
-| Landing: hero (headline, buttons, the live product replica) | ✅ `landing-hero` behind the headline, fading into the page; the live replica stays on top. It's the product, so it beats any picture of it |
+| Landing: hero (headline, buttons, the live product replica) | ✅ `landing-hero` behind the headline, its shapes around the edges and the middle left free for the words; the live replica stays below it. It's the product, so it beats any picture of it |
 | Landing: model names row | ➖ Text is right here |
 | Landing: three products (Chat, Work AI, Code) | ✅ `landing-chat`, `landing-work`, `landing-code` as the top of each card |
 | Landing: privacy ("Nothing leaves your building") | ➖ The network diagram already explains it; a picture would compete |
@@ -177,74 +166,72 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 
 ## 4. The images
 
-Sizes: **Generate** is what to ask the model for (all are sizes current models offer); **Shown**
-is the largest it appears at, so we export 1× and 2× WebP from it. **Light** is `inner light`:
-`cyan` (marketing) or `white` (app).
+Sizes: **Generate** is the shape to ask for; **Shown** is the largest size it appears at, so the
+export makes 1× and 2× WebP from it. **Accent** is the colour the generator asks for; the app then
+paints it in the organization's colour.
 
 ### Public website
 
 #### `landing-hero`
 - **Kind:** scene
-- **Where:** Landing page, the top of the page, full width: the headline "Your own AI. Nowhere else."
-  sits in its sky, the monolith stands below the buttons, and the product replica follows under it.
-- **Generate:** 1536×1024 (3:2), or 16:9 · **Shown:** full width × 860 px · **Variants:** dark,
-  light · **Light:** cyan
+- **Where:** Landing page, behind the headline "Your own AI. Nowhere else.", full width; the product
+  replica follows below it.
+- **Generate:** 1536×1024 (3:2) · **Shown:** full width × 760 px · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/landing/hero-{dark,light}.webp`
 
 ```text
-A vast, perfectly calm, empty plain at nightfall under a deep, dark charcoal sky, seen from a low eye level. Far away and small in the frame, exactly in the horizontal centre, a single tall, slender monolith of smooth stone stands alone, its base at about 80% of the frame's height, a small soft glow of light emanating from within its lower third. A faint, low mist lies on the ground around it. Above it the sky is enormous, empty and smooth, filling the top 70% of the frame, so a headline can sit there, and fading seamlessly into the plain background colour at the top and side edges. The ground fades the same way at the bottom edge. Wide, cinematic, serene, a lot of empty space.
+A wide, calm composition of a few large geometric shapes placed only around the edges of the frame: a big quarter circle in the top left corner, a tall rounded rectangle on the right side, a thin arc low on the left, and a small cyan dot near the top right. The whole centre of the frame is empty, for a headline.
 ```
 
 #### `landing-chat`
 - **Kind:** object
 - **Where:** Landing page, top of the "Chat" card ("Ask, write, understand.").
-- **Generate:** 1536×1024 (3:2) · **Shown:** 380×253 · **Variants:** dark, light · **Light:** cyan
+- **Generate:** 1536×1024 (3:2) · **Shown:** 380×253 · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/landing/chat-{dark,light}.webp`
 
 ```text
-Two smooth, rounded river stones of slightly different sizes resting on a low rectangular stone plinth, turned gently towards each other as if in quiet conversation. A thin, soft line of light glows in the narrow gap between them, as if passing from one to the other. Simple, balanced, intimate. Centered, viewed at eye level.
+Two rounded speech bubbles overlapping slightly, one larger and one smaller, with three small dots inside the smaller bubble in cyan, centered.
 ```
 
 #### `landing-work`
 - **Kind:** object
 - **Where:** Landing page, top of the "Work AI" card ("Hand off a task. Get it done.").
-- **Generate:** 1536×1024 (3:2) · **Shown:** 380×253 · **Variants:** dark, light · **Light:** cyan
+- **Generate:** 1536×1024 (3:2) · **Shown:** 380×253 · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/landing/work-{dark,light}.webp`
 
 ```text
-A cairn of four flat, smooth stones stacked in perfect balance, decreasing in size towards the top, with a fifth small stone floating just above the stack about to settle into place. The top stone has a small soft glow of light within it. Precise, calm, a sense of steady progress. Centered, viewed slightly from below.
+A task card with three short horizontal bars like a checklist, the first two ticked with small round check marks, and a circular progress ring beside the card, three-quarters filled in cyan, centered.
 ```
 
 #### `landing-code`
 - **Kind:** object
 - **Where:** Landing page, top of the "Code" card ("A full IDE, with an agent inside.").
-- **Generate:** 1536×1024 (3:2) · **Shown:** 380×253 · **Variants:** dark, light · **Light:** cyan
+- **Generate:** 1536×1024 (3:2) · **Shown:** 380×253 · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/landing/code-{dark,light}.webp`
 
 ```text
-Two precisely machined stone blocks joined by a crisp interlocking dovetail joint, with razor-sharp edges and perfectly flat faces, sitting slightly apart as if just about to slide together. A small soft glow of light shines from inside the joint. Engineering precision, craftsmanship, exactness. Three-quarter view, centered.
+An editor window: a rounded rectangle with three small circles in its top bar and several short rounded bars of different lengths inside, indented like lines of code, one bar in cyan, centered.
 ```
 
 #### `landing-steps`
 - **Kind:** object
 - **Where:** Landing page, "How it works", under the heading in the left column.
-- **Generate:** 1024×1536 (2:3) · **Shown:** 420×560 · **Variants:** dark, light · **Light:** cyan
+- **Generate:** 1024×1536 (2:3) · **Shown:** 420×560 · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/landing/steps-{dark,light}.webp`
 
 ```text
-Three wide, shallow stone steps rising gently from the bottom left towards the upper right, each a single smooth slab. On the top step rests one small rounded stone with a soft glow of light inside it. Long soft shadows fall across the steps. A feeling of an easy, short path. Tall portrait composition with the steps in the lower two thirds and calm empty space above.
+Three blocks stacked like rising steps from the bottom left to the upper right: a server box with two slots, a plug, and a small group of three circles; a cyan dot on the top block. Tall portrait composition, the steps in the lower two thirds, empty space above.
 ```
 
 #### `landing-cta`
 - **Kind:** scene
 - **Where:** Landing page, background of the closing block "Give your team AI they can trust."
   (shown at low opacity behind centered text).
-- **Generate:** 1536×1024 (3:2), or 21:9 · **Shown:** 1150×430 · **Variants:** dark, light ·
-  **Light:** cyan
+- **Generate:** 1536×1024 (3:2) · **Shown:** 1150×430 · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/landing/cta-{dark,light}.webp`
 
 ```text
-A close, low view of the base of a monumental smooth stone monolith rising out of frame, its surface softly lit from one side, with a small soft glow of light emanating from deep within the stone near the bottom centre. The centre and top of the frame are quiet and dark-toned so text can sit there, and the image fades smoothly into the plain background at every edge. Monumental, calm, trustworthy.
+A few large, soft geometric shapes along the bottom edge and the two sides of the frame: half circles, a long rounded bar and one small cyan circle. The centre and the top are empty, for text.
 ```
 
 #### `og-image`
@@ -252,11 +239,11 @@ A close, low view of the base of a monumental smooth stone monolith rising out o
 - **Where:** The preview when someone shares a link to the site. Code adds the logo and "Your own
   AI. Nowhere else." on the left half.
 - **Generate:** 1536×1024 (3:2), cropped to 1200×630 · **Shown:** 1200×630
-- **Variants:** dark only · **Light:** cyan
-- **File:** `apps/web/public/images/og/og-art.webp` (the finished card: `apps/web/src/app/opengraph-image.tsx`)
+- **Variants:** dark only · **Accent:** cyan
+- **File:** `apps/web/public/images/og/og-art.webp` (the finished card: `apps/web/src/app/(marketing)/opengraph-image.tsx`)
 
 ```text
-A single tall, slender monolith of smooth stone standing in the right third of the frame on a perfectly plain seamless ground, a small soft glow of light emanating from within its lower third, with a long soft shadow falling to the left. The entire left half of the frame is empty plain background for a headline. Minimal, iconic, poster-like.
+On the right half of the frame only: a chat bubble, a document page and an editor window arranged around a central cyan circle, overlapping a little. The entire left half of the frame is empty, for a headline.
 ```
 
 ### Sign-in and account pages
@@ -265,39 +252,37 @@ A single tall, slender monolith of smooth stone standing in the right third of t
 - **Kind:** scene
 - **Where:** Right half of sign in, accept invitation, invalid invitation, forgot password, reset
   password and two-step setup on screens 1024 px and wider; a 160 px band above the card in the
-  desktop app's connect screen. The form keeps the left half; the customer's logo stays on it.
-- **Generate:** 1024×1536 (2:3) · **Shown:** 720×1080 · **Variants:** dark, light · **Light:** white
+  desktop app's connect screen.
+- **Generate:** 1024×1536 (2:3) · **Shown:** 720×1080 · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/auth/panel-{dark,light}.webp`
 
 ```text
-A quiet, enclosed stone courtyard seen from inside: smooth plain stone walls, and in the middle a single tall standing stone, slender and smooth, with a small soft glow of light emanating from within it. Soft daylight falls from an opening above, drawing a gentle pool of light on the floor around the stone. Private, protected, peaceful. Tall portrait composition, the stone slightly below centre, lots of calm wall and space around it.
+A tall, calm composition: an open doorway with a pale shape of light falling through it onto the floor, a small cyan keyhole shape on the door, and two or three simple floating shapes around it (a circle, a small rounded square). Tall portrait composition, the doorway slightly below the centre.
 ```
 
 #### `auth-setup`
 - **Kind:** scene
 - **Where:** Right half of the first-time setup page (the owner creates the organization).
-- **Generate:** 1024×1536 (2:3) · **Shown:** 720×1080 · **Variants:** dark, light · **Light:** white
+- **Generate:** 1024×1536 (2:3) · **Shown:** 720×1080 · **Variants:** dark, light · **Accent:** cyan
 - **File:** `apps/web/public/images/auth/setup-{dark,light}.webp`
 
 ```text
-A tall, simple stone archway standing on its own, viewed straight on, with soft warm-white light pouring through the opening and spilling a long pool of light across the smooth stone floor towards the viewer. Nothing visible beyond the arch except soft light. A threshold, a beginning, an invitation to step in. Tall portrait composition, the arch centered in the lower two thirds.
+A tall composition of simple building blocks being put together: a few rounded blocks stacked into a small structure, one block in cyan being placed on top, with a little empty space around it. Tall portrait composition, the blocks in the lower half.
 ```
 
 ### Empty states in the app
 
-These are small spot illustrations (**Kind:** object), all built the same way so they read as one family: **one
-object or one small group of stones, centered, filling about half the frame, on a plain
-background, no environment.** Ask for a transparent background if the model supports it (then the
-same file works in both themes); otherwise generate both variants.
+These are small spot illustrations (**Kind:** object), all built the same way so they read as one
+family: **one object or one small group, centered, filling about half the frame, on a plain
+background.**
 
-- **Generate:** 1024×1024 (1:1) · **Shown:** 176×176 · **Variants:** dark, light (or one transparent)
-  · **Light:** white
+- **Generate:** 1024×1024 (1:1) · **Shown:** 176×176 · **Variants:** dark, light · **Accent:** cyan
 - **Files:** `apps/web/public/images/empty/<name>-{dark,light}.webp`
 
 Add this to the Subject of each empty-state image:
 
 ```text
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 ```
 
 #### `empty-documents`
@@ -305,14 +290,14 @@ Isolated spot illustration: a single centered composition filling about half of 
   to upload"); also the chat composer's library picker when empty.
 
 ```text
-A neat stack of five thin, smooth slate tablets, slightly fanned so each edge is visible, the top tablet blank and perfectly smooth, waiting to be written on.
+A neat stack of three blank document pages, the top page with a folded corner in cyan.
 ```
 
 #### `empty-projects`
 - **Where:** Projects page when there are no projects, above "New project".
 
 ```text
-A shallow, rectangular stone tray holding three smooth pebbles of different sizes arranged neatly together, kept in one place.
+An open folder with three cards standing inside it, the front card with a small cyan tab.
 ```
 
 #### `empty-project-chats`
@@ -320,7 +305,7 @@ A shallow, rectangular stone tray holding three smooth pebbles of different size
   stay in this project…"). Shown at 120×120.
 
 ```text
-Two smooth rounded pebbles resting side by side inside a shallow round stone dish, touching lightly.
+A folder with two small rounded speech bubbles rising out of it, one bubble in cyan.
 ```
 
 #### `empty-work`
@@ -328,35 +313,35 @@ Two smooth rounded pebbles resting side by side inside a shallow round stone dis
   appear here…"), under the composer and its example buttons.
 
 ```text
-A smooth stone sphere resting at the start of a gentle, curving groove carved into a flat stone slab; the groove sweeps away in a graceful arc, showing the path the sphere will take. A small soft glow of light inside the sphere.
+A blank task card with three empty checkbox rows and a small cyan play-button circle at its corner.
 ```
 
 #### `empty-skills`
 - **Where:** Work AI → Skills, "No skills of your own yet".
 
 ```text
-A tidy row of four small carved stone tools of different simple shapes, a cube, a cylinder, a wedge and a small sphere, laid out evenly as a set.
+Four simple tool shapes laid out in a neat row: a wrench, a ruler, a pencil and a small gear, the gear in cyan.
 ```
 
 #### `empty-connections`
 - **Where:** Work AI → Connections, "No apps yet".
 
 ```text
-Two smooth standing stones a short distance apart, joined at the top by a thin, elegant stone bridge forming a small arch between them.
+Two rounded app tiles side by side, joined by a short curved cable with a plug, the plug in cyan.
 ```
 
 #### `empty-schedules`
 - **Where:** Work AI → Schedules, "Nothing scheduled".
 
 ```text
-A minimal round stone sundial: a flat smooth disc with a single thin triangular stone gnomon, casting one crisp, clean shadow across its face. No markings on the dial.
+A calendar page with an empty grid of small squares and a round clock overlapping its lower corner, the clock hands in cyan.
 ```
 
 #### `empty-code`
 - **Where:** Code page, "No workspaces yet".
 
 ```text
-A small stepped stone structure made of precisely cut rectangular blocks rising in three exact tiers, with crisp edges and perfectly flat faces, like a tiny ziggurat.
+A small editor window with three dots in its top bar and a few short rounded bars inside like lines of code, a blinking cursor bar in cyan.
 ```
 
 #### `empty-inbox`
@@ -364,40 +349,40 @@ A small stepped stone structure made of precisely cut rectangular blocks rising 
   "No pending invitations".
 
 ```text
-A single empty, shallow, round stone bowl with smooth thin walls, perfectly clean inside.
+An empty inbox tray, open at the front, with a small cyan dot floating just above it.
 ```
 
 #### `empty-models`
 - **Where:** Admin → Models, "No providers yet" and "No models yet".
 
 ```text
-A single empty square stone pedestal with clean edges, its flat top bare and softly lit from above, waiting for something to be placed on it.
+Two flat server boxes stacked, each with a row of small round lights, one light in cyan, and an empty slot on top of the stack.
 ```
 
 #### `empty-groups`
 - **Where:** Admin → Groups when there are none.
 
 ```text
-Five smooth stones of different sizes set close together in a neat circle on a shallow round stone plate.
+Three plain circles of different sizes overlapping slightly in a cluster, the smallest circle in cyan.
 ```
 
 #### `health-ok`
 - **Where:** Admin → Health, next to "Everything is working". Shown at 96×96.
 
 ```text
-A small cairn of three smooth stones balanced perfectly on top of each other, still and steady, with a small soft glow of light inside the top stone.
+A rounded shield with a simple check mark in cyan.
 ```
 
 #### `license-none`
 - **Where:** Admin → License when there's no license key yet ("Enter a new license key").
 
 ```text
-A smooth rectangular stone block with a single simple keyhole-shaped opening carved cleanly through its face, a small soft glow of light visible through the keyhole from inside.
+A simple key lying beside a closed padlock, the key in cyan.
 ```
 
 ### System pages
 
-- **Generate:** 1536×1024 (3:2) · **Shown:** 560×373 · **Variants:** dark, light · **Light:** white
+- **Generate:** 1536×1024 (3:2) · **Shown:** 560×373 · **Variants:** dark, light · **Accent:** cyan
 - **Files:** `apps/web/public/images/system/<name>-{dark,light}.webp`
 
 #### `not-found`
@@ -405,7 +390,7 @@ A smooth rectangular stone block with a single simple keyhole-shaped opening car
 - **Where:** The 404 page ("This page doesn't exist"), above the message and a button home.
 
 ```text
-A lone, simple stone archway standing in an empty, plain space with soft mist around its base; through the opening there is only more empty space, a doorway that leads nowhere. Quiet, slightly wistful, gentle. Centered, viewed straight on, small in the frame.
+A signpost with two blank arrow signs pointing in different directions, a small cyan dot at the top of the post, standing on a short flat ground line.
 ```
 
 #### `error`
@@ -413,7 +398,7 @@ A lone, simple stone archway standing in an empty, plain space with soft mist ar
 - **Where:** The error page ("Something went wrong"), above the message and "Try again".
 
 ```text
-A small cairn of smooth stones that has gently toppled: three stones resting calmly on the ground beside a low base stone, nothing broken, ready to be stacked again. Calm, not dramatic. Centered, viewed at eye level.
+Three puzzle-like blocks: two fitted together and one lying just beside them, slightly turned, its edge in cyan.
 ```
 
 #### `offline`
@@ -421,7 +406,7 @@ A small cairn of smooth stones that has gently toppled: three stones resting cal
 - **Where:** The desktop app's "Can't reach your server" screen.
 
 ```text
-A tall smooth monolith standing in thick soft fog, its outline faint and partly hidden, the small inner light inside it dimmed to a faint glow. Hushed, patient, waiting. Centered.
+A plug and a socket a short distance apart, not connected, with a small cyan spark-shaped gap between them.
 ```
 
 ---
@@ -431,19 +416,19 @@ A tall smooth monolith standing in thick soft fog, its outline faint and partly 
 - **Making them:** `scripts/generate-images.mjs generate` makes each image with FLUX.1-dev through
   NVIDIA's API (`NVIDIA_API_KEY`), or with `openai/gpt-image-2` through Pollinations
   (`POLLINATIONS_API_KEY`). FLUX can't take our image as input, so its light variant is made from the
-  same words and seed; gpt-image-2 converts the dark image. FLUX draws whatever a prompt names, so it
-  gets no "avoid" list, and empty-state objects are asked for from a high angle (no horizon).
+  same words and seed; gpt-image-2 converts the dark image.
   `--candidates n` makes several dark versions to choose from (`design/generated/candidates/`),
   `pick id=seed` keeps one; the chosen seeds are in `design/image-picks.json`, so `generate` makes the
   same set again. The originals stay in `design/generated/` (not committed).
-- **Exporting:** `scripts/generate-images.mjs export` grades every image the same way (neutral grey,
-  the dark variant a little deeper and the light one brighter, the glow in the brand cyan or white),
-  centres each empty-state object in its square, and writes WebP files at 1× and 2× of the size each
-  image is shown at into `apps/web/public/images/`, the list the app reads
-  (`apps/web/src/components/art/manifest.json`), the link-preview art and the desktop app's copies.
+- **Exporting:** `scripts/generate-images.mjs export` makes the greys neutral, splits each picture into
+  a grey base and an accent layer (the saturated parts), centres each empty-state object in its
+  square, and writes WebP files at 1× and 2× of the size each image is shown at into
+  `apps/web/public/images/`, the list the app reads (`apps/web/src/components/art/manifest.json`),
+  the link-preview art and the desktop app's copies (both with the cyan accent).
 - **Showing:** `<Art name="…">` (`apps/web/src/components/art/art.tsx`) shows the variant for the
-  current theme, is decorative (`alt=""`, hidden from screen readers), loads lazily with fixed
-  sizes so nothing jumps, and can fade its edges into whatever is behind it. `<EmptyState art="…">`
+  current theme, paints its accent layer in the organization's accent colour, is decorative
+  (`alt=""`, hidden from screen readers), loads lazily with fixed sizes so nothing jumps, and can
+  fade its edges into whatever is behind it. `<EmptyState art="…">`
   and `<ArtOr>` keep today's icon when there's no picture.
 - **Turning them off:** Admin → Settings → Organization & branding → Illustrations. The public
   landing page always shows its pictures.

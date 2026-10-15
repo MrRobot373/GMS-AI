@@ -11,6 +11,14 @@
     display: block;
     position: relative;
   }
+  .art-accent {
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    pointer-events: none;
+    mask-repeat: no-repeat;
+    -webkit-mask-repeat: no-repeat;
+  }
 }
 
 /* Generated images (components/art): their edges fade into whatever is behind them. */

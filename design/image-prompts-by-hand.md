@@ -7,58 +7,52 @@ Every picture in Aatmiq, with the full prompt to paste into an image tool (ChatG
 1. Make the **dark** version first, from its prompt. Make 2–4 and keep the best: no text, nothing extra, the object in the middle.
 2. Make the **light** version. Best: attach the dark image you kept and paste the *light from the dark one* prompt below, so both have the same composition. Otherwise paste the image's own light prompt.
 3. Save the files with the names given (`.jpg` or `.png`) into `design/generated/`, or send them to me.
-4. Run `node scripts/generate-images.mjs export` (or ask me): it gives every image the same grade (neutral grey, the glow in the brand cyan or white), centres the empty-state objects and writes the WebP files the app uses.
+4. Run `node scripts/generate-images.mjs export` (or ask me): it makes the greys neutral, splits off the accent so the app can paint it in the organization's colour, centres the empty-state objects and writes the WebP files the app uses.
 
-Don't worry about the exact colours: the export makes them consistent. What matters is the subject, the composition, a plain background and no text.
+Don't worry about the exact greys: the export makes them consistent. What matters is the subject, flat shapes, one small cyan accent, a plain background and no text.
 
 **Light from the dark one** (attach the dark image, then paste):
 
 ```text
-Recreate this exact image as its light version: keep the same composition, camera angle, framing, objects, proportions and empty space; change only the material, the light and the colours as follows.
+Recreate this exact image as its light version: keep the same composition, framing, shapes, proportions and empty space; change only the colours as follows.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-The background stays plain and seamless, and every edge of the frame fades smoothly into solid soft off-white (#FBFBFB). The tones are neutral off-white, very slightly warm, never peach, beige or yellow.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame. Keep the cyan accent on the same part.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
-
-(If the picture has a glow, add: *Keep the glowing light in the same place.*)
 
 ## Public website
 
 ### landing-hero
 
-- **Where:** Landing page, the top of the page, full width: the headline "Your own AI. Nowhere else." sits in its sky, the monolith stands below the buttons, and the product replica follows under it.
+- **Where:** Landing page, behind the headline "Your own AI. Nowhere else.", full width; the product replica follows below it.
 - **Shape:** 3:2 (landscape), e.g. 1536×1024
 - **Save as:** `landing-hero-dark.jpg` and `landing-hero-light.jpg`
 
 Dark:
 
 ```text
-A vast, perfectly calm, empty plain at nightfall under a deep, dark charcoal sky, seen from a low eye level. Far away and small in the frame, exactly in the horizontal centre, a single tall, slender monolith of smooth stone stands alone, its base at about 80% of the frame's height, a small soft glow of light emanating from within its lower third. A faint, low mist lies on the ground around it. Above it the sky is enormous, empty and smooth, filling the top 70% of the frame, so a headline can sit there, and fading seamlessly into the plain background colour at the top and side edges. The ground fades the same way at the bottom edge. Wide, cinematic, serene, a lot of empty space.
+A wide, calm composition of a few large geometric shapes placed only around the edges of the frame: a big quarter circle in the top left corner, a tall rounded rectangle on the right side, a thin arc low on the left, and a small cyan dot near the top right. The whole centre of the frame is empty, for a headline.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to near-black charcoal (#0F0F0F), and every edge of the frame fades smoothly into solid near-black charcoal (#0F0F0F), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A vast, perfectly calm, empty plain in soft, bright overcast daylight under a pale, empty sky, seen from a low eye level. Far away and small in the frame, exactly in the horizontal centre, a single tall, slender monolith of smooth stone stands alone, its base at about 80% of the frame's height, a small soft glow of light emanating from within its lower third. A faint, low mist lies on the ground around it. Above it the sky is enormous, empty and smooth, filling the top 70% of the frame, so a headline can sit there, and fading seamlessly into the plain background colour at the top and side edges. The ground fades the same way at the bottom edge. Wide, cinematic, serene, a lot of empty space.
+A wide, calm composition of a few large geometric shapes placed only around the edges of the frame: a big quarter circle in the top left corner, a tall rounded rectangle on the right side, a thin arc low on the left, and a small cyan dot near the top right. The whole centre of the frame is empty, for a headline.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to soft off-white (#FBFBFB), and every edge of the frame fades smoothly into solid soft off-white (#FBFBFB), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### landing-chat
@@ -70,29 +64,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-Two smooth, rounded river stones of slightly different sizes resting on a low rectangular stone plinth, turned gently towards each other as if in quiet conversation. A thin, soft line of light glows in the narrow gap between them, as if passing from one to the other. Simple, balanced, intimate. Centered, viewed at eye level.
+Two rounded speech bubbles overlapping slightly, one larger and one smaller, with three small dots inside the smaller bubble in cyan, centered.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-Two smooth, rounded river stones of slightly different sizes resting on a low rectangular stone plinth, turned gently towards each other as if in quiet conversation. A thin, soft line of light glows in the narrow gap between them, as if passing from one to the other. Simple, balanced, intimate. Centered, viewed at eye level.
+Two rounded speech bubbles overlapping slightly, one larger and one smaller, with three small dots inside the smaller bubble in cyan, centered.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### landing-work
@@ -104,29 +94,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A cairn of four flat, smooth stones stacked in perfect balance, decreasing in size towards the top, with a fifth small stone floating just above the stack about to settle into place. The top stone has a small soft glow of light within it. Precise, calm, a sense of steady progress. Centered, viewed slightly from below.
+A task card with three short horizontal bars like a checklist, the first two ticked with small round check marks, and a circular progress ring beside the card, three-quarters filled in cyan, centered.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A cairn of four flat, smooth stones stacked in perfect balance, decreasing in size towards the top, with a fifth small stone floating just above the stack about to settle into place. The top stone has a small soft glow of light within it. Precise, calm, a sense of steady progress. Centered, viewed slightly from below.
+A task card with three short horizontal bars like a checklist, the first two ticked with small round check marks, and a circular progress ring beside the card, three-quarters filled in cyan, centered.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### landing-code
@@ -138,29 +124,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-Two precisely machined stone blocks joined by a crisp interlocking dovetail joint, with razor-sharp edges and perfectly flat faces, sitting slightly apart as if just about to slide together. A small soft glow of light shines from inside the joint. Engineering precision, craftsmanship, exactness. Three-quarter view, centered.
+An editor window: a rounded rectangle with three small circles in its top bar and several short rounded bars of different lengths inside, indented like lines of code, one bar in cyan, centered.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-Two precisely machined stone blocks joined by a crisp interlocking dovetail joint, with razor-sharp edges and perfectly flat faces, sitting slightly apart as if just about to slide together. A small soft glow of light shines from inside the joint. Engineering precision, craftsmanship, exactness. Three-quarter view, centered.
+An editor window: a rounded rectangle with three small circles in its top bar and several short rounded bars of different lengths inside, indented like lines of code, one bar in cyan, centered.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### landing-steps
@@ -172,29 +154,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-Three wide, shallow stone steps rising gently from the bottom left towards the upper right, each a single smooth slab. On the top step rests one small rounded stone with a soft glow of light inside it. Long soft shadows fall across the steps. A feeling of an easy, short path. Tall portrait composition with the steps in the lower two thirds and calm empty space above.
+Three blocks stacked like rising steps from the bottom left to the upper right: a server box with two slots, a plug, and a small group of three circles; a cyan dot on the top block. Tall portrait composition, the steps in the lower two thirds, empty space above.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-Three wide, shallow stone steps rising gently from the bottom left towards the upper right, each a single smooth slab. On the top step rests one small rounded stone with a soft glow of light inside it. Long soft shadows fall across the steps. A feeling of an easy, short path. Tall portrait composition with the steps in the lower two thirds and calm empty space above.
+Three blocks stacked like rising steps from the bottom left to the upper right: a server box with two slots, a plug, and a small group of three circles; a cyan dot on the top block. Tall portrait composition, the steps in the lower two thirds, empty space above.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### landing-cta
@@ -206,29 +184,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A close, low view of the base of a monumental smooth stone monolith rising out of frame, its surface softly lit from one side, with a small soft glow of light emanating from deep within the stone near the bottom centre. The centre and top of the frame are quiet and dark-toned so text can sit there, and the image fades smoothly into the plain background at every edge. Monumental, calm, trustworthy.
+A few large, soft geometric shapes along the bottom edge and the two sides of the frame: half circles, a long rounded bar and one small cyan circle. The centre and the top are empty, for text.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to near-black charcoal (#0F0F0F), and every edge of the frame fades smoothly into solid near-black charcoal (#0F0F0F), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A close, low view of the base of a monumental smooth stone monolith rising out of frame, its surface softly lit from one side, with a small soft glow of light emanating from deep within the stone near the bottom centre. The centre and top of the frame are quiet and dark-toned so text can sit there, and the image fades smoothly into the plain background at every edge. Monumental, calm, trustworthy.
+A few large, soft geometric shapes along the bottom edge and the two sides of the frame: half circles, a long rounded bar and one small cyan circle. The centre and the top are empty, for text.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to soft off-white (#FBFBFB), and every edge of the frame fades smoothly into solid soft off-white (#FBFBFB), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### og-image
@@ -240,51 +214,45 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A single tall, slender monolith of smooth stone standing in the right third of the frame on a perfectly plain seamless ground, a small soft glow of light emanating from within its lower third, with a long soft shadow falling to the left. The entire left half of the frame is empty plain background for a headline. Minimal, iconic, poster-like.
+On the right half of the frame only: a chat bubble, a document page and an editor window arranged around a central cyan circle, overlapping a little. The entire left half of the frame is empty, for a headline.
 
-The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to near-black charcoal (#0F0F0F), and every edge of the frame fades smoothly into solid near-black charcoal (#0F0F0F), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ## Sign-in and account pages
 
 ### auth-panel
 
-- **Where:** Right half of sign in, accept invitation, invalid invitation, forgot password, reset password and two-step setup on screens 1024 px and wider; a 160 px band above the card in the desktop app's connect screen. The form keeps the left half; the customer's logo stays on it.
+- **Where:** Right half of sign in, accept invitation, invalid invitation, forgot password, reset password and two-step setup on screens 1024 px and wider; a 160 px band above the card in the desktop app's connect screen.
 - **Shape:** 2:3 (portrait), e.g. 1024×1536
 - **Save as:** `auth-panel-dark.jpg` and `auth-panel-light.jpg`
 
 Dark:
 
 ```text
-A quiet, enclosed stone courtyard seen from inside: smooth plain stone walls, and in the middle a single tall standing stone, slender and smooth, with a small soft glow of light emanating from within it. Soft daylight falls from an opening above, drawing a gentle pool of light on the floor around the stone. Private, protected, peaceful. Tall portrait composition, the stone slightly below centre, lots of calm wall and space around it.
+A tall, calm composition: an open doorway with a pale shape of light falling through it onto the floor, a small cyan keyhole shape on the door, and two or three simple floating shapes around it (a circle, a small rounded square). Tall portrait composition, the doorway slightly below the centre.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to near-black charcoal (#0F0F0F), and every edge of the frame fades smoothly into solid near-black charcoal (#0F0F0F), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A quiet, enclosed stone courtyard seen from inside: smooth plain stone walls, and in the middle a single tall standing stone, slender and smooth, with a small soft glow of light emanating from within it. Soft daylight falls from an opening above, drawing a gentle pool of light on the floor around the stone. Private, protected, peaceful. Tall portrait composition, the stone slightly below centre, lots of calm wall and space around it.
+A tall, calm composition: an open doorway with a pale shape of light falling through it onto the floor, a small cyan keyhole shape on the door, and two or three simple floating shapes around it (a circle, a small rounded square). Tall portrait composition, the doorway slightly below the centre.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to soft off-white (#FBFBFB), and every edge of the frame fades smoothly into solid soft off-white (#FBFBFB), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### auth-setup
@@ -296,29 +264,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A tall, simple stone archway standing on its own, viewed straight on, with soft warm-white light pouring through the opening and spilling a long pool of light across the smooth stone floor towards the viewer. Nothing visible beyond the arch except soft light. A threshold, a beginning, an invitation to step in. Tall portrait composition, the arch centered in the lower two thirds.
+A tall composition of simple building blocks being put together: a few rounded blocks stacked into a small structure, one block in cyan being placed on top, with a little empty space around it. Tall portrait composition, the blocks in the lower half.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to near-black charcoal (#0F0F0F), and every edge of the frame fades smoothly into solid near-black charcoal (#0F0F0F), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A tall, simple stone archway standing on its own, viewed straight on, with soft warm-white light pouring through the opening and spilling a long pool of light across the smooth stone floor towards the viewer. Nothing visible beyond the arch except soft light. A threshold, a beginning, an invitation to step in. Tall portrait composition, the arch centered in the lower two thirds.
+A tall composition of simple building blocks being put together: a few rounded blocks stacked into a small structure, one block in cyan being placed on top, with a little empty space around it. Tall portrait composition, the blocks in the lower half.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame; the shapes stay calm and sparse so the picture can sit behind or beside text.
 
-The whole scene stays within tones close to soft off-white (#FBFBFB), and every edge of the frame fades smoothly into solid soft off-white (#FBFBFB), so the image blends into a page of that colour.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ## Empty states in the app
@@ -332,29 +296,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A neat stack of five thin, smooth slate tablets, slightly fanned so each edge is visible, the top tablet blank and perfectly smooth, waiting to be written on.
+A neat stack of three blank document pages, the top page with a folded corner in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A neat stack of five thin, smooth slate tablets, slightly fanned so each edge is visible, the top tablet blank and perfectly smooth, waiting to be written on.
+A neat stack of three blank document pages, the top page with a folded corner in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-projects
@@ -366,29 +330,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A shallow, rectangular stone tray holding three smooth pebbles of different sizes arranged neatly together, kept in one place.
+An open folder with three cards standing inside it, the front card with a small cyan tab.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A shallow, rectangular stone tray holding three smooth pebbles of different sizes arranged neatly together, kept in one place.
+An open folder with three cards standing inside it, the front card with a small cyan tab.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-project-chats
@@ -400,29 +364,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-Two smooth rounded pebbles resting side by side inside a shallow round stone dish, touching lightly.
+A folder with two small rounded speech bubbles rising out of it, one bubble in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-Two smooth rounded pebbles resting side by side inside a shallow round stone dish, touching lightly.
+A folder with two small rounded speech bubbles rising out of it, one bubble in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-work
@@ -434,33 +398,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A smooth stone sphere resting at the start of a gentle, curving groove carved into a flat stone slab; the groove sweeps away in a graceful arc, showing the path the sphere will take. A small soft glow of light inside the sphere.
+A blank task card with three empty checkbox rows and a small cyan play-button circle at its corner.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A smooth stone sphere resting at the start of a gentle, curving groove carved into a flat stone slab; the groove sweeps away in a graceful arc, showing the path the sphere will take. A small soft glow of light inside the sphere.
+A blank task card with three empty checkbox rows and a small cyan play-button circle at its corner.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-skills
@@ -472,29 +432,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A tidy row of four small carved stone tools of different simple shapes, a cube, a cylinder, a wedge and a small sphere, laid out evenly as a set.
+Four simple tool shapes laid out in a neat row: a wrench, a ruler, a pencil and a small gear, the gear in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A tidy row of four small carved stone tools of different simple shapes, a cube, a cylinder, a wedge and a small sphere, laid out evenly as a set.
+Four simple tool shapes laid out in a neat row: a wrench, a ruler, a pencil and a small gear, the gear in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-connections
@@ -506,29 +466,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-Two smooth standing stones a short distance apart, joined at the top by a thin, elegant stone bridge forming a small arch between them.
+Two rounded app tiles side by side, joined by a short curved cable with a plug, the plug in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-Two smooth standing stones a short distance apart, joined at the top by a thin, elegant stone bridge forming a small arch between them.
+Two rounded app tiles side by side, joined by a short curved cable with a plug, the plug in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-schedules
@@ -540,29 +500,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A minimal round stone sundial: a flat smooth disc with a single thin triangular stone gnomon, casting one crisp, clean shadow across its face. No markings on the dial.
+A calendar page with an empty grid of small squares and a round clock overlapping its lower corner, the clock hands in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A minimal round stone sundial: a flat smooth disc with a single thin triangular stone gnomon, casting one crisp, clean shadow across its face. No markings on the dial.
+A calendar page with an empty grid of small squares and a round clock overlapping its lower corner, the clock hands in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-code
@@ -574,29 +534,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A small stepped stone structure made of precisely cut rectangular blocks rising in three exact tiers, with crisp edges and perfectly flat faces, like a tiny ziggurat.
+A small editor window with three dots in its top bar and a few short rounded bars inside like lines of code, a blinking cursor bar in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A small stepped stone structure made of precisely cut rectangular blocks rising in three exact tiers, with crisp edges and perfectly flat faces, like a tiny ziggurat.
+A small editor window with three dots in its top bar and a few short rounded bars inside like lines of code, a blinking cursor bar in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-inbox
@@ -608,29 +568,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A single empty, shallow, round stone bowl with smooth thin walls, perfectly clean inside.
+An empty inbox tray, open at the front, with a small cyan dot floating just above it.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A single empty, shallow, round stone bowl with smooth thin walls, perfectly clean inside.
+An empty inbox tray, open at the front, with a small cyan dot floating just above it.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-models
@@ -642,29 +602,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A single empty square stone pedestal with clean edges, its flat top bare and softly lit from above, waiting for something to be placed on it.
+Two flat server boxes stacked, each with a row of small round lights, one light in cyan, and an empty slot on top of the stack.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A single empty square stone pedestal with clean edges, its flat top bare and softly lit from above, waiting for something to be placed on it.
+Two flat server boxes stacked, each with a row of small round lights, one light in cyan, and an empty slot on top of the stack.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### empty-groups
@@ -676,29 +636,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-Five smooth stones of different sizes set close together in a neat circle on a shallow round stone plate.
+Three plain circles of different sizes overlapping slightly in a cluster, the smallest circle in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-Five smooth stones of different sizes set close together in a neat circle on a shallow round stone plate.
+Three plain circles of different sizes overlapping slightly in a cluster, the smallest circle in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### health-ok
@@ -710,33 +670,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A small cairn of three smooth stones balanced perfectly on top of each other, still and steady, with a small soft glow of light inside the top stone.
+A rounded shield with a simple check mark in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A small cairn of three smooth stones balanced perfectly on top of each other, still and steady, with a small soft glow of light inside the top stone.
+A rounded shield with a simple check mark in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### license-none
@@ -748,33 +704,29 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A smooth rectangular stone block with a single simple keyhole-shaped opening carved cleanly through its face, a small soft glow of light visible through the keyhole from inside.
+A simple key lying beside a closed padlock, the key in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A smooth rectangular stone block with a single simple keyhole-shaped opening carved cleanly through its face, a small soft glow of light visible through the keyhole from inside.
+A simple key lying beside a closed padlock, the key in cyan.
 
-Isolated spot illustration: a single centered composition filling about half of the square frame, generous empty margin on every side, no floor line, no environment, only a soft contact shadow beneath the objects.
+Spot illustration: one centered object filling about half of the square frame, the same empty margin on every side.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ## System pages
@@ -788,25 +740,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A lone, simple stone archway standing in an empty, plain space with soft mist around its base; through the opening there is only more empty space, a doorway that leads nowhere. Quiet, slightly wistful, gentle. Centered, viewed straight on, small in the frame.
+A signpost with two blank arrow signs pointing in different directions, a small cyan dot at the top of the post, standing on a short flat ground line.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A lone, simple stone archway standing in an empty, plain space with soft mist around its base; through the opening there is only more empty space, a doorway that leads nowhere. Quiet, slightly wistful, gentle. Centered, viewed straight on, small in the frame.
+A signpost with two blank arrow signs pointing in different directions, a small cyan dot at the top of the post, standing on a short flat ground line.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### error
@@ -818,25 +770,25 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A small cairn of smooth stones that has gently toppled: three stones resting calmly on the ground beside a low base stone, nothing broken, ready to be stacked again. Calm, not dramatic. Centered, viewed at eye level.
+Three puzzle-like blocks: two fitted together and one lying just beside them, slightly turned, its edge in cyan.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A small cairn of smooth stones that has gently toppled: three stones resting calmly on the ground beside a low base stone, nothing broken, ready to be stacked again. Calm, not dramatic. Centered, viewed at eye level.
+Three puzzle-like blocks: two fitted together and one lying just beside them, slightly turned, its edge in cyan.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 ### offline
@@ -848,27 +800,23 @@ Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; peo
 Dark:
 
 ```text
-A tall smooth monolith standing in thick soft fog, its outline faint and partly hidden, the small inner light inside it dimmed to a faint glow. Hushed, patient, waiting. Centered.
+A plug and a socket a short distance apart, not connected, with a small cyan spark-shaped gap between them.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of dark charcoal grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of matte dark basalt and graphite with a fine natural grain, no gloss. One soft diffused key light from the upper left, gentle long shadows, rich deep tones, low-key exposure. Near-monochrome, cool neutral grey palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of dark charcoal (#0F0F0F) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid near-black charcoal (#0F0F0F) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```
 
 Light:
 
 ```text
-A tall smooth monolith standing in thick soft fog, its outline faint and partly hidden, the small inner light inside it dimmed to a faint glow. Hushed, patient, waiting. Centered.
+A plug and a socket a short distance apart, not connected, with a small cyan spark-shaped gap between them.
 
-The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.
+Modern editorial vector illustration made of simple geometric shapes filled with three shades of soft light grey and one bright cyan highlight on one small part, clean crisp edges, flat colour with no gradients, no outlines and no 3D shading, at most one soft flat shadow shape, a very fine paper grain. Minimal, calm, premium, centered, plenty of empty space.
 
-Minimal fine-art photograph, museum quality. Stone of pale limestone and soft travertine with a fine natural grain, no gloss. One soft diffused daylight from the upper left, gentle long soft shadows, airy high-key exposure. Near-monochrome, warm neutral off-white palette. Generous negative space; the subject never touches the edges. Calm, quiet, premium, timeless. Photorealistic, high detail, sharp focus on the subject.
+On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame.
 
-Studio still life on a seamless plain background of solid soft off-white (#FBFBFB) that fills the whole frame, with no horizon line, no floor edge, no vignette and no texture.
-
-Avoid: any text, letters, numbers or symbols; logos; watermarks; signatures; people, hands or faces; computer screens or user interfaces; robots; brains; circuit boards; network lines or nodes; holograms; neon; lens flare; rainbow or purple gradients; glossy plastic; cartoon or clip-art style; busy patterns; clutter; extra objects not described.
+No words, letters, numbers or logos; no people, faces or hands; no photographs, 3D renders, gradients, glows, glass or neon; no clutter and no objects other than those described.
 ```

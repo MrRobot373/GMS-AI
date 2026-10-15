@@ -62,7 +62,7 @@ function parse() {
       defaults = {
         generate: field(part, "Generate"),
         shown: field(part, "Shown"),
-        light: field(part, "Light"),
+        light: field(part, "Accent") ?? field(part, "Light"),
         files: part.match(/\*\*Files?:\*\* `([^`]+)`/)?.[1],
         kind: /\*\*Kind:\*\* object/.test(part) ? "object" : undefined,
       };
@@ -85,7 +85,7 @@ function parse() {
       w,
       h,
       shown,
-      light: (field(part, "Light") ?? defaults.light).split(" ")[0],
+      light: (field(part, "Accent") ?? field(part, "Light") ?? defaults.light).split(" ")[0],
       variants: /\*\*Variants:\*\* dark only/.test(part) ? ["dark"] : ["dark", "light"],
       dir,
       base,
@@ -96,57 +96,29 @@ function parse() {
   return { shared, images };
 }
 
-const GLOW = {
-  cyan: "The glowing light is a small, soft cyan (#22D3EE), the only colour in the image.",
-  white: "The glowing light is a soft warm white (#F3EFE6); there is no other colour in the image.",
-};
-const hasGlow = (subject) => /glow|inner light|line of light|light pouring/i.test(subject);
-
 /*
  * Two providers. Pollinations (POLLINATIONS_API_KEY): openai/gpt-image-2, the light variant made by
  * editing the dark image. NVIDIA (NVIDIA_API_KEY): FLUX.1-dev, which can't take our image as input, so
  * the light variant is generated from the same words and seed. FLUX draws whatever a prompt names, so it
- * gets no "avoid" list, and it needs the colour spelled out.
+ * gets a short "no words" line instead of the full avoid list.
  */
 const PROVIDER = opt("provider", process.env.NVIDIA_API_KEY ? "nvidia" : "pollinations");
 const FLUX = PROVIDER === "nvidia";
-const BG_WORDS = { dark: "near-black charcoal (#0F0F0F)", light: "soft off-white (#FBFBFB)" };
-const fluxMono = (img) =>
-  `Shot as a black-and-white photograph: every surface, the sky and the background are neutral grey with no colour cast, no blue, teal, green or brown tint${hasGlow(img.subject) ? "; the small glow is the only colour" : ""}.`;
-const FLUX_TONE = {
-  dark: "Low-key, dark and moody exposure: the image is mostly deep near-black charcoal, the subject lit softly.",
-  light: "High-key, bright and airy exposure: the image is mostly soft off-white, the subject lit softly.",
-};
-const FLUX_ONLY = "Only the objects described, nothing else in the frame.";
-// FLUX puts small objects on a floor at the bottom; empty states need them in the middle.
-const FLUX_SPOT =
-  "Product shot from a high angle, looking down at about 50 degrees, so the background is only the seamless floor surface: no wall, no horizon and no floor edge anywhere in the frame. The object sits exactly in the middle of the square frame and fills about half of it, with equal empty space above, below and on both sides, and a soft shadow right under it.";
-
-// FLUX makes the light variant from words alone, so a subject set at night needs its daytime wording.
-const LIGHT_SWAPS = [[/at nightfall under a deep, dark charcoal sky/g, "in soft, bright overcast daylight under a pale, empty sky"]];
-const subjectFor = (img, variant) => (FLUX && variant === "light" ? LIGHT_SWAPS.reduce((t, [a, b]) => t.replace(a, b), img.subject) : img.subject);
+const BG_WORDS = { dark: "dark charcoal (#0F0F0F)", light: "soft off-white (#FBFBFB)" };
+const FLUX_NO = "No words, letters, numbers or logos.";
 
 function prompt({ shared }, img, variant) {
-  const bg = shared.bg[img.kind].replaceAll("{BG}", FLUX ? BG_WORDS[variant] : BG[variant]);
-  if (FLUX) {
-    return [subjectFor(img, variant), img.spot ? FLUX_SPOT : null, hasGlow(img.subject) ? GLOW[img.light] : null, fluxMono(img), FLUX_TONE[variant], shared.style[variant], bg, FLUX_ONLY]
-      .filter(Boolean)
-      .join("\n\n");
-  }
-  if (variant === "dark") {
-    return [img.subject, img.spot ? shared.spot : null, hasGlow(img.subject) ? GLOW[img.light] : null, shared.style.dark, bg, shared.avoid].filter(Boolean).join("\n\n");
-  }
+  const bg = shared.bg[img.kind].replaceAll("{BG}", BG_WORDS[variant]);
+  const parts = [img.subject, img.spot ? shared.spot : null];
+  if (FLUX) return [...parts, shared.style[variant], bg, FLUX_NO].filter(Boolean).join("\n\n");
+  if (variant === "dark") return [...parts, shared.style.dark, bg, shared.avoid].filter(Boolean).join("\n\n");
   // Pollinations' light variant edits the dark image.
   return [
-    "Recreate this exact image as its light version: keep the same composition, camera angle, framing, objects, proportions and empty space; change only the material, the light and the colours as follows.",
-    hasGlow(img.subject) ? `Keep the glowing light in the same place. ${GLOW[img.light]}` : null,
+    "Recreate this exact image as its light version: keep the same composition, framing, shapes, proportions and empty space; change only the colours as follows.",
     shared.style.light,
     bg,
-    "The tones are neutral off-white, very slightly warm, never peach, beige or yellow.",
     shared.avoid,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  ].join("\n\n");
 }
 
 /* ── Generating ── */
@@ -331,30 +303,41 @@ const smooth = (a, b, x) => Math.min(1, Math.max(0, (x - a) / (b - a)));
 const CYAN = [0x22 / 255, 0xd3 / 255, 0xee / 255];
 
 /*
- * The same grade for every image, whatever the model did: neutral grey everywhere (models like to tint
- * a dusk scene teal or a studio warm), the dark variant a little deeper and the light one a little
- * brighter, and the glow, the only saturated part, in the brand cyan (marketing) or white (the app).
+ * Every picture is split into two layers, whatever colours the model used:
+ * - a grey base (the dark variant a little deeper, the light one a little brighter);
+ * - an accent layer: where the picture is saturated, as transparency, which the app paints in the
+ *   organization's accent colour (CSS mask), so a re-coloured product gets matching pictures.
+ * `colour` is the two put together in the brand cyan, for the places that can't paint (the desktop
+ * app, the link preview).
  */
-async function graded(sharp, img, variant) {
+async function layers(sharp, img, variant) {
   const { data, info } = await sharp(rawFile(img, variant)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-  const out = Buffer.alloc(data.length);
-  const cyan = img.light === "cyan";
-  for (let i = 0; i < data.length; i += 3) {
+  const n = info.width * info.height;
+  const base = Buffer.alloc(n * 3);
+  const mask = Buffer.alloc(n * 4);
+  const colour = Buffer.alloc(n * 3);
+  let accentPixels = 0;
+  for (let i = 0, j = 0, k = 0; i < data.length; i += 3, j += 4, k++) {
     const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
     const sat = max ? (max - min) / max : 0;
     let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    l = variant === "dark" ? Math.pow(l, 1.2) : 1 - Math.pow(1 - l, 1.2);
-    let o = [l, l, l];
-    if (cyan) {
-      const m = smooth(0.15, 0.35, sat) * smooth(0.25, 0.5, max);
-      if (m > 0) o = o.map((c, k) => c * (1 - m) + Math.min(1, (CYAN[k] / CYAN[2]) * Math.max(max, l)) * m);
-    }
-    out[i] = Math.round(o[0] * 255);
-    out[i + 1] = Math.round(o[1] * 255);
-    out[i + 2] = Math.round(o[2] * 255);
+    l = variant === "dark" ? Math.pow(l, 1.15) : 1 - Math.pow(1 - l, 1.15);
+    const m = smooth(0.18, 0.38, sat) * smooth(0.22, 0.45, max);
+    if (m > 0.5) accentPixels++;
+    base[i] = base[i + 1] = base[i + 2] = Math.round(l * 255);
+    mask[j] = mask[j + 1] = mask[j + 2] = 255;
+    mask[j + 3] = Math.round(m * 255);
+    for (let c = 0; c < 3; c++) colour[i + c] = Math.round((l * (1 - m) + CYAN[c] * m) * 255);
   }
-  return sharp(out, { raw: info });
+  const raw = { raw: { width: info.width, height: info.height, channels: 3 } };
+  return {
+    base: await sharp(base, raw).png().toBuffer(),
+    mask: await sharp(mask, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer(),
+    colour: await sharp(colour, raw).png().toBuffer(),
+    // A few stray pixels aren't an accent.
+    hasAccent: accentPixels > n * 0.0005,
+  };
 }
 
 /*
@@ -390,18 +373,18 @@ async function subjectSquare(sharp, pipeline, width, height) {
 }
 
 /**
- * The picture with its object nearer the middle: a square crop of 55–80% of the frame around it, kept
+ * Where to crop so the object sits nearer the middle: a square of 55–80% of the frame around it, kept
  * inside the picture (extending the backdrop shows seams), so an object low in the frame moves up.
  */
-async function centredSquare(sharp, source) {
+async function centredBox(sharp, source) {
   const { width, height } = await sharp(source).metadata();
-  const box = await subjectSquare(sharp, sharp(source), width, height);
-  if (!box) return source;
   const full = Math.min(width, height);
+  const box = await subjectSquare(sharp, sharp(source), width, height);
+  if (!box) return { left: Math.round((width - full) / 2), top: Math.round((height - full) / 2), width: full, height: full };
   const side = Math.round(Math.min(full * 0.8, Math.max(full * 0.55, box.side)));
   const left = Math.round(Math.min(width - side, Math.max(0, box.cx - side / 2)));
   const top = Math.round(Math.min(height - side, Math.max(0, box.cy - side / 2)));
-  return sharp(source).extract({ left, top, width: side, height: side }).png().toBuffer();
+  return { left, top, width: side, height: side };
 }
 
 async function exportAll() {
@@ -422,7 +405,7 @@ async function exportAll() {
     if (img.id === "og-image") {
       // The link preview's art, cropped to 1200×630; the card adds the logo and headline.
       const out = join(PUBLIC, img.dir, `${img.base}.jpg`);
-      await (await graded(sharp, img, "dark")).resize(1200, 630, { fit: "cover", position: "centre" }).jpeg({ quality: 86, mozjpeg: true }).toFile(out);
+      await sharp((await layers(sharp, img, "dark")).colour).resize(1200, 630, { fit: "cover", position: "centre" }).jpeg({ quality: 86, mozjpeg: true }).toFile(out);
       continue;
     }
     // 1× and 2× of the largest size it's shown at, never larger than what the model made (its own size,
@@ -431,17 +414,30 @@ async function exportAll() {
     const w = img.spot ? Math.min(real.width, real.height) : real.width;
     const h = img.spot ? w : real.height;
     const widths = img.shown ? [...new Set([Math.min(img.shown[0], w), Math.min(img.shown[0] * 2, w)])] : [Math.min(960, w), w];
+    let accent = false;
     for (const variant of img.variants) {
-      // Graded once, into a buffer, then cropped (empty states) and resized for each width.
-      let source = await (await graded(sharp, img, variant)).png().toBuffer();
-      if (img.spot) source = await centredSquare(sharp, source);
+      // Split once, cropped the same way (empty states), then resized for each width.
+      const parts = await layers(sharp, img, variant);
+      let { base, mask } = parts;
+      if (img.spot) {
+        const box = await centredBox(sharp, base);
+        base = await sharp(base).extract(box).png().toBuffer();
+        mask = await sharp(mask).extract(box).png().toBuffer();
+      }
       for (const width of widths) {
         const out = join(PUBLIC, img.dir, `${img.base}-${variant}-${width}.webp`);
-        const info = await sharp(source).resize({ width, height: img.spot ? width : undefined, fit: "cover" }).webp({ quality: 80, effort: 6, smartSubsample: true }).toFile(out);
+        const info = await sharp(base).resize({ width, height: img.spot ? width : undefined, fit: "cover" }).webp({ quality: 80, effort: 6, smartSubsample: true }).toFile(out);
+        bytes += info.size;
+      }
+      if (parts.hasAccent) {
+        accent = true;
+        // One size: a CSS mask can't pick between 1x and 2x, and the layer is mostly empty.
+        const width = widths[widths.length - 1];
+        const info = await sharp(mask).resize({ width, height: img.spot ? width : undefined, fit: "cover" }).webp({ quality: 85, alphaQuality: 90, effort: 6 }).toFile(join(PUBLIC, img.dir, `${img.base}-${variant}-accent.webp`));
         bytes += info.size;
       }
     }
-    manifest[img.id] = { src: `/images/${img.dir}/${img.base}`, width: w, height: h, widths, variants: img.variants };
+    manifest[img.id] = { src: `/images/${img.dir}/${img.base}`, width: w, height: h, widths, variants: img.variants, accent };
   }
   mkdirSync(dirname(MANIFEST), { recursive: true });
   writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2) + "\n");
@@ -451,7 +447,7 @@ async function exportAll() {
   for (const id of ["offline", "auth-panel"]) {
     const img = images.find((i) => i.id === id);
     if (!img || !manifest[id]) continue;
-    await (await graded(sharp, img, "dark")).resize({ width: 720 }).webp({ quality: 78, effort: 6 }).toFile(join(DESKTOP, `${img.base}-dark.webp`));
+    await sharp((await layers(sharp, img, "dark")).colour).resize({ width: 720 }).webp({ quality: 78, effort: 6 }).toFile(join(DESKTOP, `${img.base}-dark.webp`));
   }
   const files = readdirSync(PUBLIC, { recursive: true }).filter((f) => /\.(webp|jpg)$/.test(f)).length;
   console.log(`${Object.keys(manifest).length} images, ${files} files, ${(bytes / 1024 / 1024).toFixed(1)} MB of WebP in ${PUBLIC}`);
@@ -481,22 +477,20 @@ function promptsByHand() {
     "1. Make the **dark** version first, from its prompt. Make 2–4 and keep the best: no text, nothing extra, the object in the middle.",
     "2. Make the **light** version. Best: attach the dark image you kept and paste the *light from the dark one* prompt below, so both have the same composition. Otherwise paste the image's own light prompt.",
     "3. Save the files with the names given (`.jpg` or `.png`) into `design/generated/`, or send them to me.",
-    "4. Run `node scripts/generate-images.mjs export` (or ask me): it gives every image the same grade (neutral grey, the glow in the brand cyan or white), centres the empty-state objects and writes the WebP files the app uses.",
+    "4. Run `node scripts/generate-images.mjs export` (or ask me): it makes the greys neutral, splits off the accent so the app can paint it in the organization's colour, centres the empty-state objects and writes the WebP files the app uses.",
     "",
-    "Don't worry about the exact colours: the export makes them consistent. What matters is the subject, the composition, a plain background and no text.",
+    "Don't worry about the exact greys: the export makes them consistent. What matters is the subject, flat shapes, one small cyan accent, a plain background and no text.",
     "",
     "**Light from the dark one** (attach the dark image, then paste):",
     "",
     "```text",
     [
-      "Recreate this exact image as its light version: keep the same composition, camera angle, framing, objects, proportions and empty space; change only the material, the light and the colours as follows.",
+      "Recreate this exact image as its light version: keep the same composition, framing, shapes, proportions and empty space; change only the colours as follows.",
       parsed.shared.style.light,
-      "The background stays plain and seamless, and every edge of the frame fades smoothly into solid soft off-white (#FBFBFB). The tones are neutral off-white, very slightly warm, never peach, beige or yellow.",
+      "On a plain solid background of soft off-white (#FBFBFB) that fills the whole frame. Keep the cyan accent on the same part.",
       parsed.shared.avoid,
     ].join("\n\n"),
     "```",
-    "",
-    "(If the picture has a glow, add: *Keep the glowing light in the same place.*)",
     "",
   ];
   let section = "";
@@ -526,10 +520,9 @@ function promptsByHand() {
   console.log(`${parsed.images.length} images → design/image-prompts-by-hand.md`);
 }
 
-/** One paragraph per part, for any tool: the subject (in daylight for a light scene), style, background, avoid. */
+/** One paragraph per part, for any tool: subject, style, background, avoid. */
 function handPrompt({ shared }, img, variant) {
-  const subject = variant === "light" ? LIGHT_SWAPS.reduce((t, [a, b]) => t.replace(a, b), img.subject) : img.subject;
-  return [subject, img.spot ? shared.spot : null, hasGlow(img.subject) ? GLOW[img.light] : null, shared.style[variant], shared.bg[img.kind].replaceAll("{BG}", `${BG_WORDS[variant]}`), shared.avoid]
+  return [img.subject, img.spot ? shared.spot : null, shared.style[variant], shared.bg[img.kind].replaceAll("{BG}", BG_WORDS[variant]), shared.avoid]
     .filter(Boolean)
     .join("\n\n");
 }

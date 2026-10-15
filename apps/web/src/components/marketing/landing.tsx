@@ -26,13 +26,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Art, type ArtName } from "@/components/art/art";
-import artManifest from "@/components/art/manifest.json";
 import { Logo, LogoMark } from "@/components/ui/logo";
 import { HeroVisual } from "./hero-visual";
 
 const CONTACT = "mailto:hello@aatmiq.com?subject=Aatmiq%20demo";
-/** With the hero picture, the product replica moves down to leave its monolith in view. */
-const HAS_HERO_ART = "landing-hero" in artManifest;
 
 function Section({ id, children, className = "" }: { id?: string; children: ReactNode; className?: string }) {
   return (
@@ -72,7 +69,7 @@ export function Landing() {
         </div>
       </header>
 
-      {/* Hero: the headline in the picture's sky, its monolith under the buttons, then the product. */}
+      {/* Hero: the picture's shapes frame the headline; the product follows. */}
       <div className="relative isolate">
       <Art
         name="landing-hero"
@@ -80,7 +77,7 @@ export function Landing() {
         eager
         fit="cover"
         fade="bottom"
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[860px] [&_img]:object-[center_70%]"
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[760px] opacity-80"
       />
       <Section className="pt-16 pb-20 text-center sm:pt-24">
         <div className="mx-auto mb-6 inline-flex animate-rise items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-[12.5px] text-fg-muted">
@@ -105,7 +102,7 @@ export function Landing() {
             <Link href="/login">Sign in to your workspace</Link>
           </Button>
         </div>
-        <div className={HAS_HERO_ART ? "mt-16 sm:mt-56" : "mt-16"}>
+        <div className="mt-16">
           <HeroVisual />
         </div>
         <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[13px] text-fg-subtle">
@@ -218,7 +215,7 @@ export function Landing() {
             <Eyebrow>Up and running in a day</Eyebrow>
             <h2 className="font-serif text-[36px] leading-tight tracking-[-0.02em] sm:text-[44px]">Install it. Connect your models. Invite your team.</h2>
             <p className="mt-4 text-fg-muted">We help you set it up and keep it updated. You keep full ownership of the server and the data.</p>
-            <Art name="landing-steps" always fit="cover" fade="edges" sizes="420px" className="mt-6 hidden aspect-[4/3] w-full max-w-[420px] lg:block [&_img]:object-bottom" />
+            <Art name="landing-steps" always fit="cover" fade="edges" sizes="420px" position="bottom" className="mt-6 hidden aspect-[4/3] w-full max-w-[420px] lg:block" />
           </div>
           <ol className="space-y-3">
             {[

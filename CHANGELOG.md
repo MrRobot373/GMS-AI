@@ -15,10 +15,11 @@ without one.
   the organization's default; the admin console stays in English.
 - Accessibility: every page meets WCAG 2.1 AA in both themes (contrast, names for controls), a
   "Skip to content" link, and long dialogs scroll with their buttons in view.
-- Pictures: a calm set of images in one style (stone and a small light) on the sign-in pages, the
-  empty pages (documents, projects, tasks, skills, connections, schedules, code, admin), Health, the
-  public site and the desktop app, in dark and light. Admin → Settings → Illustrations turns them
-  off. The "page not found" and error pages are now in the product's style, in English and Hindi.
+- Pictures: a set of flat, geometric illustrations on the sign-in pages, the empty pages (documents,
+  projects, tasks, skills, connections, schedules, code, admin), Health, the public site and the
+  desktop app, in dark and light. Their accent takes your organization's accent colour. Admin →
+  Settings → Illustrations turns them off. The "page not found" and error pages are now in the
+  product's style, in English and Hindi.
 - Open-source notices: the full license texts of every package ship in the images (and at
   `/third-party-notices.txt` on your installation), and each release and the offline bundle carry
   `legal/` with the list of open-source components and AI models and their licenses.
