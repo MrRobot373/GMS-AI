@@ -151,7 +151,11 @@ function prompt({ shared }, img, variant) {
 
 /* ── Generating ── */
 
-const rawFile = (img, variant) => join(RAW, `${img.id}-${variant}.jpg`);
+// Made here as .jpg; images made by hand may also be .png, .jpeg or .webp.
+const rawFile = (img, variant) => {
+  const base = join(RAW, `${img.id}-${variant}`);
+  return [".jpg", ".png", ".jpeg", ".webp"].map((ext) => base + ext).find((f) => existsSync(f)) ?? `${base}.jpg`;
+};
 const candidateFile = (img, seed) => join(RAW, "candidates", `${img.id}-dark@${seed}.jpg`);
 // The chosen seed of each image (and of its light variant where it differs): FLUX makes the same picture
 // again from the same words and seed, so the set can be remade.
@@ -455,6 +459,81 @@ async function exportAll() {
 
 /* ── ── */
 
+/*
+ * prompts: design/image-prompts-by-hand.md, every image's full dark and light prompt, ready to paste into
+ * any image tool, with its size and the file name to save it under (in design/generated/; then export).
+ */
+function promptsByHand() {
+  const md = readFileSync(PROMPTS, "utf8");
+  const parsed = parse();
+  const where = (id) => {
+    const block = md.split(/\n(?=#### )/).find((b) => b.startsWith("#### `" + id + "`")) ?? "";
+    return block.match(/\*\*Where:\*\* ([\s\S]*?)(?=\n- \*\*|\n\n)/)?.[1].replace(/\s*\n\s*/g, " ").trim() ?? "";
+  };
+  const ratio = (img) => (img.w === img.h ? "1:1 (square), e.g. 1024×1024" : img.w > img.h ? "3:2 (landscape), e.g. 1536×1024" : "2:3 (portrait), e.g. 1024×1536");
+  const out = [
+    "# Image prompts, one by one",
+    "",
+    "Every picture in Aatmiq, with the full prompt to paste into an image tool (ChatGPT, Midjourney, Firefly, FLUX…), the shape to ask for, and the file name to save it under. Generated from `design/image-prompts.md` by `node scripts/generate-images.mjs prompts`.",
+    "",
+    "**How to use it**",
+    "",
+    "1. Make the **dark** version first, from its prompt. Make 2–4 and keep the best: no text, nothing extra, the object in the middle.",
+    "2. Make the **light** version. Best: attach the dark image you kept and paste the *light from the dark one* prompt below, so both have the same composition. Otherwise paste the image's own light prompt.",
+    "3. Save the files with the names given (`.jpg` or `.png`) into `design/generated/`, or send them to me.",
+    "4. Run `node scripts/generate-images.mjs export` (or ask me): it gives every image the same grade (neutral grey, the glow in the brand cyan or white), centres the empty-state objects and writes the WebP files the app uses.",
+    "",
+    "Don't worry about the exact colours: the export makes them consistent. What matters is the subject, the composition, a plain background and no text.",
+    "",
+    "**Light from the dark one** (attach the dark image, then paste):",
+    "",
+    "```text",
+    [
+      "Recreate this exact image as its light version: keep the same composition, camera angle, framing, objects, proportions and empty space; change only the material, the light and the colours as follows.",
+      parsed.shared.style.light,
+      "The background stays plain and seamless, and every edge of the frame fades smoothly into solid soft off-white (#FBFBFB). The tones are neutral off-white, very slightly warm, never peach, beige or yellow.",
+      parsed.shared.avoid,
+    ].join("\n\n"),
+    "```",
+    "",
+    "(If the picture has a glow, add: *Keep the glowing light in the same place.*)",
+    "",
+  ];
+  let section = "";
+  for (const img of parsed.images) {
+    if (img.section !== section) {
+      section = img.section;
+      out.push(`## ${section}`, "");
+    }
+    const light = img.variants.includes("light");
+    out.push(
+      `### ${img.id}`,
+      "",
+      `- **Where:** ${where(img.id)}`,
+      `- **Shape:** ${ratio(img)}`,
+      `- **Save as:** \`${img.id}-dark.jpg\`${light ? ` and \`${img.id}-light.jpg\`` : " (dark only)"}`,
+      "",
+      "Dark:",
+      "",
+      "```text",
+      handPrompt(parsed, img, "dark"),
+      "```",
+      "",
+    );
+    if (light) out.push("Light:", "", "```text", handPrompt(parsed, img, "light"), "```", "");
+  }
+  writeFileSync(join(ROOT, "design/image-prompts-by-hand.md"), out.join("\n"));
+  console.log(`${parsed.images.length} images → design/image-prompts-by-hand.md`);
+}
+
+/** One paragraph per part, for any tool: the subject (in daylight for a light scene), style, background, avoid. */
+function handPrompt({ shared }, img, variant) {
+  const subject = variant === "light" ? LIGHT_SWAPS.reduce((t, [a, b]) => t.replace(a, b), img.subject) : img.subject;
+  return [subject, img.spot ? shared.spot : null, hasGlow(img.subject) ? GLOW[img.light] : null, shared.style[variant], shared.bg[img.kind].replaceAll("{BG}", `${BG_WORDS[variant]}`), shared.avoid]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 if (cmd === "list") {
   const parsed = parse();
   for (const img of parsed.images.filter((i) => !only || only.includes(i.id))) {
@@ -465,6 +544,8 @@ if (cmd === "list") {
   await generate();
 } else if (cmd === "pick") {
   pick();
+} else if (cmd === "prompts") {
+  promptsByHand();
 } else if (cmd === "export") {
   await exportAll();
 } else {
