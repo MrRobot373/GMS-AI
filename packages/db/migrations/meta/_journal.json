@@ -162,6 +162,13 @@
       "when": 1792171843516,
       "tag": "0022_gem_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792172762230,
+      "tag": "0023_gem_chat_calculator",
+      "breakpoints": true
     }
   ]
 }

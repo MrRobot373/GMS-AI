@@ -46,6 +46,7 @@ import { scimRoutes } from "./routes/scim";
 import { healthRoutes } from "./routes/health";
 import { learningRoutes } from "./routes/learning";
 import { gemAdminRoutes } from "./routes/gem-admin";
+import { calculatorRoutes } from "./routes/calculators";
 import { LearningRunner } from "./services/learning";
 import { startEgressProxy, type EgressProxy } from "./services/egress";
 import { getWorkSettings, WorkRunner } from "./services/work";
@@ -224,6 +225,7 @@ export async function buildApp(
   // GEM AI modules (docs/15-gem-ai.md).
   await gemAdminRoutes(app, ctx);
   await learningRoutes(app, ctx);
+  await calculatorRoutes(app, ctx);
 
   let stopScheduler: (() => void) | undefined;
   app.addHook("onReady", async () => {

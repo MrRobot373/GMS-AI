@@ -270,6 +270,20 @@ function mockReply(messages: ChatMessage[]): string {
   if (sys.includes("<<GEM:OUTLINE>>") || sys.includes("<<GEM:LESSON>>")) return mockLearning(sys, messages.filter((m) => m.role === "user").map((m) => m.content).join("\n"));
   const proj = /This chat is in the project "([^"]+)"(\. Follow the project's instructions)?/.exec(sys);
   const note = proj ? [`_Project **${proj[1]}**${proj[2] ? ", following its instructions" : ""}._`, ""] : [];
+  // A GEM AI calculator ran: the demo model repeats its results (a real model explains them).
+  const calcBlock = /<calculator>\n[\s\S]*?"([^"]+)"[\s\S]*?\nInputs: ([^\n]*)\nResults: ([^\n]*)\nAssumptions: ([^\n]*)/.exec(sys);
+  if (calcBlock) {
+    return [
+      ...note,
+      `The tested **${calcBlock[1]}** calculator worked this out (demo model; a real model explains the result in more depth):`,
+      "",
+      ...calcBlock[3]!.split("; ").map((r) => `- ${r}`),
+      "",
+      `From: ${calcBlock[2]}`,
+      "",
+      `Assumptions: ${calcBlock[4]}`,
+    ].join("\n");
+  }
   const sources = [...sys.matchAll(/\[(\d+)\] ([^\n]+)\n([\s\S]*?)(?=\n\n---\n\n|\n<\/sources>)/g)];
   if (sources.length) {
     const lines = sources.slice(0, 3).map((m) => {

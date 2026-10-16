@@ -29,6 +29,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@aatmiq/calculators':
+        specifier: workspace:*
+        version: link:../../packages/calculators
       '@aatmiq/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -284,6 +287,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@aatmiq/calculators':
+        specifier: workspace:*
+        version: link:../../packages/calculators
       '@aatmiq/shared':
         specifier: workspace:*
         version: link:../../packages/shared

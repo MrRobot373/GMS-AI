@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aatmiq/calculators": "workspace:*",
     "@aatmiq/db": "workspace:*",
     "@aatmiq/harness": "workspace:*",
     "@aatmiq/license": "workspace:*",

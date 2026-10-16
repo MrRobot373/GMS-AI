@@ -468,6 +468,8 @@ export const message = pgTable(
     citations: jsonb("citations").$type<Citation[]>(),
     /** How Auto picked this answer's model, when it did. */
     routing: jsonb("routing").$type<Routing>(),
+    /** A tested GEM AI calculator ran for this answer: its inputs and results (the model only explained them). */
+    calculation: jsonb("calculation").$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
   (t) => [

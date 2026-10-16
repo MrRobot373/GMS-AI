@@ -10,6 +10,8 @@ import { getProjectAccess } from "../services/projects";
 import { chooseModel } from "../services/router";
 import { quotaFor } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
+import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
+import { getGemSettings } from "../services/gem";
 
 const MAX_HISTORY = 40;
 
@@ -33,6 +35,7 @@ async function requireChatSection(ctx: AppContext, u: SessionUser, workspaceId: 
   const m = await requireWorkspaceCap(ctx, u, workspaceId, "workspace.use");
   if (!(await ctx.license.hasSection("chat"))) throw forbidden("Chat isn't included in your organization's license.");
   if (m && !m.sections.includes("chat") && !isOrgAdmin(u.orgRole)) throw forbidden("Chat is not enabled for you.");
+  return m;
 }
 
 /** Give just-uploaded documents a moment to finish processing before answering (max ~30s). */
@@ -245,7 +248,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
   app.post<{ Params: { id: string } }>("/api/chats/:id/messages", async (req, reply) => {
     const u = await requireUser(ctx, req);
     const c = await loadOwnChat(db, u, req.params.id);
-    await requireChatSection(ctx, u, c.workspaceId);
+    const membership = await requireChatSection(ctx, u, c.workspaceId);
     const body = parse(sendMessageSchema, req.body);
 
     // Where the new messages go. Default: after the branch being shown. An earlier parent edits and branches.
@@ -362,6 +365,22 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       proj ? recallProjectChats(db, { projectId: proj.id, chatId: c.id, userId: u.id, query: content }) : [],
     ]);
     const docContext = buildContext(retrieval.chunks, recollections);
+
+    // A numeric engineering question runs the tested GEM AI calculator; the model only explains it.
+    const gem = await getGemSettings(db);
+    const calculation =
+      gem.modules.calculators && (!membership || membership.sections.includes("calculators") || isOrgAdmin(u.orgRole))
+        ? await findCalculation({
+            text: content,
+            showBeta: gem.betaCalculators,
+            model: { provider, modelKey: m.modelKey },
+            onUsage: async (us) => {
+              await db.insert(usageEvent).values({ workspaceId: c.workspaceId, userId: u.id, modelId: m.id, groupId, section: "chat", inputTokens: us.inputTokens, outputTokens: us.outputTokens, estimated: us.estimated });
+            },
+          }).catch(() => null)
+        : null;
+    if (calculation) await saveChatCalculation(db, u.id, c.workspaceId, calculation);
+    const calcSystem = calculation ? `\n\n${calcContext(calculation)}` : "";
     if (retrieval.embedTokens > 0) {
       await db.insert(usageEvent).values({
         workspaceId: c.workspaceId,
@@ -374,7 +393,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     }
 
     const messages: ChatMessage[] = [
-      { role: "system", content: docContext.system ? `${system}\n\n${docContext.system}` : system },
+      { role: "system", content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + calcSystem },
       ...history
         .reverse()
         .filter((h) => !h.error && h.role !== "system")
@@ -409,6 +428,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       model: { id: m.id, displayName: m.displayName },
       routing,
       citations: docContext.citations,
+      calculation,
       ...titleUpdate,
     });
 
@@ -450,6 +470,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         error,
         citations: docContext.citations.length ? docContext.citations : null,
         routing,
+        calculation: calculation as unknown as Record<string, unknown> | null,
       })
       .returning({ id: message.id });
     await db.update(chat).set({ leafMessageId: assistant!.id }).where(eq(chat.id, c.id));
