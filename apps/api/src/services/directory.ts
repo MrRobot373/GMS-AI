@@ -5,6 +5,7 @@
  * when they come back; a person an admin deactivated stays deactivated. The organization's owner is
  * never managed by a directory, so a directory can't lock everyone out.
  */
+import { DEFAULT_MEMBER_SECTIONS } from "@aatmiq/shared";
 import { and, asc, eq, inArray, isNull, session, sql, user, userGroup, userGroupMember, workspace, workspaceMember, type DB } from "@aatmiq/db";
 import { randomUUID } from "node:crypto";
 import { audit, type AppContext } from "../context";
@@ -48,7 +49,7 @@ export async function createPerson(ctx: AppContext, dir: Directory, p: Directory
     updatedAt: now,
   });
   const ws = await joinWorkspace(ctx.db, workspaceId);
-  if (ws) await ctx.db.insert(workspaceMember).values({ workspaceId: ws, userId: id, role: "member", sections: ["chat", "work", "code"] }).onConflictDoNothing();
+  if (ws) await ctx.db.insert(workspaceMember).values({ workspaceId: ws, userId: id, role: "member", sections: DEFAULT_MEMBER_SECTIONS }).onConflictDoNothing();
   await audit(ctx, { action: "user.directory_created", targetType: "user", targetId: id, meta: { directory: dir, email: p.email } });
   return id;
 }

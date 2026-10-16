@@ -7,3 +7,4 @@ export const PRODUCT_NAME = "Aatmiq";
 export * from "./work";
 export * from "./connectors";
 export * from "./routing";
+export * from "./gem";

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ORG_ROLES, SECTIONS, WORKSPACE_ROLES } from "./permissions";
+import { MEMBER_SECTIONS, ORG_ROLES, SECTIONS, WORKSPACE_ROLES } from "./permissions";
 import { MODEL_TIERS } from "./routing";
 
 export const PROVIDER_TYPES = ["ollama", "openai_compatible", "mock"] as const;
@@ -41,7 +41,7 @@ export const workspaceSchema = z.object({
 export const memberSchema = z.object({
   userId: z.string(),
   role: z.enum(WORKSPACE_ROLES).default("member"),
-  sections: z.array(z.enum(SECTIONS)).default(["chat"]),
+  sections: z.array(z.enum(MEMBER_SECTIONS)).default(["chat", "learning", "calculators", "knowledge"]),
 });
 
 export const providerSchema = z.object({

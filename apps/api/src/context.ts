@@ -35,6 +35,7 @@ import type { Mailer } from "./services/mail";
 import type { Jobs } from "./services/jobs";
 import type { BrowserService } from "./services/browser";
 import type { HealthMonitor } from "./services/health";
+import type { LearningRunner } from "./services/learning";
 import { badRequest, forbidden, HttpError, notFound, unauthorized } from "./errors";
 
 export interface AppContext {
@@ -51,6 +52,9 @@ export interface AppContext {
   jobs: Jobs;
   browser: BrowserService;
   health: HealthMonitor;
+  learning: LearningRunner;
+  /** Outgoing HTTP (tests pass a fake one). */
+  fetch?: typeof fetch;
 }
 
 export interface SessionUser {

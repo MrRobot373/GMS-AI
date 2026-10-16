@@ -13,7 +13,7 @@ import {
   workspaceMember,
   workspaceModel,
 } from "@aatmiq/db";
-import { acceptInviteSchema, DEFAULT_ACCENT, embeddingPrefixes, PRODUCT_NAME, setupSchema } from "@aatmiq/shared";
+import { acceptInviteSchema, DEFAULT_ACCENT, embeddingPrefixes, PRODUCT_NAME, setupSchema, DEFAULT_MEMBER_SECTIONS } from "@aatmiq/shared";
 import { fromNodeHeaders } from "better-auth/node";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { VERIFY_CALLBACK } from "../auth";
@@ -190,7 +190,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext) {
       workspaceId: ws!.id,
       userId: ownerId,
       role: "admin",
-      sections: ["chat", "work", "code"],
+      sections: DEFAULT_MEMBER_SECTIONS,
     });
 
     // The bundled model servers (deploy/docker-compose.gpu.yml): ready from the first sign-in, the
@@ -308,7 +308,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext) {
       for (const w of inv.workspaces) {
         await db
           .insert(workspaceMember)
-          .values({ workspaceId: w.workspaceId, userId: uid, role: w.role, sections: ["chat", "work", "code"] })
+          .values({ workspaceId: w.workspaceId, userId: uid, role: w.role, sections: DEFAULT_MEMBER_SECTIONS })
           .onConflictDoNothing();
       }
       await db.update(invitation).set({ acceptedAt: new Date() }).where(eq(invitation.id, inv.id));

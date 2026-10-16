@@ -29,12 +29,13 @@ import {
   memberSchema,
   ORG_ROLES,
   periodStart,
-  SECTIONS,
+  MEMBER_SECTIONS,
   userQuotaSchema,
   WORKSPACE_ROLES,
   workspaceModelsSchema,
   workspaceSchema,
   defaultUserQuota,
+  DEFAULT_MEMBER_SECTIONS,
 } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -287,7 +288,7 @@ export async function adminOrgRoutes(app: FastifyInstance, ctx: AppContext) {
     // The creator joins as workspace admin so it shows up in their workspace switcher.
     await db
       .insert(workspaceMember)
-      .values({ workspaceId: ws!.id, userId: u.id, role: "admin", sections: ["chat", "work", "code"] });
+      .values({ workspaceId: ws!.id, userId: u.id, role: "admin", sections: DEFAULT_MEMBER_SECTIONS });
     await audit(ctx, { actor: u, action: "workspace.created", workspaceId: ws!.id, targetType: "workspace", targetId: ws!.id, meta: { name: body.name } });
     return ws;
   });
@@ -371,7 +372,7 @@ export async function adminOrgRoutes(app: FastifyInstance, ctx: AppContext) {
     const body = parse(
       z.object({
         role: z.enum(WORKSPACE_ROLES).optional(),
-        sections: z.array(z.enum(SECTIONS)).optional(),
+        sections: z.array(z.enum(MEMBER_SECTIONS)).optional(),
         tokenLimit: userQuotaSchema.shape.tokenLimit.optional(),
       }),
       req.body,

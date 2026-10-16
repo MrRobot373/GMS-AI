@@ -1,7 +1,7 @@
 import { account, and, asc, eq, gte, inArray, invitation, isNull, or, organization, session, sql, ssoConnection, ssoSession, user, workspace, workspaceMember } from "@aatmiq/db";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { randomBytes, randomUUID } from "node:crypto";
-import { PRODUCT_NAME } from "@aatmiq/shared";
+import { PRODUCT_NAME, DEFAULT_MEMBER_SECTIONS } from "@aatmiq/shared";
 import { z } from "zod";
 import { fromNodeHeaders } from "better-auth/node";
 import { ssoTicketId, ticketValue } from "../auth";
@@ -395,7 +395,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
       if (inv) {
         userId = await createUser(identity.email, identity.name, inv.orgRole);
         for (const w of inv.workspaces)
-          await db.insert(workspaceMember).values({ workspaceId: w.workspaceId, userId, role: w.role, sections: ["chat", "work", "code"] }).onConflictDoNothing();
+          await db.insert(workspaceMember).values({ workspaceId: w.workspaceId, userId, role: w.role, sections: DEFAULT_MEMBER_SECTIONS }).onConflictDoNothing();
         await db.update(invitation).set({ acceptedAt: new Date() }).where(eq(invitation.id, inv.id));
         created = true;
       } else if (conn.autoJoin && conn.domains.length) {
@@ -408,7 +408,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
         const [ws] = conn.defaultWorkspaceId
           ? await db.select({ id: workspace.id }).from(workspace).where(and(eq(workspace.id, conn.defaultWorkspaceId), isNull(workspace.archivedAt)))
           : await db.select({ id: workspace.id }).from(workspace).where(isNull(workspace.archivedAt)).orderBy(asc(workspace.createdAt)).limit(1);
-        if (ws) await db.insert(workspaceMember).values({ workspaceId: ws.id, userId, role: "member", sections: ["chat", "work", "code"] }).onConflictDoNothing();
+        if (ws) await db.insert(workspaceMember).values({ workspaceId: ws.id, userId, role: "member", sections: DEFAULT_MEMBER_SECTIONS }).onConflictDoNothing();
         created = true;
       } else {
         return fail(reply, `There's no account for ${identity.email} yet. Ask your admin for an invitation.`, st.invite);

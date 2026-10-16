@@ -20,6 +20,7 @@ import { availableModels } from "../services/models";
 import { routingSettings, withAuto } from "../services/router";
 import { logoUrl } from "../services/branding";
 import { getQuotaStatus, quotaFor } from "../services/quota";
+import { getGemSettings } from "../services/gem";
 import { localeOf, tr } from "../i18n";
 
 export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -68,6 +69,8 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
         illustrations: org?.illustrations ?? true,
       },
       workspaces,
+      // GEM AI modules switched on for the organization (each person's own are in workspaces[].sections).
+      gem: await getGemSettings(db).then((g) => ({ modules: g.modules, betaCalculators: g.betaCalculators })),
       unreadNotifications: unread?.n ?? 0,
       license: {
         state: lic.status.state,

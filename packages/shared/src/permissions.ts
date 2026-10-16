@@ -13,6 +13,17 @@ export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
 export const SECTIONS = ["chat", "work", "code"] as const;
 export type Section = (typeof SECTIONS)[number];
 
+/**
+ * GEM AI modules: extra sections in the same app, not license tiers. Turned on per person like
+ * the sections above, and per organization with an on/off switch (Admin → Settings).
+ */
+export const MODULES = ["learning", "calculators", "knowledge"] as const;
+export type Module = (typeof MODULES)[number];
+export const MEMBER_SECTIONS = [...SECTIONS, ...MODULES] as const;
+export type MemberSection = (typeof MEMBER_SECTIONS)[number];
+/** What a new member of a workspace gets. */
+export const DEFAULT_MEMBER_SECTIONS: MemberSection[] = ["chat", "work", "code", "learning", "calculators", "knowledge"];
+
 export const ORG_CAPABILITIES = [
   "org.users.invite",
   "org.users.manage",

@@ -266,6 +266,8 @@ export function estimateUsage(messages: ChatMessage[], output: string): Usage {
 function mockReply(messages: ChatMessage[]): string {
   const last = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
   const sys = messages.find((m) => m.role === "system")?.content ?? "";
+  // GEM AI Learning asks for JSON (a course outline or a lesson): the demo model writes a valid one.
+  if (sys.includes("<<GEM:OUTLINE>>") || sys.includes("<<GEM:LESSON>>")) return mockLearning(sys, messages.filter((m) => m.role === "user").map((m) => m.content).join("\n"));
   const proj = /This chat is in the project "([^"]+)"(\. Follow the project's instructions)?/.exec(sys);
   const note = proj ? [`_Project **${proj[1]}**${proj[2] ? ", following its instructions" : ""}._`, ""] : [];
   const sources = [...sys.matchAll(/\[(\d+)\] ([^\n]+)\n([\s\S]*?)(?=\n\n---\n\n|\n<\/sources>)/g)];
@@ -301,15 +303,77 @@ function mockReply(messages: ChatMessage[]): string {
   ].join("\n");
 }
 
+/** A demo course outline or lesson in the shape GEM AI validates (docs/15-gem-ai.md). Demo only. */
+function mockLearning(sys: string, user: string): string {
+  // For tests of malformed output: the demo model can be told to misbehave.
+  if (user.includes("mock:malformed")) return "Sorry, here is some prose instead of the JSON you asked for.";
+  const field = (name: string) => new RegExp(`^${name}: (.+)$`, "m").exec(user)?.[1]?.trim() ?? "";
+  const topic = field("Topic") || "the topic";
+  const level = (field("Level").split(/[:\s]/)[0] || "basic") as "basic" | "intermediate" | "advanced";
+  if (sys.includes("<<GEM:OUTLINE>>")) {
+    const mod = (n: number, title: string) => ({
+      title,
+      summary: `Part ${n} of the demo course on ${topic}.`,
+      lessons: [
+        { title: `${title}: the essentials`, summary: `What ${title.toLowerCase()} means for ${topic}.` },
+        { title: `${title}: a worked example`, summary: `Numbers worked through step by step.` },
+      ],
+    });
+    return JSON.stringify({
+      title: `${topic} (${level})`,
+      description: `A demo course on ${topic}, written by the Aatmiq demo model. Connect a real model in Admin → Models for real lessons.`,
+      prerequisites: level === "basic" ? [] : ["Basic circuit analysis"],
+      modules: [mod(1, "Fundamentals"), mod(2, "Analysis"), mod(3, "Practice")],
+    });
+  }
+  const lesson = field("Lesson") || "Lesson";
+  return [
+    "```json",
+    JSON.stringify(
+      {
+        title: lesson,
+        objectives: [`Explain the idea behind ${lesson.toLowerCase()}`, "Apply one formula with units", "Spot a common mistake"],
+        prerequisites: ["Ohm's law"],
+        theory: `This demo lesson on ${topic} was written by the Aatmiq demo model, which runs on this server. Connect a real model in Admin → Models to get real teaching material.`,
+        explanation: `The explanation of ${lesson} goes here. A real model explains the concept step by step, at the ${level} level, using engineering examples from ${topic}.`,
+        equations: [
+          {
+            name: "Ohm's law",
+            expression: "V = I·R",
+            latex: "V = I R",
+            symbols: [
+              { symbol: "V", meaning: "voltage across the resistor", unit: "V" },
+              { symbol: "I", meaning: "current through it", unit: "A" },
+              { symbol: "R", meaning: "resistance", unit: "Ω" },
+            ],
+            validity: "Linear (ohmic) resistors at constant temperature; DC or AC RMS with a resistive load.",
+          },
+        ],
+        workedExample: { problem: "A 12 V supply drives a 4 Ω resistor. What current flows?", given: ["V = 12 V", "R = 4 Ω"], steps: ["I = V / R", "I = 12 V / 4 Ω"], answer: "I = 3 A" },
+        diagrams: [{ title: "Simple resistive circuit", description: "A source in series with one resistor.", reference: "Any introductory circuits textbook, e.g. Hayt, Engineering Circuit Analysis, chapter 2" }],
+        commonMistakes: ["Mixing up kΩ and Ω", "Using peak instead of RMS values with AC"],
+        videoQueries: [`${topic} ${lesson}`],
+        references: [{ title: "Engineering Circuit Analysis", author: "Hayt, Kemmerly and Durbin", kind: "book" }],
+        takeaways: ["V = I·R holds for linear resistors", "Always carry units through a calculation"],
+      },
+      null,
+      2,
+    ),
+    "```",
+  ].join("\n");
+}
+
 async function* streamMock(
   messages: ChatMessage[],
   opts: StreamOptions,
 ): AsyncGenerator<StreamEvent> {
   const reply = mockReply(messages);
   const parts = reply.match(/\S+\s*|\s+/g) ?? [reply];
+  // JSON for GEM AI Learning isn't shown as it streams, so it comes at once.
+  const typed = !/^(\{|```json)/.test(reply);
   for (const p of parts) {
     if (opts.signal?.aborted) break;
-    await new Promise((r) => setTimeout(r, 12));
+    if (typed) await new Promise((r) => setTimeout(r, 12));
     yield { type: "delta", text: p };
   }
   const usage = estimateUsage(messages, reply);

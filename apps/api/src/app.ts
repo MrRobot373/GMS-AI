@@ -44,6 +44,9 @@ import { LdapScheduler } from "./services/ldap";
 import { directoryRoutes } from "./routes/directory";
 import { scimRoutes } from "./routes/scim";
 import { healthRoutes } from "./routes/health";
+import { learningRoutes } from "./routes/learning";
+import { gemAdminRoutes } from "./routes/gem-admin";
+import { LearningRunner } from "./services/learning";
 import { startEgressProxy, type EgressProxy } from "./services/egress";
 import { getWorkSettings, WorkRunner } from "./services/work";
 import type { HarnessEngine } from "@aatmiq/harness";
@@ -85,6 +88,7 @@ export async function buildApp(
     mail,
     storage,
     license: new LicenseService(db, cfg, opts.fetch),
+    fetch: opts.fetch,
   } as AppContext;
   // The Work AI browser reaches the web only through the egress proxy (started on first use).
   let egress: Promise<EgressProxy> | null = null;
@@ -107,6 +111,8 @@ export async function buildApp(
   const jobLog = (msg: string, err?: unknown) => app.log.warn(err, msg);
   ctx.health = new HealthMonitor(ctx, { intervalMs: (cfg.healthIntervalMinutes || 5) * 60_000, log: jobLog });
   const ldap = new LdapScheduler(ctx, jobLog);
+  ctx.learning = new LearningRunner(ctx, jobLog);
+  app.decorate("learning", ctx.learning);
   // For tests and tools that run a health round on demand.
   app.decorate("health", ctx.health);
   ctx.jobs = opts.jobs
@@ -215,6 +221,9 @@ export async function buildApp(
   await connectorRoutes(app, ctx);
   await accountRoutes(app, ctx);
   await healthRoutes(app, ctx);
+  // GEM AI modules (docs/15-gem-ai.md).
+  await gemAdminRoutes(app, ctx);
+  await learningRoutes(app, ctx);
 
   let stopScheduler: (() => void) | undefined;
   app.addHook("onReady", async () => {
@@ -231,6 +240,7 @@ export async function buildApp(
       await ctx.browser.egress();
     }
     void ctx.work.recover().catch((e) => app.log.warn(e, "recovering Work AI tasks failed"));
+    void ctx.learning.recover().catch((e) => app.log.warn(e, "recovering course generation failed"));
     stopScheduler = startScheduler(ctx, (msg, err) => app.log.warn(err, msg));
     // Admins hear about problems (Admin → Health) without having to look.
     if (cfg.healthIntervalMinutes) ctx.health.start();
@@ -267,6 +277,7 @@ export async function buildApp(
     await shutdownStep("Work AI runtimes", () => ctx.work.stopAll());
     await shutdownStep("IDE servers", () => ctx.code.stopAll());
     await shutdownStep("OCR", () => stopOcr());
+    await shutdownStep("course generation", () => ctx.learning.idle(), 5_000);
   });
   return app;
 }
@@ -274,5 +285,6 @@ export async function buildApp(
 declare module "fastify" {
   interface FastifyInstance {
     health: HealthMonitor;
+    learning: LearningRunner;
   }
 }

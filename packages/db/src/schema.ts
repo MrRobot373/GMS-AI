@@ -37,7 +37,7 @@ export const userStatusEnum = pgEnum("user_status", ["active", "deactivated"]);
 export const workspaceRoleEnum = pgEnum("workspace_role", ["admin", "member"]);
 export const providerTypeEnum = pgEnum("provider_type", ["ollama", "openai_compatible", "mock"]);
 export const budgetPeriodEnum = pgEnum("budget_period", ["day", "week", "month"]);
-export const sectionEnum = pgEnum("section", ["chat", "work", "code", "system", "api"]);
+export const sectionEnum = pgEnum("section", ["chat", "work", "code", "system", "api", "learning", "knowledge"]);
 export const requestStatusEnum = pgEnum("token_request_status", ["pending", "approved", "denied"]);
 export const messageRoleEnum = pgEnum("message_role", ["system", "user", "assistant"]);
 export const modelKindEnum = pgEnum("model_kind", ["chat", "embedding"]);
@@ -97,6 +97,8 @@ export const organization = pgTable("organization", {
   ldapSettings: jsonb("ldap_settings").$type<LdapSettingsStored>(),
   /** Aatmiq's own SAML signing key and certificate, for single logout (made when first needed). */
   samlSigning: jsonb("saml_signing").$type<{ keyEnc: string; cert: string }>(),
+  /** GEM AI modules (Learning, Calculators, Knowledge): which are on, and their settings. */
+  gemSettings: jsonb("gem_settings").$type<Partial<GemSettingsStored>>(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -618,10 +620,16 @@ export const document = pgTable(
     label: sourceLabelEnum("label"),
     /** The newer version that replaces this one. Superseded documents are left out of answers. */
     supersededById: text("superseded_by_id").references((): AnyPgColumn => document.id, { onDelete: "set null" }),
+    /** sha256 of the extracted text (the same content uploaded twice is noticed). */
+    contentHash: text("content_hash"),
+    /** 1 for a first upload; each newer version that supersedes it counts up. */
+    version: integer("version").notNull().default(1),
+    /** In the workspace's general engineering reference library (shared with every member). */
+    reference: boolean("reference").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("document_ws_idx").on(t.workspaceId, t.createdAt)],
+  (t) => [index("document_ws_idx").on(t.workspaceId, t.createdAt), index("document_hash_idx").on(t.workspaceId, t.contentHash)],
 );
 
 export const documentChunk = pgTable(
@@ -1057,3 +1065,248 @@ export const systemStatus = pgTable("system_status", {
   value: jsonb("value").$type<Record<string, unknown>>().notNull(),
   updatedAt: updatedAt(),
 });
+
+/* ───────────── GEM AI: Learning ───────────── */
+
+export const courseLevelEnum = pgEnum("course_level", ["basic", "intermediate", "advanced"]);
+export const courseStatusEnum = pgEnum("course_status", ["generating", "ready", "failed"]);
+export const lessonStatusEnum = pgEnum("lesson_status", ["pending", "generating", "ready", "failed"]);
+
+/** A generated course: its outline, owned by one person (docs/15-gem-ai.md). */
+export const course = pgTable(
+  "course",
+  {
+    id: id(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    topic: text("topic").notNull(),
+    level: courseLevelEnum("level").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+    status: courseStatusEnum("status").notNull().default("generating"),
+    error: text("error"),
+    /** The validated outline: modules and their lessons (see CourseOutline). */
+    outline: jsonb("outline").$type<CourseOutline>(),
+    /** Bumped when the outline is regenerated; older outlines stay in outlineHistory. */
+    version: integer("version").notNull().default(1),
+    outlineHistory: jsonb("outline_history").$type<{ version: number; outline: CourseOutline; replacedAt: string }[]>(),
+    modelId: text("model_id").references(() => model.id, { onDelete: "set null" }),
+    /** Where the person left off (lesson ordinal), for "resume". */
+    lastLesson: integer("last_lesson"),
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("course_user_idx").on(t.userId, t.workspaceId, t.updatedAt),
+    index("course_fts_idx").using("gin", sql`to_tsvector('simple', ${t.title} || ' ' || ${t.topic})`),
+  ],
+);
+
+/**
+ * One version of one lesson. Regenerating adds a new version and keeps the old one, so a person's
+ * progress and bookmarks (kept by ordinal) aren't lost. Exactly one version per ordinal is current.
+ */
+export const courseLesson = pgTable(
+  "course_lesson",
+  {
+    id: id(),
+    courseId: text("course_id")
+      .notNull()
+      .references(() => course.id, { onDelete: "cascade" }),
+    /** Position in the course, counting across modules from 0. */
+    ordinal: integer("ordinal").notNull(),
+    version: integer("version").notNull().default(1),
+    current: boolean("current").notNull().default(true),
+    title: text("title").notNull(),
+    status: lessonStatusEnum("status").notNull().default("pending"),
+    content: jsonb("content").$type<LessonContent>(),
+    /** Videos found through the YouTube Data API (IDs the API returned, never model-written URLs). */
+    videos: jsonb("videos").$type<LessonVideo[]>(),
+    videosCheckedAt: timestamp("videos_checked_at", { withTimezone: true }),
+    /** Why videos are missing, when they are ("not configured", "quota"...). */
+    videosNote: text("videos_note"),
+    error: text("error"),
+    modelId: text("model_id").references(() => model.id, { onDelete: "set null" }),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("course_lesson_version_idx").on(t.courseId, t.ordinal, t.version), index("course_lesson_current_idx").on(t.courseId, t.current, t.ordinal)],
+);
+
+/** A person's progress on a lesson (by ordinal, so it survives regeneration). */
+export const courseLessonState = pgTable(
+  "course_lesson_state",
+  {
+    courseId: text("course_id")
+      .notNull()
+      .references(() => course.id, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    bookmarkedAt: timestamp("bookmarked_at", { withTimezone: true }),
+    note: text("note"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.courseId, t.ordinal, t.userId] }), index("lesson_state_user_idx").on(t.userId, t.bookmarkedAt)],
+);
+
+/** YouTube search results, so repeated searches don't spend API quota. */
+export const youtubeCache = pgTable("youtube_cache", {
+  queryHash: text("query_hash").primaryKey(),
+  query: text("query").notNull(),
+  results: jsonb("results").$type<LessonVideo[]>().notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/* ───────────── GEM AI: Calculators ───────────── */
+
+/** One calculation a person ran: inputs, results, units and the formula version. */
+export const calculatorHistory = pgTable(
+  "calculator_history",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").references(() => workspace.id, { onDelete: "set null" }),
+    calculatorId: text("calculator_id").notNull(),
+    /** "formula" (a registry calculator), "expression" (the keypads) or "tool". */
+    kind: text("kind").notNull().default("formula"),
+    formulaVersion: integer("formula_version"),
+    inputs: jsonb("inputs").$type<Record<string, unknown>>().notNull(),
+    outputs: jsonb("outputs").$type<unknown>().notNull(),
+    /** Where it ran: "calculators" (the screen) or "chat" (the chat tool). */
+    source: text("source").notNull().default("calculators"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("calc_history_user_idx").on(t.userId, t.createdAt)],
+);
+
+export const calculatorFavorite = pgTable(
+  "calculator_favorite",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    calculatorId: text("calculator_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.calculatorId] })],
+);
+
+/* ───────────── GEM AI: Knowledge ───────────── */
+
+/** A question asked of one project's documents, with the passages the answer could cite. */
+export const knowledgeQuery = pgTable(
+  "knowledge_query",
+  {
+    id: id(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    question: text("question").notNull(),
+    answer: text("answer").notNull().default(""),
+    /** "answered", "not_found" (the documents don't say), "error". */
+    status: text("status").notNull().default("answered"),
+    error: text("error"),
+    /** Every passage that was retrieved and shown to the model, numbered as cited. */
+    citations: jsonb("citations").$type<KnowledgeCitation[]>().notNull().default(sql`'[]'::jsonb`),
+    /** The general engineering library was searched too. */
+    includeGeneral: boolean("include_general").notNull().default(false),
+    modelId: text("model_id").references(() => model.id, { onDelete: "set null" }),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("knowledge_query_idx").on(t.projectId, t.userId, t.createdAt)],
+);
+
+/* ───────────── GEM AI types ───────────── */
+
+export interface GemSettingsStored {
+  /** Modules that are switched on (a broken one can be hidden without touching chat, work or code). */
+  modules: { learning: boolean; calculators: boolean; knowledge: boolean };
+  /** Show calculators that aren't yet verified against five reference cases. */
+  betaCalculators: boolean;
+  /** YouTube Data API key, encrypted (YOUTUBE_API_KEY in the environment also works). */
+  youtubeKeyEnc?: string | null;
+  /** Courses one person may generate per day. */
+  coursesPerDay: number;
+  /** Lesson generations (including regenerations) per person per day. */
+  lessonsPerDay: number;
+}
+
+export interface CourseOutline {
+  title: string;
+  description: string;
+  level: "basic" | "intermediate" | "advanced";
+  prerequisites: string[];
+  modules: { title: string; summary: string; lessons: { title: string; summary: string }[] }[];
+}
+
+export interface LessonEquation {
+  name: string;
+  /** The equation as plain text or LaTeX. */
+  expression: string;
+  latex?: string;
+  symbols: { symbol: string; meaning: string; unit: string }[];
+  /** When it applies: "ideal buck converter in continuous-conduction mode", never universal. */
+  validity: string;
+}
+
+export interface LessonContent {
+  title: string;
+  objectives: string[];
+  prerequisites: string[];
+  theory: string;
+  explanation: string;
+  equations: LessonEquation[];
+  workedExample: { problem: string; given: string[]; steps: string[]; answer: string };
+  /** Figures: what to look at and where a real one is published; never a made-up figure. */
+  diagrams: { title: string; description: string; reference: string }[];
+  commonMistakes: string[];
+  /** Search phrases for videos (the model may not write URLs). */
+  videoQueries: string[];
+  references: { title: string; author?: string; kind: string; note?: string }[];
+  takeaways: string[];
+}
+
+export interface LessonVideo {
+  videoId: string;
+  title: string;
+  channel: string;
+  publishedAt?: string;
+  durationSeconds?: number | null;
+  thumbnail?: string;
+  query?: string;
+}
+
+export interface KnowledgeCitation {
+  n: number;
+  chunkId: string;
+  documentId: string;
+  name: string;
+  version: number;
+  page: number | null;
+  excerpt: string;
+  /** "project" or "general" (the reference library). */
+  scope: "project" | "general";
+  label?: "confirmed" | "assumption" | "tbd" | null;
+}

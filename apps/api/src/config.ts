@@ -67,6 +67,10 @@ export interface Config {
    * (SETUP_EMBEDDING_*): EmbeddingGemma 2 on the bundled Ollama, for example.
    */
   setupEmbedding?: { url: string; key: string; displayName: string; type: "ollama" | "openai_compatible"; apiKey: string | null } | null;
+  /** YouTube Data API v3 key for lesson videos (YOUTUBE_API_KEY); Admin → Settings can also hold one. */
+  youtubeApiKey?: string | null;
+  /** The YouTube Data API's address (tests point it elsewhere). */
+  youtubeApiUrl?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -106,6 +110,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       loadSetupModel(env, "SETUP_LARGE_MODEL", ["chat", "work", "code"], "advanced"),
     ].filter((m): m is SetupModel => !!m),
     setupEmbedding: loadSetupEmbedding(env),
+    youtubeApiKey: env.YOUTUBE_API_KEY || null,
+    youtubeApiUrl: env.YOUTUBE_API_URL || "https://www.googleapis.com/youtube/v3",
     setupMaxRunning: env.SETUP_MAX_RUNNING ? Math.max(1, Math.min(500, Math.round(Number(env.SETUP_MAX_RUNNING)) || 8)) : null,
   };
 }
