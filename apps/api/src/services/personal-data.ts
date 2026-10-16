@@ -7,14 +7,20 @@ import {
   and,
   asc,
   auditLog,
+  calculatorFavorite,
+  calculatorHistory,
   chat,
   codeWorkspace,
   connector,
   connectorAccount,
+  course,
+  courseLesson,
+  courseLessonState,
   document,
   eq,
   inArray,
   invitation,
+  knowledgeQuery,
   message,
   notification,
   or,
@@ -241,6 +247,33 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
         .where(or(eq(auditLog.actorId, userId), and(eq(auditLog.targetType, "user"), eq(auditLog.targetId, userId))))
         .orderBy(asc(auditLog.createdAt)),
     ]);
+    // GEM AI: courses with every lesson version, calculator history and favorites, knowledge questions.
+    const courses = await db.select().from(course).where(eq(course.userId, userId)).orderBy(asc(course.createdAt));
+    for (const c of courses) {
+      const lessons = await db.select().from(courseLesson).where(eq(courseLesson.courseId, c.id)).orderBy(asc(courseLesson.ordinal), asc(courseLesson.version));
+      const progress = await db.select().from(courseLessonState).where(and(eq(courseLessonState.courseId, c.id), eq(courseLessonState.userId, userId)));
+      await zip.json(`learning/${c.createdAt.toISOString().slice(0, 10)} ${safeName(c.title, "course")} ${c.id.slice(0, 8)}.json`, {
+        topic: c.topic,
+        level: c.level,
+        title: c.title,
+        tags: c.tags,
+        outline: c.outline,
+        createdAt: c.createdAt,
+        lessons: lessons.map((l) => ({ ordinal: l.ordinal, version: l.version, current: l.current, title: l.title, status: l.status, content: l.content, videos: l.videos, createdAt: l.createdAt })),
+        progress,
+      });
+    }
+    await zip.json("calculators/history.json", await db.select().from(calculatorHistory).where(eq(calculatorHistory.userId, userId)).orderBy(asc(calculatorHistory.createdAt)));
+    await zip.json("calculators/favorites.json", await db.select().from(calculatorFavorite).where(eq(calculatorFavorite.userId, userId)));
+    await zip.json(
+      "knowledge-questions.json",
+      await db
+        .select({ project: project.name, question: knowledgeQuery.question, answer: knowledgeQuery.answer, status: knowledgeQuery.status, citations: knowledgeQuery.citations, createdAt: knowledgeQuery.createdAt })
+        .from(knowledgeQuery)
+        .innerJoin(project, eq(project.id, knowledgeQuery.projectId))
+        .where(eq(knowledgeQuery.userId, userId))
+        .orderBy(asc(knowledgeQuery.createdAt)),
+    );
     await zip.json("skills.json", skills);
     await zip.json("schedules.json", schedules);
     await zip.json("connected-apps.json", connections);

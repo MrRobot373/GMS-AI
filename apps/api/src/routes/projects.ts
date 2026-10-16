@@ -252,14 +252,16 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     const replacesField = file.fields.replaces as { value?: string } | undefined;
     const replaces = typeof replacesField?.value === "string" && replacesField.value ? replacesField.value : null;
     let oldLabel: "confirmed" | "assumption" | "tbd" | null = null;
+    let version = 1;
     if (replaces) {
       const [old] = await db
-        .select({ id: document.id, label: document.label })
+        .select({ id: document.id, label: document.label, version: document.version })
         .from(projectSource)
         .innerJoin(document, eq(document.id, projectSource.documentId))
         .where(and(eq(projectSource.projectId, p.id), eq(projectSource.documentId, replaces)));
       if (!old) throw badRequest("The source to replace isn't in this project.");
       oldLabel = old.label;
+      version = old.version + 1;
     }
     if (!isSupported(name)) throw new HttpError(415, `This file type isn't supported yet. Upload ${SUPPORTED_HINT}.`, "unsupported");
     if (data.length === 0) throw badRequest("The file is empty");
@@ -267,7 +269,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     await storage.put(storageKey, data);
     const [doc] = await db
       .insert(document)
-      .values({ workspaceId: p.workspaceId, projectId: p.id, ownerId: u.id, name, mimeType: file.mimetype || "application/octet-stream", sizeBytes: data.length, storageKey, label: oldLabel })
+      .values({ workspaceId: p.workspaceId, projectId: p.id, ownerId: u.id, name, mimeType: file.mimetype || "application/octet-stream", sizeBytes: data.length, storageKey, label: oldLabel, version })
       .returning();
     await addSource(p.id, doc!.id, u.id);
     if (replaces) await db.update(document).set({ supersededById: doc!.id }).where(eq(document.id, replaces));

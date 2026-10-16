@@ -29,6 +29,7 @@ import type { SecretBox } from "../crypto";
 import { chunkPages, extractText, UnsupportedFileError } from "./extract";
 import { docInAccessibleProject } from "./projects";
 import type { Storage } from "./storage";
+import { createHash } from "node:crypto";
 
 const EMBED_BATCH = 32;
 /** Attached documents at or under this size are given to the model in full. */
@@ -125,6 +126,8 @@ export async function processDocument(
           charCount,
           pageCount: pages.some((p) => p.page !== null) ? pages.length : null,
           embeddingModelId: emb?.id ?? null,
+          // The text's fingerprint: the same content uploaded twice is noticed (Knowledge).
+          contentHash: createHash("sha256").update(pages.map((p) => p.text).join("\f")).digest("hex"),
         })
         .where(eq(document.id, doc.id));
     });

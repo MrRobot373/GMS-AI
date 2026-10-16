@@ -47,6 +47,7 @@ import { healthRoutes } from "./routes/health";
 import { learningRoutes } from "./routes/learning";
 import { gemAdminRoutes } from "./routes/gem-admin";
 import { calculatorRoutes } from "./routes/calculators";
+import { knowledgeRoutes } from "./routes/knowledge";
 import { LearningRunner } from "./services/learning";
 import { startEgressProxy, type EgressProxy } from "./services/egress";
 import { getWorkSettings, WorkRunner } from "./services/work";
@@ -226,6 +227,7 @@ export async function buildApp(
   await gemAdminRoutes(app, ctx);
   await learningRoutes(app, ctx);
   await calculatorRoutes(app, ctx);
+  await knowledgeRoutes(app, ctx);
 
   let stopScheduler: (() => void) | undefined;
   app.addHook("onReady", async () => {

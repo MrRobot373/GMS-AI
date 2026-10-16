@@ -22,7 +22,9 @@ export interface Harness {
   bob: Jar;
   ids: { owner: string; alice: string; bob: string };
   call: (j: Jar | null, method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", path: string, body?: unknown) => Promise<{ status: number; json: any; body: string; headers: Record<string, unknown> }>;
-  upload: (j: Jar, fields: Record<string, string>, file: { name: string; type: string; data: Buffer }) => Promise<{ status: number; json: any }>;
+  upload: (j: Jar, url: string, fields: Record<string, string>, file: { name: string; type: string; data: Buffer }) => Promise<{ status: number; json: any }>;
+  /** Wait until no document is still processing. */
+  settle: () => Promise<void>;
   signIn: (j: Jar, email: string, password: string) => Promise<unknown>;
   close: () => Promise<void>;
 }
@@ -92,12 +94,12 @@ export async function startHarness(extra: Partial<Config> = {}, opts: { fetch?: 
     }
     return { status: res.statusCode, json, body: res.body, headers: res.headers };
   };
-  const upload: Harness["upload"] = async (j, fields, file) => {
+  const upload: Harness["upload"] = async (j, url, fields, file) => {
     const boundary = "----gemtest" + Math.random().toString(16).slice(2);
     const parts: Buffer[] = [];
     for (const [k, v] of Object.entries(fields)) parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
     parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.name}"\r\nContent-Type: ${file.type}\r\n\r\n`), file.data, Buffer.from(`\r\n--${boundary}--\r\n`));
-    const res = await app.inject({ method: "POST", url: "/api/documents", headers: { origin: APP_URL, cookie: j.cookie, "content-type": `multipart/form-data; boundary=${boundary}` }, payload: Buffer.concat(parts) });
+    const res = await app.inject({ method: "POST", url, headers: { origin: APP_URL, cookie: j.cookie, "content-type": `multipart/form-data; boundary=${boundary}` }, payload: Buffer.concat(parts) });
     let json: any = null;
     try {
       json = res.json();
@@ -105,6 +107,14 @@ export async function startHarness(extra: Partial<Config> = {}, opts: { fetch?: 
       json = res.body;
     }
     return { status: res.statusCode, json };
+  };
+  const settle = async () => {
+    for (let i = 0; i < 200; i++) {
+      const rows = (await db.execute(sql`select count(*)::int as n from document where status = 'processing'`)) as unknown as { n: number }[];
+      if (!rows[0]?.n) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error("documents still processing");
   };
   const signIn = (j: Jar, email: string, password: string) => call(j, "POST", "/api/auth/sign-in/email", { email, password });
 
@@ -133,6 +143,7 @@ export async function startHarness(extra: Partial<Config> = {}, opts: { fetch?: 
     ids: { owner: me.json.user.id, alice: a.id, bob: b.id },
     call,
     upload,
+    settle,
     signIn,
     close: async () => {
       await app.close();
