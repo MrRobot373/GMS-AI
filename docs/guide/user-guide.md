@@ -70,6 +70,24 @@ full editor in the browser, with terminals and Git. The Aatmiq panel on the righ
 ask it for a change and review the diff before you keep it. The desktop app (Windows, macOS,
 Linux) opens the same editor in its own window; your admin gives you the installer.
 
+## Learning, Calculators and Knowledge (GEM AI)
+
+If your admin has switched them on, three more items sit in the sidebar
+([details](../15-gem-ai.md)):
+
+- **Learning**: **New course**, type a topic and pick a level. The model writes an outline, then
+  each lesson when you open it. Lessons are saved, so coming back costs nothing. Mark lessons
+  complete, bookmark them and keep notes (only you see them). *Write a new version* keeps the old
+  one.
+- **Calculators**: engineering formulas, keypads, a unit converter and tools. Every number comes
+  from tested code, not the model. *Verified* calculators are checked against at least five
+  hand-worked cases; *beta* ones against fewer, so double-check those. In chat, ask "what is the
+  ideal buck output at 48 V and 0.4 duty?" or type `/calc buck-ideal Vin=48V D=0.4`, and a result
+  card shows the tested calculation.
+- **Knowledge**: pick a project and ask. Answers come only from that project's documents, with the
+  document, version and page for each source, and say so when the documents don't have the answer.
+  Add documents in **Sources**.
+
 ## Your settings
 
 Your name → **Settings**:

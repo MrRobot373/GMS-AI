@@ -4,8 +4,10 @@
 
 *Aatmiq (Sanskrit ātmik, "of the self, one's own"), pronounced AAT-mik.*
 
+**GEM AI** is this engine with three engineering modules on top: **Learning** (courses written by your models), **Calculators** (tested engineering formulas and tools, also a tool in chat) and **Knowledge** (answers only from a project's documents, with citations). See [docs/15-gem-ai.md](docs/15-gem-ai.md).
+
 - **[User guide](docs/guide/user-guide.md) · [Admin guide](docs/guide/admin-guide.md) · [Hardware sizing](docs/guide/sizing.md)**
-- [Rollout plan and product readiness](docs/11-rollout.md) · [Team server](docs/10-team-server.md) · [Models and Auto](docs/02-models.md) · [Personal data](docs/12-personal-data.md) · [Releases](docs/13-releases.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/00-master-plan.md) · [Foundation spec](docs/01-foundation.md) · [Connectors setup](docs/09-connectors.md) · [Skill library](docs/08-skills.md) · [Pricing & business](docs/pricing-and-business.md) · [Legal drafts and licenses](legal/README.md) · [Decision log](docs/decisions.md)
+- [Rollout plan and product readiness](docs/11-rollout.md) · [Team server](docs/10-team-server.md) · [Models and Auto](docs/02-models.md) · [Personal data](docs/12-personal-data.md) · [GEM AI modules](docs/15-gem-ai.md) · [Releases](docs/13-releases.md) · [Changelog](CHANGELOG.md) · [Master plan](docs/00-master-plan.md) · [Foundation spec](docs/01-foundation.md) · [Connectors setup](docs/09-connectors.md) · [Skill library](docs/08-skills.md) · [Pricing & business](docs/pricing-and-business.md) · [Legal drafts and licenses](legal/README.md) · [Decision log](docs/decisions.md)
 
 ## What works today
 
@@ -47,6 +49,9 @@
 | Built-in skill library: 59 skills for software, data, documents and business work, admins switch each on or off ([list](docs/08-skills.md)) | ✅ |
 | Code: Aatmiq Code (Code-OSS) in the browser, per-person IDE as your own user, terminals, Git (clone, your name on commits), Open VSX extensions, and the Aatmiq panel: a coding agent with approvals and diffs; optionally on its own hostname (`IDE_URL`) so extensions can't act on Aatmiq ([details](docs/07-code.md)) | ✅ |
 | Desktop app: Aatmiq Code in a native window for Windows, macOS and Linux, connected to your server (sign-in as on the web, the IDE's own shortcuts, `aatmiq://` links); packages built by `.github/workflows/desktop.yml` ([details](docs/07-code.md#desktop-app)) | ✅ |
+| GEM AI Learning: a topic and a level become a course outline and lessons written by your model, validated before they're stored and kept (versions, progress, bookmarks, notes), with real YouTube videos when a key is set ([details](docs/15-gem-ai.md#learning)) | ✅ |
+| GEM AI Calculators: 202 engineering formula calculators (20 verified against 101 hand-worked cases), scientific keypad, unit converter, math, science, programmer, finance and date tools, history and favorites; the calculator as a tool in chat ([details](docs/15-gem-ai.md#calculators)) | ✅ |
+| GEM AI Knowledge: questions answered only from one project's documents (and optionally the workspace's general references), citing document, version, page and passage; "not in the documents" when they don't say; 30 denial probes on every push ([details](docs/15-gem-ai.md#knowledge)) | ✅ |
 
 ## Repository layout
 
@@ -58,6 +63,7 @@ apps/license-console Super Admin console for the license server
 packages/db         Drizzle schema + migrations (Postgres)
 packages/shared     Roles/permissions, validation schemas, quota maths
 packages/model-gateway  Provider adapters (Ollama / OpenAI-compatible), streaming, metering
+packages/calculators  GEM AI calculators: formulas, units, expression/symbolic engines, golden tests
 packages/license    License key format, signing/verification, plan presets, grace rules
 packages/ui         Shared design system (buttons, fields, dialogs, charts, theme)
 packages/harness    Work AI agent engine adapter (DeepSeek Harness), its plugin and risk policy

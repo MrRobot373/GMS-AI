@@ -125,7 +125,12 @@ d("GEM AI Calculators", () => {
     // D = 1 divides by zero in a boost: no result rather than a wrong one.
     expect((await ask(h.alice, "/calc boost-ideal Vin=12V D=1")).start.calculation).toBeNull();
     expect((await ask(h.alice, "/calc boost-ideal Vin=12V D=0.5")).start.calculation.outputs[0].value).toBe(24);
-  });
+    // "/calc" with words instead of an id is matched like a question; a real id with a bad unit isn't.
+    const loose = (await ask(h.alice, "/calc ohm's law 12 V and 0.25 A")).start.calculation;
+    expect(loose).toMatchObject({ calculatorId: "ohms-law" });
+    expect(loose.outputs.find((o: { key: string }) => o.key === "R").value).toBeCloseTo(48);
+    expect((await ask(h.alice, "/calc boost-ideal Vin=12furlongs D=0.5")).start.calculation).toBeNull();
+  }, 20_000);
 
   it("chat doesn't run calculators for someone who doesn't have them", async () => {
     const members = await h.call(h.owner, "GET", `/api/admin/workspaces/${h.workspaceId}/members`);

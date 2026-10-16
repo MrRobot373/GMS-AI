@@ -3,7 +3,7 @@
  * duty?" runs the tested function, and the model only explains the numbers it's given.
  *
  * Finding the calculation, in order:
- *   1. "/calc <id> key=value unit …" runs exactly that calculator.
+ *   1. "/calc <id> key=value unit …" runs exactly that calculator; "/calc <words and numbers>" goes to the rules.
  *   2. Rules: numbers with units are read from the message and matched to a calculator's inputs
  *      by quantity and by the words around them. Every number with a unit must find a place.
  *   3. With a real model (not the demo one), the model may map the question to one of a short
@@ -219,11 +219,17 @@ export interface CalcToolOptions {
 }
 
 export async function findCalculation(o: CalcToolOptions): Promise<CalcToolResult | null> {
-  const text = o.text.slice(0, 2000);
+  let text = o.text.slice(0, 2000);
   const allow = (d: CalculatorDef) => d.status === "verified" || o.showBeta;
   const cmd = command(text, allow);
-  if (cmd || text.trim().startsWith("/calc")) return cmd;
-  if (!ASKS.test(text) || !/\d/.test(text)) return null;
+  if (cmd) return cmd;
+  if (/^\/calc\b/i.test(text.trim())) {
+    // "/calc <id> …" that didn't run stays unrun; "/calc ohm's law V=12V I=2A" is matched like a question.
+    const rest = text.trim().replace(/^\/calc\s*/i, "");
+    if (calculatorCatalog().some((c) => c.id === rest.split(/\s/)[0]?.toLowerCase())) return null;
+    text = rest;
+  } else if (!ASKS.test(text)) return null;
+  if (!/\d/.test(text)) return null;
   const qs = readQuantities(text);
   if (!qs.length) return null;
   const formulas = calculatorCatalog().filter((c) => c.kind === "formula");

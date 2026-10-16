@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "project": "Inverter 5 kW",
+      "question": "What overtemperature problems did the 5 kW inverter have?",
+      "documents": ["inverter-test-report.txt"],
+      "contains": ["98"]
+    },
+    {
+      "project": "Inverter 5 kW",
+      "question": "What was the efficiency at full load?",
+      "documents": ["inverter-test-report.txt"]
+    },
+    {
+      "project": "Inverter 5 kW",
+      "question": "What is the warranty period for the gearbox?",
+      "notFound": true
+    }
+  ]
+}

@@ -12,6 +12,7 @@ COPY packages/model-gateway/package.json packages/model-gateway/
 COPY packages/license/package.json packages/license/
 COPY packages/harness/package.json packages/harness/
 COPY packages/skills/package.json packages/skills/
+COPY packages/calculators/package.json packages/calculators/
 RUN pnpm install --frozen-lockfile --filter @aatmiq/api...
 COPY packages packages
 COPY apps/api apps/api

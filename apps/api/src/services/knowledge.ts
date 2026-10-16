@@ -33,7 +33,7 @@ export interface KnowledgePassage {
 /**
  * Vector matches farther than this (cosine distance) don't count as evidence on their own; keyword
  * matches always do. Embedding models differ in scale: tune with KNOWLEDGE_MAX_DISTANCE against
- * the evaluation set (scripts/knowledge-eval.ts).
+ * the evaluation set (scripts/knowledge-eval.mjs).
  */
 export const MAX_DISTANCE = Number(process.env.KNOWLEDGE_MAX_DISTANCE ?? 0.5);
 

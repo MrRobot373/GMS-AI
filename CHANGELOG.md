@@ -9,6 +9,20 @@ without one.
 
 ## Unreleased
 
+- **GEM AI modules** ([docs/15-gem-ai.md](docs/15-gem-ai.md)), each switched on or off for the
+  organization in Admin → Settings and per person in each workspace's member sections:
+  - **Learning**: courses written by your model from a topic and a level, lesson by lesson, saved
+    and versioned, with equations that say when they apply, worked examples, progress, bookmarks,
+    notes and real YouTube videos (with a YouTube Data API key).
+  - **Calculators**: 202 engineering formula calculators (20 verified against 101 hand-worked
+    reference cases, the rest marked beta), a scientific keypad, unit converter, equation, matrix,
+    calculus and statistics tools, programmer, science, finance and date tools, with history and
+    favorites. In chat, `/calc` or a question with numbers runs the tested calculator and the model
+    explains its result.
+  - **Knowledge**: questions answered only from one project's documents, citing the document,
+    version, page and passage, and saying so when the documents don't contain the answer.
+    Document versions, a general engineering reference library, and `scripts/knowledge-eval.mjs`
+    to check retrieval against your own questions.
 - Single sign-on with any SAML 2.0 identity provider (Okta, Entra ID, Google Workspace, ADFS…):
   import its metadata in Admin → Authentication; the provider's app tile works too.
 - Directory sync (Enterprise), in Admin → Authentication → Directory:

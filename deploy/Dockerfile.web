@@ -6,9 +6,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs tsconfig.base
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
+COPY packages/calculators/package.json packages/calculators/
 RUN pnpm install --frozen-lockfile --filter @aatmiq/web...
 COPY packages/shared packages/shared
 COPY packages/ui packages/ui
+COPY packages/calculators packages/calculators
 COPY apps/web apps/web
 COPY scripts/third-party-notices.mjs scripts/
 COPY legal/third-party/licenses legal/third-party/licenses

@@ -56,6 +56,15 @@ they're told). **Admin → Usage** shows who used what, by model and section, wi
   and see which model would answer and why. Details: [02-models.md](../02-models.md#auto).
 - Workspaces get models in **Admin → Workspaces → Models** (and the default one).
 
+## GEM AI modules
+
+**Admin → Settings → GEM AI modules** switches Learning, Calculators and Knowledge on or off for
+everyone, shows or hides beta calculators, sets how many courses and lessons each person can have
+written per day, and holds the YouTube Data API key for lesson videos. Each person's access is in
+**Admin → Workspaces → *a workspace* → Members** (their sections). Knowledge's general references
+are documents a workspace admin adds from the library. Tuning retrieval for your documents:
+[15-gem-ai.md](../15-gem-ai.md#evaluating-and-tuning-retrieval).
+
 ## Security
 
 | Where | What to set |

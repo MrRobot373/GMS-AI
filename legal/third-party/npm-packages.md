@@ -5,7 +5,7 @@ ship (production dependencies). CI fails when it's out of date or a license need
 license texts go into each image as `THIRD_PARTY_NOTICES.txt`; container images, system packages,
 fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 
-557 packages: MIT 465, Apache-2.0 41, ISC 25, BSD-3-Clause 8, BSD-2-Clause 5, OFL-1.1 3, LGPL-3.0-or-later 1, CC-BY-4.0 1, BSD 1, SIL OPEN FONT LICENSE 1, (MIT OR GPL-3.0-or-later) 1, MIT-0 1, (MIT AND Zlib) 1, Unlicense 1, BlueOak-1.0.0 1, 0BSD 1.
+575 packages: MIT 481, Apache-2.0 41, ISC 26, BSD-3-Clause 8, BSD-2-Clause 6, OFL-1.1 3, LGPL-3.0-or-later 1, CC-BY-4.0 1, BSD 1, SIL OPEN FONT LICENSE 1, (MIT OR GPL-3.0-or-later) 1, MIT-0 1, (MIT AND Zlib) 1, Unlicense 1, BlueOak-1.0.0 1, 0BSD 1.
 
 | Package | Version | License |
 |---|---|---|
@@ -211,6 +211,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | @types/estree | 1.0.9 | MIT |
 | @types/estree-jsx | 1.0.5 | MIT |
 | @types/hast | 3.0.5 | MIT |
+| @types/katex | 0.16.8 | MIT |
 | @types/mdast | 4.0.4 | MIT |
 | @types/ms | 2.1.0 | MIT |
 | @types/node | 14.18.63, 22.20.4, 26.6.3 | MIT |
@@ -264,6 +265,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | color-convert | 2.0.1 | MIT |
 | color-name | 1.1.4 | MIT |
 | comma-separated-tokens | 2.0.3 | MIT |
+| commander | 8.3.0 | MIT |
 | compress-commons | 4.1.2 | MIT |
 | concat-map | 0.0.1 | MIT |
 | cookie | 1.1.1, 2.0.1 | MIT |
@@ -290,6 +292,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | duplexer2 | 0.1.4 | BSD-3-Clause |
 | emoji-regex | 8.0.0 | MIT |
 | end-of-stream | 1.4.5 | MIT |
+| entities | 6.0.1 | BSD-2-Clause |
 | escape-html | 1.0.3 | MIT |
 | escape-string-regexp | 5.0.0 | MIT |
 | estree-util-is-identifier-name | 3.0.0 | MIT |
@@ -317,10 +320,16 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | glob | 7.2.3 | ISC |
 | graceful-fs | 4.2.11 | ISC |
 | hash.js | 1.1.7 | MIT |
+| hast-util-from-dom | 5.0.1 | ISC |
+| hast-util-from-html | 2.0.3 | MIT |
+| hast-util-from-html-isomorphic | 2.0.0 | MIT |
+| hast-util-from-parse5 | 8.0.3 | MIT |
 | hast-util-is-element | 3.0.0 | MIT |
+| hast-util-parse-selector | 4.0.0 | MIT |
 | hast-util-to-jsx-runtime | 2.3.6 | MIT |
 | hast-util-to-text | 4.0.2 | MIT |
 | hast-util-whitespace | 3.0.0 | MIT |
+| hastscript | 9.0.1 | MIT |
 | highlight.js | 11.11.2 | BSD-3-Clause |
 | html-url-attributes | 3.0.1 | MIT |
 | idb-keyval | 6.3.0 | Apache-2.0 |
@@ -346,6 +355,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | json-schema-traverse | 1.0.0 | MIT |
 | jsonfile | 6.2.1 | MIT |
 | jszip | 3.10.2 | (MIT OR GPL-3.0-or-later) |
+| katex | 0.16.47 | MIT |
 | kysely | 0.29.6 | MIT |
 | lazystream | 1.0.1 | MIT |
 | ldapts | 9.2.0 | MIT |
@@ -381,6 +391,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | mdast-util-gfm-strikethrough | 2.0.1 | MIT |
 | mdast-util-gfm-table | 2.0.0 | MIT |
 | mdast-util-gfm-task-list-item | 2.0.0 | MIT |
+| mdast-util-math | 3.0.0 | MIT |
 | mdast-util-mdx-expression | 2.0.1 | MIT |
 | mdast-util-mdx-jsx | 3.2.0 | MIT |
 | mdast-util-mdxjs-esm | 2.0.1 | MIT |
@@ -397,6 +408,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | micromark-extension-gfm-table | 2.1.2 | MIT |
 | micromark-extension-gfm-tagfilter | 2.0.0 | MIT |
 | micromark-extension-gfm-task-list-item | 2.1.0 | MIT |
+| micromark-extension-math | 3.1.0 | MIT |
 | micromark-factory-destination | 2.0.1 | MIT |
 | micromark-factory-label | 2.0.1 | MIT |
 | micromark-factory-space | 2.1.0 | MIT |
@@ -446,6 +458,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | p-try | 2.2.0 | MIT |
 | pako | 1.0.11 | (MIT AND Zlib) |
 | parse-entities | 4.0.2 | MIT |
+| parse5 | 7.3.0 | MIT |
 | path-exists | 4.0.0 | MIT |
 | path-is-absolute | 1.0.1 | MIT |
 | picocolors | 1.1.1 | ISC |
@@ -476,7 +489,9 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | redis-errors | 1.2.0 | MIT |
 | regenerator-runtime | 0.13.11 | MIT |
 | rehype-highlight | 7.0.2 | MIT |
+| rehype-katex | 7.0.1 | MIT |
 | remark-gfm | 4.0.1 | MIT |
+| remark-math | 6.0.0 | MIT |
 | remark-parse | 11.0.0 | MIT |
 | remark-rehype | 11.1.2 | MIT |
 | remark-stringify | 11.0.0 | MIT |
@@ -532,6 +547,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | unist-util-find-after | 5.0.0 | MIT |
 | unist-util-is | 6.0.1 | MIT |
 | unist-util-position | 5.0.0 | MIT |
+| unist-util-remove-position | 5.0.0 | MIT |
 | unist-util-stringify-position | 4.0.0 | MIT |
 | unist-util-visit | 5.1.0 | MIT |
 | unist-util-visit-parents | 6.0.2 | MIT |
@@ -543,8 +559,10 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | util-deprecate | 1.0.2 | MIT |
 | uuid | 11.1.1 | MIT |
 | vfile | 6.0.3 | MIT |
+| vfile-location | 5.0.3 | MIT |
 | vfile-message | 4.0.3 | MIT |
 | wasm-feature-detect | 1.9.0 | Apache-2.0 |
+| web-namespaces | 2.0.1 | MIT |
 | webidl-conversions | 3.0.1 | BSD-2-Clause |
 | whatwg-url | 5.0.0 | MIT |
 | which-module | 2.0.1 | ISC |

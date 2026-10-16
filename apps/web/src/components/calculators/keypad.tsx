@@ -158,7 +158,7 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
     insert(k);
   };
 
-  // Keyboard: digits and operators type, Enter evaluates, Escape clears.
+  // Keyboard: digits, letters (sqrt, sin, variables) and operators type, Enter evaluates, Escape clears.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -175,7 +175,7 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
         }
         return;
       }
-      if (/^[0-9.+\-*/^()%!,]$/.test(e.key)) {
+      if (/^[0-9A-Za-zπ.+\-*/^()%!, ]$/.test(e.key)) {
         e.preventDefault();
         insert(e.key);
       } else if (e.key === "Enter" || e.key === "=") {
