@@ -1,5 +1,7 @@
 import { APPROVAL_PRESETS, type CatalogCategory } from "@aatmiq/shared";
 import { BookOpen, Code2, CreditCard, Database, FileText, ListChecks, Mail, MessageSquare, Palette, Plug, Users } from "lucide-react";
+import type { CSSProperties } from "react";
+import { BRAND_ICONS } from "@/lib/brand-icons";
 import { cn } from "@/lib/cn";
 
 const ICONS: Record<CatalogCategory, typeof Plug> = {
@@ -15,12 +17,41 @@ const ICONS: Record<CatalogCategory, typeof Plug> = {
   Knowledge: BookOpen,
 };
 
-/** A connector's tile: its category's icon (custom servers get a plug). */
-export function ConnectorIcon({ category, className }: { category?: string | null; className?: string }) {
+/**
+ * A connector's tile: the app's logo (lib/brand-icons.ts), else its initial for a catalog app
+ * without one, else its category's icon (custom servers get a plug).
+ */
+export function ConnectorIcon({
+  catalogId,
+  name,
+  category,
+  className,
+}: {
+  catalogId?: string | null;
+  name?: string;
+  category?: string | null;
+  className?: string;
+}) {
+  const brand = catalogId ? BRAND_ICONS[catalogId] : undefined;
   const Icon = (category && ICONS[category as CatalogCategory]) || Plug;
   return (
     <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-bg", className)}>
-      <Icon className="size-4 text-fg-muted" />
+      {brand ? (
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden
+          className="size-[18px] fill-[var(--brand-light)] dark:fill-[var(--brand-dark)]"
+          style={{ "--brand-light": brand.light ?? "var(--fg)", "--brand-dark": brand.dark ?? "var(--fg)" } as CSSProperties}
+        >
+          <path d={brand.path} />
+        </svg>
+      ) : catalogId && name?.trim() ? (
+        <span aria-hidden className="text-[15px] font-medium text-fg-muted">
+          {name.trim()[0]!.toUpperCase()}
+        </span>
+      ) : (
+        <Icon className="size-4 text-fg-muted" />
+      )}
     </span>
   );
 }

@@ -20,6 +20,10 @@ without one.
   desktop app, in dark and light. Their accent takes your organization's accent colour. Admin →
   Settings → Illustrations turns them off. The "page not found" and error pages are now in the
   product's style, in English and Hindi.
+- Connector pages show each app's own logo (Gmail, GitHub, Notion, Figma…) instead
+  of a generic icon, in both themes.
+- The public site: Work AI and Code no longer say "Coming soon", the model list names the models
+  the GPU server ships, and the plans list only what's included.
 - Open-source notices: the full license texts of every package ship in the images (and at
   `/third-party-notices.txt` on your installation), and each release and the offline bundle carry
   `legal/` with the list of open-source components and AI models and their licenses.

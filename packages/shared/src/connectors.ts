@@ -7,6 +7,8 @@
  *  - oauth + client "admin":   the admin creates an OAuth app at the service and enters its id/secret.
  *  - token:                    the admin enters a shared API key or token.
  *  - none:                     an open server.
+ *
+ * Each entry's logo comes from scripts/brand-icons.mjs (add the new id there and re-run it).
  */
 
 export type ConnectorAuth = "none" | "token" | "oauth";

@@ -60,6 +60,11 @@ Alpine Linux with Node.js 22 (musl: MIT; BusyBox: GPL-2.0, unmodified), and the 
 packages, among them the fonts Inter, Newsreader, Geist Mono and Noto Sans Devanagari (all
 OFL-1.1).
 
+The app logos on the connector pages come from [Simple Icons](https://simpleicons.org) (CC0-1.0),
+copied into `apps/web/src/lib/brand-icons.ts` by `scripts/brand-icons.mjs`. The logos are
+trademarks of their owners and are shown only to name the app a connector talks to; no
+endorsement is implied. Apps Simple Icons doesn't carry are shown by their initial.
+
 ## Services Compose runs next to Aatmiq
 
 These come from their publishers' registries: your server downloads them directly, so we don't

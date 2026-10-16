@@ -82,7 +82,7 @@ export function ConnectorsSection() {
         <Card className="divide-y divide-border">
           {(connectors.data ?? []).map((c) => (
             <div key={c.id} className="flex flex-wrap items-center gap-4 px-4 py-3.5" data-testid="connector-row">
-              <ConnectorIcon category={c.category} />
+              <ConnectorIcon catalogId={c.catalogId} name={c.displayName} category={c.category} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-fg">
                   {c.displayName} <span className="font-mono text-[11.5px] text-fg-subtle">{c.name}</span>
@@ -211,7 +211,7 @@ function AddConnectorDialog({ existing, onClose, onSaved }: { existing: AdminCon
               className="flex items-start gap-3 rounded-xl border border-border bg-bg p-3 text-left transition-colors hover:border-border-strong"
               data-testid={`catalog-${c.id}`}
             >
-              <ConnectorIcon category={c.category} />
+              <ConnectorIcon catalogId={c.id} name={c.name} category={c.category} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-[13.5px] text-fg">
                   {c.name}

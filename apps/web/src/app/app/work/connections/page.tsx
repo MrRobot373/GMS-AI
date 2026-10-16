@@ -105,7 +105,7 @@ function Connections() {
                   <Card className="divide-y divide-border">
                     {personal.map((c) => (
                       <div key={c.id} className="flex flex-wrap items-center gap-4 px-4 py-3.5" data-testid="connection-row" data-name={c.name}>
-                        <ConnectorIcon category={c.category} />
+                        <ConnectorIcon catalogId={c.catalogId} name={c.displayName} category={c.category} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 text-[13.5px] text-fg">
                             {c.displayName}
@@ -136,7 +136,7 @@ function Connections() {
                   <Card className="divide-y divide-border">
                     {shared.map((c) => (
                       <div key={c.id} className="flex items-center gap-4 px-4 py-3.5" data-testid="connection-row" data-name={c.name}>
-                        <ConnectorIcon category={c.category} />
+                        <ConnectorIcon catalogId={c.catalogId} name={c.displayName} category={c.category} />
                         <div className="min-w-0 flex-1">
                           <div className="text-[13.5px] text-fg">{c.displayName}</div>
                           <div className="truncate text-[12px] text-fg-subtle">{c.description ?? (c.auth === "token" ? t("Set up by your admin.") : t("Open service."))}</div>
