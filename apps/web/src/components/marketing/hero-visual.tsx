@@ -82,7 +82,7 @@ export function HeroVisual() {
                       <span className="size-2.5 rounded-full bg-[oklch(0.72_0.14_190)] ring-2 ring-surface" />
                       <span className="size-2.5 rounded-full bg-[oklch(0.72_0.14_330)] ring-2 ring-surface" />
                     </span>
-                    Qwen3 · on-prem
+                    Auto · on-prem
                   </span>
                   <span className="flex-1" />
                   <Mic className="size-3.5" />

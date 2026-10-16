@@ -108,7 +108,7 @@ export function Landing() {
         </div>
         <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[13px] text-fg-subtle">
           <span className="text-fg-muted">Runs the models you choose:</span>
-          {["DeepSeek", "Qwen", "Llama", "Gemma", "Mistral", "gpt-oss", "via Ollama or vLLM"].map((m) => (
+          {["Qwen3.6", "Nemotron 3", "Gemma 4", "EmbeddingGemma", "or any model on Ollama or vLLM"].map((m) => (
             <span key={m} className="font-medium">{m}</span>
           ))}
         </div>
@@ -139,7 +139,6 @@ export function Landing() {
             name="Work AI"
             tagline="Hand off a task. Get it done."
             points={["Agents that plan and act on your behalf", "Connect Slack, Gmail, Drive, GitHub, GitLab", "Private web search and reusable skills", "Approvals before anything risky"]}
-            soon
           />
           <Pillar
             art="landing-code"
@@ -147,7 +146,6 @@ export function Landing() {
             name="Code"
             tagline="A full IDE, with an agent inside."
             points={["Built on VS Code: editor, terminal, git, debug", "Desktop app and in the browser", "AI panel that edits files directly", "Works fine with AI switched off"]}
-            soon
           />
         </div>
       </Section>
@@ -246,10 +244,10 @@ export function Landing() {
           <p className="mt-4 text-fg-muted">Per-seat plans with an annual platform fee that covers installation, updates and support.</p>
         </div>
         <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Plan name="Chat" desc="A private assistant for everyone." items={["Chat + document Q&A", "Up to 3 workspaces", "Google / Microsoft sign-in", "30-day audit log"]} />
+          <Plan name="Chat" desc="A private assistant for everyone." items={["Chat + document Q&A", "Up to 3 workspaces", "Google / Microsoft sign-in", "Token budgets and audit log"]} />
           <Plan name="Work" desc="Agents that get things done." items={["Everything in Chat", "Work AI agents", "Connectors and web search", "Up to 10 workspaces"]} />
           <Plan name="Complete" desc="Chat, agents and code." items={["Everything in Work", "Aatmiq Code IDE", "Desktop and browser", "Unlimited workspaces"]} featured />
-          <Plan name="Enterprise" desc="For larger organizations." items={["Everything in Complete", "SAML / OIDC, LDAP", "Managed model hosting", "SLA and dedicated support"]} />
+          <Plan name="Enterprise" desc="For larger organizations." items={["Everything in Complete", "SAML and OIDC single sign-on", "Managed model hosting", "SLA and dedicated support"]} />
         </div>
       </Section>
 
@@ -291,14 +289,11 @@ export function Landing() {
   );
 }
 
-function Pillar({ art, icon, name, tagline, points, soon }: { art: ArtName; icon: ReactNode; name: string; tagline: string; points: string[]; soon?: boolean }) {
+function Pillar({ art, icon, name, tagline, points }: { art: ArtName; icon: ReactNode; name: string; tagline: string; points: string[] }) {
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-surface p-6 transition-[border-color,transform] duration-300 hover:-translate-y-0.5 hover:border-border-strong">
       <Art name={art} always fit="cover" fade="bottom" sizes="(min-width: 768px) 380px, 92vw" className="-mx-6 -mt-6 mb-4 aspect-[3/2]" />
-      <div className="mb-5 flex items-center justify-between">
-        <div className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-fg [&>svg]:size-4">{icon}</div>
-        {soon && <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-subtle">Coming soon</span>}
-      </div>
+      <div className="mb-5 flex size-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-fg [&>svg]:size-4">{icon}</div>
       <h3 className="font-serif text-[26px] leading-tight">{name}</h3>
       <p className="mt-1 text-fg-muted">{tagline}</p>
       <ul className="mt-5 space-y-2.5 text-sm">
