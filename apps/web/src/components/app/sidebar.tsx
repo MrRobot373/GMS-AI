@@ -3,7 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
+  BookOpenCheck,
+  Calculator,
   Check,
+  Library,
   FolderInput,
   FolderOpen,
   Plus,
@@ -40,7 +43,7 @@ import type { ChatSummary } from "@/lib/types";
 import { MoveToProjectDialog, NewProjectDialog, ProjectIcon, useProjects } from "@/components/projects/projects";
 import { NotificationsButton } from "./notifications";
 import { SearchPalette } from "./search-palette";
-import { useSession } from "./session";
+import { useCanUseModule, useSession } from "./session";
 import { StatusIcon } from "@/components/work/parts";
 import { usePendingApprovals, useWorkTasks } from "@/lib/work";
 import { useCodeWorkspaces } from "@/lib/code";
@@ -178,6 +181,9 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const inCode = pathname.startsWith("/app/code");
   // A section shows when the license includes it and the person (or an admin) has it enabled.
   const can = (s: "chat" | "work" | "code") => (me.license?.sections.includes(s) ?? true) && (sections.includes(s) || me.isAdmin);
+  const canLearn = useCanUseModule("learning");
+  const canCalc = useCanUseModule("calculators");
+  const canKnow = useCanUseModule("knowledge");
   const workTasks = useWorkTasks(can("work") ? workspaceId : "");
   const codeWorkspaces = useCodeWorkspaces(inCode && can("code") ? workspaceId : "");
   const approvalsQ = usePendingApprovals(can("work") ? workspaceId : "");
@@ -302,6 +308,22 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
         {can("code") && (
           <NavItem href="/app/code" icon={<Code2 />} active={pathname.startsWith("/app/code")}>
             {t("Code")}
+          </NavItem>
+        )}
+        {/* GEM AI modules */}
+        {canLearn && (
+          <NavItem href="/app/learning" icon={<BookOpenCheck />} active={pathname.startsWith("/app/learning")}>
+            {t("Learning")}
+          </NavItem>
+        )}
+        {canCalc && (
+          <NavItem href="/app/calculators" icon={<Calculator />} active={pathname.startsWith("/app/calculators")}>
+            {t("Calculators")}
+          </NavItem>
+        )}
+        {canKnow && (
+          <NavItem href="/app/knowledge" icon={<Library />} active={pathname.startsWith("/app/knowledge")}>
+            {t("Knowledge")}
           </NavItem>
         )}
       </nav>

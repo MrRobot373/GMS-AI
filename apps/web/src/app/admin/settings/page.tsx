@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmailSettings } from "@/components/admin/email-settings";
+import { GemSettings } from "@/components/admin/gem-settings";
 import { Section } from "@/components/admin/table";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -204,6 +205,8 @@ export default function SettingsPage() {
           </div>
         </Card>
       </Section>
+
+      <GemSettings />
 
       <Section title={t("License")}>
         <Link href="/admin/license" className="flex items-center gap-3 rounded-xl border border-border bg-surface p-5 transition-colors hover:border-border-strong">

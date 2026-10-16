@@ -52,9 +52,11 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/compo
 import { ApiError, get, patch, post, readSse, uploadDocument } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { chatTitle, greeting, routingReason, timeAgo, TIER_NAMES } from "@/lib/format";
+import type { ChatCalculation } from "./calculation-card";
 import type { Routing } from "@aatmiq/shared";
 import type { AvailableModel, ChatDetail, Citation, DocumentRow, QuotaStatus } from "@/lib/types";
 import { SourcesRow, useSourceDialog } from "./citations";
+import { CalculationCard } from "./calculation-card";
 import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import { Markdown } from "./markdown";
 import { RequestTokensDialog } from "./request-tokens";
@@ -72,6 +74,8 @@ interface UiMessage {
   citations?: Citation[] | null;
   /** How Auto picked the model for this answer. */
   routing?: Routing | null;
+  /** A tested GEM AI calculator ran for this answer. */
+  calculation?: ChatCalculation | null;
 }
 
 const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
@@ -182,6 +186,7 @@ export function ChatView({
           attachments: m.attachments,
           citations: m.citations,
           routing: m.routing,
+          calculation: m.calculation ?? null,
         })),
     );
     setChatDocs(existing.data.documents ?? []);
@@ -199,6 +204,16 @@ export function ChatView({
       }),
     );
   }, [library.data]);
+
+  // A question handed over from another screen (Calculators' "Explain in chat"): /app/chat?ask=<text>
+  const askParam = searchParams.get("ask");
+  const askedParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (!askParam || askedParam.current === askParam) return;
+    askedParam.current = askParam;
+    setInput(askParam.slice(0, 4000));
+    composerRef.current?.focus();
+  }, [askParam]);
 
   // "Ask about this" from the Documents page: /app/chat?doc=<id>
   const docParam = searchParams.get("doc");
@@ -335,7 +350,7 @@ export function ChatView({
               setLiveTitle(ev.data.title);
               qc.invalidateQueries({ queryKey: ["chats", workspaceId] });
             }
-            patchAsst((m) => ({ ...m, model: ev.data.model?.id ?? m.model, routing: ev.data.routing ?? null, citations: ev.data.citations?.length ? ev.data.citations : null }));
+            patchAsst((m) => ({ ...m, model: ev.data.model?.id ?? m.model, routing: ev.data.routing ?? null, citations: ev.data.citations?.length ? ev.data.citations : null, calculation: ev.data.calculation ?? null }));
           } else if (ev.event === "delta") patchAsst((m) => ({ ...m, content: m.content + ev.data.text }));
           else if (ev.event === "done") {
             patchAsst((m) => ({ ...m, streaming: false }));
@@ -894,6 +909,7 @@ function MessageBlock({
         )}
       </div>
       <div className="pl-6">
+        {m.calculation && <CalculationCard c={m.calculation} />}
         {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} /> : null}
         {m.streaming && m.content && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] animate-caret bg-fg" />}
         {!m.streaming && m.citations && m.citations.length > 0 && <SourcesRow citations={m.citations} onOpen={onCite} />}

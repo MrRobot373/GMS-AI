@@ -27,7 +27,7 @@ interface UsageReport {
 }
 
 const RANGES = [7, 30, 90] as const;
-const SECTION_LABELS: Record<string, string> = { chat: msg("Chat"), work: msg("Work AI"), code: msg("Code"), api: msg("API"), system: msg("System") };
+const SECTION_LABELS: Record<string, string> = { chat: msg("Chat"), work: msg("Work AI"), code: msg("Code"), api: msg("API"), system: msg("System"), learning: msg("Learning"), knowledge: msg("Knowledge") };
 
 export default function UsagePage() {
   const t = useT();

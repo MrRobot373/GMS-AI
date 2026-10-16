@@ -4,7 +4,7 @@ const API_URL = process.env.API_URL ?? "http://localhost:4000";
 
 const config: NextConfig = {
   output: "standalone",
-  transpilePackages: ["@aatmiq/shared", "@aatmiq/ui"],
+  transpilePackages: ["@aatmiq/shared", "@aatmiq/ui", "@aatmiq/calculators"],
   poweredByHeader: false,
   // Aatmiq's pages may only be framed by Aatmiq itself (no clickjacking an "Approve" button from
   // another site). The IDE (which Aatmiq frames from the IDE's own host) and the API set their own.

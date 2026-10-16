@@ -33,6 +33,12 @@ export function useCanUse(section: "chat" | "work" | "code"): boolean {
   return (me.license?.sections.includes(section) ?? true) && ((workspace?.sections ?? ["chat"]).includes(section) || me.isAdmin);
 }
 
+/** A GEM AI module: switched on for the organization, and among the person's sections here (admins always). */
+export function useCanUseModule(module: "learning" | "calculators" | "knowledge"): boolean {
+  const { me, workspace } = useSession();
+  return (me.gem?.modules[module] ?? true) && ((workspace?.sections ?? []).includes(module) || me.isAdmin);
+}
+
 export function useMe() {
   return useQuery({ queryKey: ["me"], queryFn: () => get<Me>("/api/me"), staleTime: 30_000 });
 }

@@ -43,7 +43,7 @@ interface ModelRow {
 }
 
 const TABS = [msg("Members"), msg("Models"), msg("Budget"), msg("Settings")] as const;
-const SECTION_LABELS: Record<string, string> = { chat: msg("Chat"), work: msg("Work AI"), code: msg("Code") };
+const SECTION_LABELS: Record<string, string> = { chat: msg("Chat"), work: msg("Work AI"), code: msg("Code"), learning: msg("Learning"), calculators: msg("Calculators"), knowledge: msg("Knowledge") };
 
 export default function WorkspaceDetail() {
   const t = useT();
@@ -143,8 +143,8 @@ function Members({ ws }: { ws: WorkspaceRow }) {
               </Td>
               <Td>{m.role === "admin" ? <Badge tone="accent">{t("Workspace admin")}</Badge> : <Badge>{t("Member")}</Badge>}</Td>
               <Td>
-                <div className="flex gap-1">
-                  {(["chat", "work", "code"] as const).map((s) => {
+                <div className="flex flex-wrap gap-1">
+                  {(["chat", "work", "code", "learning", "calculators", "knowledge"] as const).map((s) => {
                     const on = m.sections.includes(s);
                     return (
                       <button
@@ -227,7 +227,7 @@ function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: 
   const [role, setRole] = useState<"member" | "admin">("member");
   const candidates = (users.data ?? []).filter((u) => u.status === "active" && !existing.includes(u.id));
   const add = useMutation({
-    mutationFn: () => post(`/api/admin/workspaces/${ws.id}/members`, { userId, role, sections: ["chat", "work", "code"] }),
+    mutationFn: () => post(`/api/admin/workspaces/${ws.id}/members`, { userId, role, sections: ["chat", "work", "code", "learning", "calculators", "knowledge"] }),
     onSuccess: () => {
       onAdded();
       onOpenChange(false);

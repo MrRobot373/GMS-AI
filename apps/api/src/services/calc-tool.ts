@@ -183,11 +183,20 @@ function command(text: string, allow: (d: CalculatorDef) => boolean): CalcToolRe
   }
   if (!allow(def)) return null;
   const given: Record<string, InputValue> = {};
-  for (const p of m[2]!.matchAll(/([A-Za-z0-9_]+)\s*=\s*(-?[\d.eE+-]+)\s*([^\s,;]*)/g)) {
+  for (const p of m[2]!.split("\n")[0]!.matchAll(/([A-Za-z0-9_]+)\s*=\s*(-?[\d.eE+-]+)\s*([^\s,;]*)/g)) {
     const inp = def.inputs.find((i) => i.key.toLowerCase() === p[1]!.toLowerCase());
     if (!inp) continue;
-    const u = p[3] ? (p[3] === "%" ? ["ratio", "percent"] : unitFor(p[3])) : null;
-    given[inp.key] = { value: Number(p[2]), unit: u && u[0] === inp.quantity ? u[1] : inp.unit };
+    let unit: string | undefined = inp.unit;
+    if (p[3]) {
+      // A unit's id ("kohm") or what people type ("kΩ", "%"); one that can't be read stops the run.
+      const q = QUANTITIES.find((x) => x.id === inp.quantity);
+      const byId = q?.units.find((x) => x.id === p[3]);
+      const typed = p[3] === "%" ? ["ratio", "percent"] : unitFor(p[3]);
+      if (byId) unit = byId.id;
+      else if (typed && typed[0] === inp.quantity) unit = typed[1];
+      else return null;
+    }
+    given[inp.key] = { value: Number(p[2]), unit };
   }
   const assumed: string[] = [];
   for (const i of def.inputs) if (!(i.key in given) && !i.optional && i.default !== undefined) {

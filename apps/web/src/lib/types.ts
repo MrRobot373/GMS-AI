@@ -1,4 +1,4 @@
-import type { ModelTier, OrgRole, QuotaResult, Routing, Section, WorkspaceRole } from "@aatmiq/shared";
+import type { MemberSection, ModelTier, OrgRole, QuotaResult, Routing, WorkspaceRole } from "@aatmiq/shared";
 
 export interface Me {
   user: {
@@ -23,7 +23,9 @@ export interface Me {
   isAdmin: boolean;
   isWorkspaceAdmin: boolean;
   org: { name: string; productName: string; accentColor: string; promptLogging: boolean; logoUrl: string | null; defaultLocale: "en" | "hi"; illustrations: boolean };
-  workspaces: { id: string; name: string; icon: string | null; role: WorkspaceRole; sections: Section[] }[];
+  workspaces: { id: string; name: string; icon: string | null; role: WorkspaceRole; sections: MemberSection[] }[];
+  /** GEM AI modules the organization has switched on. */
+  gem?: { modules: { learning: boolean; calculators: boolean; knowledge: boolean }; betaCalculators: boolean };
   unreadNotifications: number;
   license?: {
     state: string;
@@ -173,6 +175,8 @@ export interface ChatMessageRow {
   attachments?: { id: string; name: string }[] | null;
   citations?: Citation[] | null;
   routing?: Routing | null;
+  /** A tested GEM AI calculator ran for this answer (apps/api/src/services/calc-tool.ts). */
+  calculation?: import("@/components/chat/calculation-card").ChatCalculation | null;
   createdAt: string;
 }
 
