@@ -18,7 +18,7 @@ const SOURCES = ["apps/api/src", "packages/license/src/index.ts", "packages/mode
 const SKIP = [/\.test\.ts$/, /\/i18n\//, /routes\/work-internal\.ts$/];
 
 const ERROR_CALLS = new Set(["badRequest", "forbidden", "notFound", "conflict", "msg"]);
-const ERROR_CLASSES = new Set(["SsoError", "ConnectorError", "UnsupportedFileError", "OcrError", "NoTextError", "LicenseError", "GatewayError"]);
+const ERROR_CLASSES = new Set(["SsoError", "ConnectorError", "UnsupportedFileError", "OcrError", "NoTextError", "LicenseError", "GatewayError", "LdapError"]);
 /** Properties of emails (.send / .sendWith) and notifications (notify) that people read. */
 const MAIL_PARTS = new Set(["subject", "note", "label", "title", "body", "lines"]);
 

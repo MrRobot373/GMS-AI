@@ -21,6 +21,8 @@ interface GroupRow {
   description: string | null;
   tokenLimit: number | null;
   memberTokenLimit: number | null;
+  /** Kept in step with a directory group (SCIM or LDAP): its name and members come from there. */
+  directory: "scim" | "ldap" | null;
   used: number;
   members: { id: string; name: string; email: string; image: string | null; status: string; used: number }[];
   models: { id: string; displayName: string; enabled: boolean }[];
@@ -90,7 +92,10 @@ export default function GroupsPage() {
             <Card key={g.id} className="p-5" data-testid={`group-${g.name}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-medium">{g.name}</div>
+                  <div className="flex items-center gap-2 font-medium">
+                    {g.name}
+                    {g.directory && <Badge>{t("From your directory")}</Badge>}
+                  </div>
                   {g.description && <div className="mt-0.5 text-[12.5px] text-fg-subtle">{g.description}</div>}
                 </div>
                 <div className="flex shrink-0 gap-1">
@@ -181,7 +186,15 @@ function GroupDialog({ group, onClose }: { group: GroupRow | null; onClose: () =
 
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: name.trim(), description: description.trim() || null, tokenLimit: toTokens(tokenLimit), memberTokenLimit: toTokens(memberLimit), memberIds: [...members], modelIds: [...modelIds] };
+      // A directory's group: its name and members come from there.
+      const fromDirectory = !!group?.directory;
+      const body = {
+        ...(fromDirectory ? {} : { name: name.trim(), memberIds: [...members] }),
+        description: description.trim() || null,
+        tokenLimit: toTokens(tokenLimit),
+        memberTokenLimit: toTokens(memberLimit),
+        modelIds: [...modelIds],
+      };
       return group ? patch(`/api/admin/groups/${group.id}`, body) : post("/api/admin/groups", body);
     },
     onSuccess: () => {
@@ -212,7 +225,7 @@ function GroupDialog({ group, onClose }: { group: GroupRow | null; onClose: () =
       <div className="max-h-[62vh] space-y-5 overflow-y-auto pr-1">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("Name")}>
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Engineering")} maxLength={60} data-testid="group-name" />
+            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Engineering")} maxLength={60} disabled={!!group?.directory} data-testid="group-name" />
           </Field>
           <Field label={t("Description (optional)")}>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={1} maxLength={280} placeholder={t("Who it's for")} />
@@ -243,7 +256,10 @@ function GroupDialog({ group, onClose }: { group: GroupRow | null; onClose: () =
 
         <div>
           <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="text-[12.5px] font-medium text-fg-muted">{t("Members ({size})", { size: members.size })}</span>
+            <span className="text-[12.5px] font-medium text-fg-muted">
+              {t("Members ({size})", { size: members.size })}
+              {group?.directory && <span className="ml-2 font-normal text-fg-subtle">{t("From your directory: change them there.")}</span>}
+            </span>
             <div className="relative w-56">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-subtle" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Find people")} className="h-8 pl-8 text-[13px]" data-testid="group-member-search" />
@@ -252,7 +268,14 @@ function GroupDialog({ group, onClose }: { group: GroupRow | null; onClose: () =
           <div className="max-h-56 divide-y divide-border overflow-y-auto rounded-lg border border-border">
             {shown.map((p) => (
               <label key={p.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-[13px] hover:bg-surface-2">
-                <input type="checkbox" className="accent-[var(--accent)]" checked={members.has(p.id)} onChange={() => toggle(members, p.id, setMembers)} data-testid={`group-member-${p.email}`} />
+                <input
+                  type="checkbox"
+                  className="accent-[var(--accent)]"
+                  checked={members.has(p.id)}
+                  disabled={!!group?.directory}
+                  onChange={() => toggle(members, p.id, setMembers)}
+                  data-testid={`group-member-${p.email}`}
+                />
                 <Avatar name={p.name} image={p.image} className="size-6" />
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
                 <span className="truncate text-[12px] text-fg-subtle">{p.email}</span>

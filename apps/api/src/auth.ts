@@ -1,4 +1,4 @@
-import { account, auditLog, eq, organization, session, twoFactor as twoFactorTable, user, verification, type DB } from "@aatmiq/db";
+import { account, auditLog, eq, organization, session, ssoSession, twoFactor as twoFactorTable, user, verification, type DB } from "@aatmiq/db";
 import { PRODUCT_NAME } from "@aatmiq/shared";
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
@@ -12,11 +12,23 @@ import type { Mailer } from "./services/mail";
 /** Identifier for a one-time SSO login ticket in Better Auth's verification table. */
 export const ssoTicketId = (hash: string) => `sso-ticket:${hash}`;
 
+/** What a ticket holds: the person, and for SAML who the provider signed in (for single logout). */
+export interface SsoTicket {
+  userId: string;
+  saml?: { connectionId: string; nameId: string; nameIdFormat: string | null; sessionIndex: string | null };
+}
+export const ticketValue = (t: SsoTicket) => JSON.stringify(t);
+function readTicket(value: string): SsoTicket {
+  // Tickets used to hold just the user id.
+  if (!value.startsWith("{")) return { userId: value };
+  return JSON.parse(value) as SsoTicket;
+}
+
 /**
  * After our OIDC callback has verified the identity provider, the browser is sent here with a one-time
  * ticket (2 minutes). Better Auth turns it into a normal session, so every session rule still applies.
  */
-function ssoTicketPlugin(hash: (s: string) => string): BetterAuthPlugin {
+function ssoTicketPlugin(db: DB, hash: (s: string) => string): BetterAuthPlugin {
   return {
     id: "aatmiq-sso-ticket",
     endpoints: {
@@ -29,10 +41,12 @@ function ssoTicketPlugin(hash: (s: string) => string): BetterAuthPlugin {
           };
           const v = await ctx.context.internalAdapter.consumeVerificationValue(ssoTicketId(hash(ctx.query.ticket)));
           if (!v || v.expiresAt < new Date()) return fail("That sign-in link expired. Please try again.");
-          const found = await ctx.context.internalAdapter.findUserById(v.value);
+          const ticket = readTicket(v.value);
+          const found = await ctx.context.internalAdapter.findUserById(ticket.userId);
           if (!found) return fail("Your account wasn't found.");
           const session = await ctx.context.internalAdapter.createSession(found.id);
           if (!session) return fail("Your account is deactivated. Ask your admin for help.");
+          if (ticket.saml) await db.insert(ssoSession).values({ sessionId: session.id, ...ticket.saml }).onConflictDoNothing();
           await setSessionCookie(ctx, { session, user: found });
           // Only same-site paths: never an absolute URL.
           const next = ctx.query.next && /^\/(?!\/)/.test(ctx.query.next) ? ctx.query.next : "/app";
@@ -71,7 +85,7 @@ export function createAuth(db: DB, cfg: Config, hash: (s: string) => string, mai
     }),
     appName: PRODUCT_NAME,
     plugins: [
-      ssoTicketPlugin(hash),
+      ssoTicketPlugin(db, hash),
       // Authenticator-app codes as a second step after the password. Single sign-on skips it:
       // the identity provider applies its own MFA.
       twoFactor({ issuer: PRODUCT_NAME, backupCodeOptions: { amount: 10, length: 10 } }),

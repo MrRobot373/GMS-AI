@@ -147,6 +147,8 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
         role: u.orgRole,
         status: u.status,
         twoStepSignIn: u.twoFactorEnabled,
+        // Kept up to date from the company's directory (SCIM or LDAP), with its id for them.
+        directory: u.directory ? { kind: u.directory, id: u.externalId } : null,
         createdAt: u.createdAt,
         lastActiveAt: u.lastActiveAt,
       },

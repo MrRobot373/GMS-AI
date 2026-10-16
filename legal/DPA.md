@@ -135,8 +135,8 @@ This DPA lasts as long as we process Customer Personal Data, and section 3.9 sur
 - HTTPS through the bundled Caddy proxy (the Customer's certificate or an internal authority), with
   secure cookies and strict transport security.
 - Passwords stored as one-way hashes; optional or required two-step sign-in (authenticator app and
-  backup codes); single sign-on with Google, Microsoft, OpenID Connect or SAML 2.0; sign-in rate
-  limits; signed-in devices people can review and sign out.
+  backup codes); single sign-on with Google, Microsoft, OpenID Connect or SAML 2.0 (with single logout); directory
+  sync (SCIM, LDAP / Active Directory) that deactivates people who leave; sign-in rate limits; signed-in devices people can review and sign out.
 - Secrets (provider keys, client secrets, connected-app tokens, the mail server password) encrypted
   at rest with a key derived from the Installation's own secret.
 - Roles and permissions per organization, workspace and project; chats private to their author.

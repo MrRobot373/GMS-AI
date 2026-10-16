@@ -277,6 +277,7 @@ await step("SSO", "Add a SAML provider from its metadata URL and test it", owner
   expect((await owner.getByTestId("saml-issuer").inputValue()) === `${SAML_IDP}/metadata`, "entity ID from the metadata");
   expect((await owner.getByTestId("saml-sso-url").inputValue()) === `${SAML_IDP}/sso`, "SSO URL from the metadata");
   expect((await owner.getByTestId("saml-certs").inputValue()).startsWith("-----BEGIN CERTIFICATE-----"), "certificate from the metadata");
+  expect((await owner.getByTestId("saml-slo-url").inputValue()) === `${SAML_IDP}/slo`, "single logout URL from the metadata");
   await owner.fill('[role="dialog"] input[placeholder="acme.com"]', "globex.test");
   await owner.screenshot({ path: `${OUT}admin-saml.png` });
   await owner.click('[role="dialog"] >> button:has-text("Add provider")');
@@ -286,7 +287,9 @@ await step("SSO", "Add a SAML provider from its metadata URL and test it", owner
   await toast(owner, "Reached 127.0.0.1:11700");
   // Our metadata, at our entity ID, for the provider to import.
   const md = await owner.request.get(samlEntity);
-  expect(md.ok() && (await md.text()).includes(`Location="${samlAcs}"`), "our metadata");
+  const xml = await md.text();
+  expect(md.ok() && xml.includes(`Location="${samlAcs}"`), "our metadata");
+  expect(xml.includes("SingleLogoutService") && xml.includes("<ds:X509Certificate>"), "single logout and our signing certificate in the metadata");
 });
 await step("SSO", "An invited person signs in with SAML", owner, async () => {
   const me = (await apiAs(owner, "GET", "/api/me")).json;
@@ -305,7 +308,33 @@ await step("SSO", "An invited person signs in with SAML", owner, async () => {
   await sia.goto(`${SAML_IDP}/start?acs=${encodeURIComponent(samlAcs)}&audience=${encodeURIComponent(samlEntity)}&email=sia.verma%40globex.test`, { waitUntil: "commit" });
   await landOn(sia, /localhost:3200\/app\//);
   expect((await apiAs(sia, "GET", "/api/me")).json.user.email === "sia.verma@globex.test", "the app tile signs her in");
+  // Signing out of Aatmiq signs her out at the provider too (single logout), which sends her back.
+  await sia.goto(`${APP}/app/chat`);
+  await sia.locator("aside button", { hasText: "Sia Verma" }).click();
+  await sia.getByRole("menuitem", { name: "Sign out" }).click();
+  await landOn(sia, /localhost:3200\/login\?signed_out=1/);
+  expect((await apiAs(sia, "GET", "/api/me")).status === 401, "still signed in after single logout");
   await sia.close();
+});
+await step("Directory", "Turn on SCIM provisioning; the provider creates a person, who shows as SCIM", owner, async () => {
+  await owner.goto(`${APP}/admin/authentication`);
+  await owner.getByTestId("scim-on").click();
+  const token = await owner.getByTestId("scim-token").inputValue();
+  expect(/^aatmiq_scim_\S{20,}$/.test(token), "a SCIM token is shown");
+  await wait(400);
+  await owner.screenshot({ path: `${OUT}admin-scim.png` });
+  await owner.click('[role="dialog"] >> button:has-text("Done")');
+  await owner.getByTestId("scim-status").waitFor();
+  // What Okta sends when someone is assigned to the app.
+  const base = await owner.getByTestId("scim-url").inputValue();
+  const r = await owner.request.post(`${base}/Users`, {
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/scim+json" },
+    data: { schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"], userName: "raj.mehta@globex.test", name: { givenName: "Raj", familyName: "Mehta" }, emails: [{ value: "raj.mehta@globex.test", primary: true }], active: true },
+  });
+  expect(r.status() === 201, `SCIM create answered ${r.status()}`);
+  expect((await owner.request.get(`${base}/Users`, { headers: { authorization: "Bearer wrong" } })).status() === 401, "a wrong token is refused");
+  await owner.goto(`${APP}/admin/users`);
+  await owner.locator("tr", { hasText: "raj.mehta@globex.test" }).getByTestId("directory-badge").filter({ hasText: "SCIM" }).waitFor();
 });
 await step("SSO", "Requiring SSO hides passwords except for the owner", owner, async () => {
   await owner.goto(`${APP}/admin/authentication`);

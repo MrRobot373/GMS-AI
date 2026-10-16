@@ -33,7 +33,7 @@ that makes Aatmiq doesn't receive it.
 
 | What | Examples |
 |---|---|
-| Your account | Name, work email, job title, profile picture, password (stored only as a one-way hash), two-step sign-in setup, language and other settings, custom instructions |
+| Your account | Name, work email, job title, profile picture, password (stored only as a one-way hash), two-step sign-in setup, language and other settings, custom instructions. [If you use directory sync: "Your name, work email and your directory ID are copied from [our company directory / IDENTITY PROVIDER], and your account is turned off when you leave."] |
 | What you create | Your chats (all versions of each answer), documents you upload, projects and their sources, Work AI tasks with their steps and files, schedules, skills, Code workspaces |
 | How much you use it | Tokens used per day, model and section, and requests for more tokens |
 | Sign-ins and security | Signed-in devices (browser, IP address, when), and an activity log of security-relevant events: signing in, changing settings, downloading data, admin actions |

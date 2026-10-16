@@ -30,6 +30,8 @@ interface UserRow {
   tokensThisPeriod: number;
   twoFactorEnabled: boolean;
   emailVerified: boolean;
+  /** Kept up to date by the identity provider (SCIM) or the directory (LDAP). */
+  directory: "scim" | "ldap" | null;
   groups: { id: string; name: string }[];
   workspaces: { workspaceId: string; name: string; role: "admin" | "member" }[];
 }
@@ -116,6 +118,11 @@ export default function UsersPage() {
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
                     <Badge tone={u.orgRole === "member" ? "neutral" : "accent"}>{u.orgRole === "owner" ? t("Owner") : u.orgRole === "admin" ? t("Admin") : t("Member")}</Badge>
+                    {u.directory && (
+                      <span className="ml-1.5" title={u.directory === "scim" ? t("Kept up to date by your identity provider (SCIM)") : t("Kept up to date from your directory (LDAP)")} data-testid="directory-badge">
+                        <Badge>{u.directory === "scim" ? "SCIM" : "LDAP"}</Badge>
+                      </span>
+                    )}
                     {u.twoFactorEnabled && (
                       <span title={t("Two-step sign-in is on")} className="inline-flex text-fg-subtle" data-testid="two-factor-badge">
                         <Smartphone className="size-3.5" />

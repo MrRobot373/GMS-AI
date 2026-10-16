@@ -50,7 +50,7 @@ const SECTION_LABEL: Record<string, string> = { chat: msg("Chat"), work: msg("Wo
 /** The license's features (packages/license FEATURES), in the interface language. */
 const FEATURE_LABELS: Record<string, string> = {
   sso: msg("Google and Microsoft sign-in"),
-  oidc: msg("Custom single sign-on (OpenID Connect or SAML: Okta, Keycloak, Entra, ADFS…)"),
+  oidc: msg("Custom single sign-on and directory sync (OpenID Connect, SAML, SCIM, LDAP)"),
   audit_export: msg("Audit log export"),
   connectors: msg("Connectors for Work AI"),
   managed_models: msg("Aatmiq-managed models"),

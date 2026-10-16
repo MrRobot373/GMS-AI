@@ -20,7 +20,7 @@ export type Level = "ok" | "warn" | "error";
 export interface Check {
   /** Stable id: alerts remember which problems admins were told about by it. */
   id: string;
-  area: "Database" | "Disk" | "Models" | "Work AI" | "Background jobs" | "Backups" | "Security" | "License" | "Email";
+  area: "Database" | "Disk" | "Models" | "Work AI" | "Background jobs" | "Backups" | "Security" | "License" | "Email" | "Directory";
   level: Level;
   summary: string;
   /** What to do about it. */
@@ -308,6 +308,38 @@ async function licenseCheck(ctx: AppContext): Promise<Check> {
   }
 }
 
+/** LDAP / Active Directory sync, when it's on: that it runs, and what went wrong. */
+async function directoryChecks(ctx: AppContext): Promise<Check[]> {
+  const s = (await getOrg(ctx.db))?.ldapSettings;
+  if (!s?.enabled) return [];
+  const last = (await readStatus<{ at: string; ok: boolean; error: string | null; people: number; heldBack: number }>(ctx.db, "ldap_sync"))?.value;
+  const base = { id: "directory:ldap", area: "Directory" as const, alert: true };
+  if (!last)
+    return [{ ...base, level: "warn", summary: "The directory hasn't been synced yet.", hint: "The first sync runs within a few minutes; Admin → Authentication → Directory can sync now.", alert: false }];
+  if (!last.ok)
+    return [
+      {
+        ...base,
+        level: "error",
+        summary: last.error ? `The last directory sync failed: ${last.error}` : "The last directory sync failed.",
+        hint: "Check the connection in Admin → Authentication → Directory.",
+      },
+    ];
+  if (last.heldBack)
+    return [
+      {
+        ...base,
+        level: "warn",
+        summary: `The directory sync didn't deactivate ${last.heldBack} people: that's more than half of the people it keeps up to date.`,
+        hint: "If they really left, sync once anyway in Admin → Authentication → Directory; otherwise check the base DN and the filter.",
+      },
+    ];
+  const age = Date.now() - Date.parse(last.at);
+  if (age > 3 * s.intervalMinutes * 60_000 + 60 * 60_000)
+    return [{ ...base, level: "warn", summary: `The last directory sync was ${ago(age)} ago.`, hint: "The API syncs on a schedule: check that it's running, and its logs." }];
+  return [{ ...base, level: "ok", summary: `Synced ${ago(age)} ago: ${last.people} people in the directory.` }];
+}
+
 async function emailCheck(ctx: AppContext): Promise<Check> {
   return (await ctx.mail.configured())
     ? { id: "email", area: "Email", level: "ok", summary: "Set up: invitations, password resets and these alerts can be emailed.", alert: false }
@@ -336,6 +368,7 @@ export async function runChecks(ctx: AppContext): Promise<HealthReport> {
             Promise.resolve([securityCheck(ctx)]),
             licenseCheck(ctx).then((c) => [c]),
             emailCheck(ctx).then((c) => [c]),
+            directoryChecks(ctx),
           ])
         ).flat();
   const checks = [db, ...rest];

@@ -36,6 +36,7 @@
     "fflate": "0.8.3",
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",
+    "ldapts": "^9.2.0",
     "mammoth": "^1.13.0",
     "marked": "^18.0.14",
     "nodemailer": "^10.0.16",

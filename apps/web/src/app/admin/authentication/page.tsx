@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, MoreHorizontal, Pencil, Plug, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { CopyField } from "@/components/admin/copy-field";
+import { DirectorySection } from "@/components/admin/directory";
 import { Section } from "@/components/admin/table";
 import { PageHeader } from "@/components/app/page-header";
 import { ProviderIcon, type SsoOption } from "@/components/sso-buttons";
@@ -27,6 +29,8 @@ interface Connection {
   clientId: string | null;
   /** SAML: the identity provider's sign-in URL and signing certificates. */
   samlSsoUrl: string | null;
+  /** SAML: the identity provider's single logout address (optional). */
+  samlSloUrl: string | null;
   samlCerts: string[] | null;
   /** SAML: until when its certificates are valid. */
   certExpires?: string | null;
@@ -246,6 +250,8 @@ export default function AuthenticationPage() {
         </Card>
       </Section>
 
+      <DirectorySection ssoEnabled={d.connections.some((c) => c.enabled)} />
+
       <Dialog
         open={requiring}
         onOpenChange={setRequiring}
@@ -353,36 +359,6 @@ function CertExpiry({ iso }: { iso: string }) {
   );
 }
 
-/** A read-only value with a copy button. */
-function CopyField({ label, hint, value, testId }: { label: string; hint?: string; value: string; testId?: string }) {
-  const t = useT();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (copied) {
-      const timer = setTimeout(() => setCopied(false), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [copied]);
-  return (
-    <Field label={label} hint={hint}>
-      <div className="flex gap-2">
-        <Input readOnly value={value} className="font-mono text-[12px]" data-testid={testId} aria-label={label} />
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label={t("Copy {what}", { what: label.toLowerCase() })}
-          onClick={() => {
-            void navigator.clipboard.writeText(value);
-            setCopied(true);
-          }}
-        >
-          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        </Button>
-      </div>
-    </Field>
-  );
-}
-
 function ProviderDialog({
   type,
   conn,
@@ -408,6 +384,7 @@ function ProviderDialog({
     clientId: conn?.clientId ?? "",
     clientSecret: "",
     samlSsoUrl: conn?.samlSsoUrl ?? "",
+    samlSloUrl: conn?.samlSloUrl ?? "",
     samlCerts: conn?.samlCerts?.join("\n") ?? "",
     domains: conn?.domains.join(", ") ?? "",
     autoJoin: conn?.autoJoin ?? false,
@@ -422,10 +399,10 @@ function ProviderDialog({
   const importMetadata = useMutation({
     mutationFn: () => {
       const v = metadata.trim();
-      return post<{ entityId: string; ssoUrl: string; certs: string; certExpires: string | null }>("/api/admin/sso/saml-metadata", v.startsWith("<") ? { xml: v } : { url: v });
+      return post<{ entityId: string; ssoUrl: string; sloUrl: string | null; certs: string; certExpires: string | null }>("/api/admin/sso/saml-metadata", v.startsWith("<") ? { xml: v } : { url: v });
     },
     onSuccess: (m) => {
-      setForm((f) => ({ ...f, issuer: m.entityId, samlSsoUrl: m.ssoUrl, samlCerts: m.certs }));
+      setForm((f) => ({ ...f, issuer: m.entityId, samlSsoUrl: m.ssoUrl, samlSloUrl: m.sloUrl ?? f.samlSloUrl, samlCerts: m.certs }));
       setCertExpires(m.certExpires);
       setMetadata("");
       toast.success(t("Read the provider's metadata"));
@@ -442,7 +419,7 @@ function ProviderDialog({
         autoJoin: form.autoJoin,
         defaultWorkspaceId: form.defaultWorkspaceId || null,
         ...(type === "saml"
-          ? { issuer: form.issuer.trim(), samlSsoUrl: form.samlSsoUrl.trim(), ...(certsChanged ? { samlCerts: form.samlCerts } : {}) }
+          ? { issuer: form.issuer.trim(), samlSsoUrl: form.samlSsoUrl.trim(), samlSloUrl: form.samlSloUrl.trim() || null, ...(certsChanged ? { samlCerts: form.samlCerts } : {}) }
           : { clientId: form.clientId.trim(), clientSecret: form.clientSecret.trim() || undefined }),
         ...(type === "oidc" ? { issuer: form.issuer.trim() } : {}),
         ...(type === "microsoft" ? { tenantId: form.tenantId.trim() } : {}),
@@ -486,6 +463,12 @@ function ProviderDialog({
           <>
             <CopyField label={t("Entity ID (audience)")} value={`${samlBase}/${samlId}/metadata`} hint={t("Our metadata is at this address too: most providers can import it.")} testId="saml-entity-id" />
             <CopyField label={t("Reply URL (ACS)")} value={`${samlBase}/${samlId}/acs`} hint={t("Where the provider sends people back (HTTP-POST).")} testId="saml-acs" />
+            <CopyField
+              label={t("Single logout URL (SLO)")}
+              value={`${samlBase}/${samlId}/slo`}
+              hint={t("Optional. Where the provider sends its logout requests; our metadata has it, with the certificate we sign logout messages with.")}
+              testId="saml-slo"
+            />
           </>
         ) : (
           <CopyField label={t("Redirect URI")} value={redirectUri} hint={t("Register this exact address with the provider.")} testId="redirect-uri" />
@@ -508,6 +491,9 @@ function ProviderDialog({
             </Field>
             <Field label={t("Provider's sign-in URL (SSO URL)")}>
               <Input value={form.samlSsoUrl} onChange={set("samlSsoUrl")} placeholder="https://acme.okta.com/app/…/sso/saml" data-testid="saml-sso-url" />
+            </Field>
+            <Field label={t("Provider's single logout URL (optional)")} hint={t("With it, signing out here signs people out at the provider too.")}>
+              <Input value={form.samlSloUrl} onChange={set("samlSloUrl")} placeholder="https://acme.okta.com/app/…/slo/saml" data-testid="saml-slo-url" />
             </Field>
             <Field
               label={t("Provider's signing certificate")}

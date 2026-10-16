@@ -40,6 +40,9 @@ import { createMailer } from "./services/mail";
 import { createInProcessJobs, createRedisJobs, type Jobs } from "./services/jobs";
 import { BrowserService, findChromium } from "./services/browser";
 import { HealthMonitor } from "./services/health";
+import { LdapScheduler } from "./services/ldap";
+import { directoryRoutes } from "./routes/directory";
+import { scimRoutes } from "./routes/scim";
 import { healthRoutes } from "./routes/health";
 import { startEgressProxy, type EgressProxy } from "./services/egress";
 import { getWorkSettings, WorkRunner } from "./services/work";
@@ -103,6 +106,7 @@ export async function buildApp(
   });
   const jobLog = (msg: string, err?: unknown) => app.log.warn(err, msg);
   ctx.health = new HealthMonitor(ctx, { intervalMs: (cfg.healthIntervalMinutes || 5) * 60_000, log: jobLog });
+  const ldap = new LdapScheduler(ctx, jobLog);
   // For tests and tools that run a health round on demand.
   app.decorate("health", ctx.health);
   ctx.jobs = opts.jobs
@@ -171,8 +175,8 @@ export async function buildApp(
     if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return;
     const path = req.url.split("?")[0]!;
     if (!path.startsWith("/api/") || path.startsWith("/api/internal/")) return;
-    // A SAML identity provider posts its signed answer from its own site (checked in routes/sso.ts).
-    if (/^\/api\/auth\/sso\/[^/]+\/acs$/.test(path)) return;
+    // A SAML identity provider posts its signed answers and logout requests from its own site (checked in routes/sso.ts).
+    if (/^\/api\/auth\/sso\/[^/]+\/(acs|slo)$/.test(path)) return;
     const origin = req.headers.origin;
     if (origin && origin !== APP_ORIGIN) throw new HttpError(403, "Requests from other sites aren't allowed.", "bad_origin");
   });
@@ -191,6 +195,8 @@ export async function buildApp(
   });
 
   await ssoRoutes(app, ctx);
+  await scimRoutes(app, ctx);
+  await directoryRoutes(app, ctx);
   await authRoutes(app, ctx);
   await meRoutes(app, ctx);
   await chatRoutes(app, ctx);
@@ -228,6 +234,8 @@ export async function buildApp(
     stopScheduler = startScheduler(ctx, (msg, err) => app.log.warn(err, msg));
     // Admins hear about problems (Admin → Health) without having to look.
     if (cfg.healthIntervalMinutes) ctx.health.start();
+    // LDAP / Active Directory sync, when an admin set it up.
+    ldap.start();
   });
   app.addHook("preClose", async () => {
     ideProxy?.closeAll();
@@ -252,6 +260,7 @@ export async function buildApp(
   app.addHook("onClose", async () => {
     stopScheduler?.();
     ctx.health.stop();
+    ldap.stop();
     await shutdownStep("background jobs", () => ctx.jobs.close());
     await shutdownStep("browsers", () => ctx.browser.closeAll());
     if (egress) await shutdownStep("egress proxy", async () => (await egress!).close());

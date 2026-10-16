@@ -1,9 +1,10 @@
-import { account, and, asc, eq, gte, invitation, isNull, organization, sql, ssoConnection, user, workspace, workspaceMember } from "@aatmiq/db";
+import { account, and, asc, eq, gte, inArray, invitation, isNull, or, organization, session, sql, ssoConnection, ssoSession, user, workspace, workspaceMember } from "@aatmiq/db";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { randomBytes, randomUUID } from "node:crypto";
 import { PRODUCT_NAME } from "@aatmiq/shared";
 import { z } from "zod";
-import { ssoTicketId } from "../auth";
+import { fromNodeHeaders } from "better-auth/node";
+import { ssoTicketId, ticketValue } from "../auth";
 import { audit, getOrg, notify, parse, requireOrgCap, requireUser, type AppContext } from "../context";
 import { randomToken, sha256 } from "../crypto";
 import { badRequest, HttpError, notFound } from "../errors";
@@ -19,7 +20,24 @@ import {
   SsoError,
   type SsoIdentity,
 } from "../services/sso";
-import { acsUrl, certExpiry, fetchIdpMetadata, normalizeCerts, parseIdpMetadata, peekInResponseTo, samlComplete, samlStart, spEntityId, spMetadata } from "../services/saml";
+import {
+  acsUrl,
+  certExpiry,
+  fetchIdpMetadata,
+  normalizeCerts,
+  parseIdpMetadata,
+  peekInResponseTo,
+  samlComplete,
+  samlLogoutMessage,
+  samlLogoutResponseUrl,
+  samlLogoutUrl,
+  samlStart,
+  sloUrl,
+  spEntityId,
+  spMetadata,
+  type SamlSubject,
+} from "../services/saml";
+import { samlSigning } from "../services/saml-signing";
 
 const STATE_COOKIE = "aatmiq_sso";
 const samlRequestId = (id: string) => `saml-request:${id}`;
@@ -43,6 +61,8 @@ const connectionInput = z.object({
   clientId: z.string().trim().min(1).max(500).optional(),
   clientSecret: z.string().trim().min(1).max(2000).optional(),
   samlSsoUrl: z.string().trim().max(2000).optional(),
+  /** Optional: the identity provider's single logout address. */
+  samlSloUrl: z.string().trim().max(2000).nullable().optional(),
   /** PEM or Base64; several for a certificate rotation. */
   samlCerts: z.string().max(50_000).optional(),
   domains: domainList.default([]),
@@ -58,6 +78,7 @@ const connectionUpdate = z.object({
   clientId: z.string().trim().min(1).max(500).optional(),
   clientSecret: z.string().trim().min(1).max(2000).optional(),
   samlSsoUrl: z.string().trim().max(2000).optional(),
+  samlSloUrl: z.string().trim().max(2000).nullable().optional(),
   samlCerts: z.string().max(50_000).optional(),
   domains: domainList.optional(),
   autoJoin: z.boolean().optional(),
@@ -127,7 +148,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     const { clientSecretEnc: _s, ...rest } = c;
     if (c.type !== "saml") return rest;
     // What to enter at the identity provider.
-    const sp = { entityId: spEntityId(cfg.appUrl, c.id), acsUrl: acsUrl(cfg.appUrl, c.id), metadataUrl: spEntityId(cfg.appUrl, c.id) };
+    const sp = { entityId: spEntityId(cfg.appUrl, c.id), acsUrl: acsUrl(cfg.appUrl, c.id), metadataUrl: spEntityId(cfg.appUrl, c.id), sloUrl: sloUrl(cfg.appUrl, c.id) };
     return { ...rest, sp, certExpires: certExpiry(c.samlCerts ?? []) };
   };
 
@@ -195,9 +216,9 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
 
   /* ───────────── SAML ───────────── */
 
-  // The identity provider posts its answer as a form; only this route takes form bodies.
+  // The identity provider posts its answers and logout requests as forms; only these routes take form bodies.
   app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 512 * 1024 }, (req, body, done) => {
-    if (!/^\/api\/auth\/sso\/[^/]+\/acs(\?|$)/.test(req.url)) return done(new HttpError(415, "Unsupported content type"), undefined);
+    if (!/^\/api\/auth\/sso\/[^/]+\/(acs|slo)(\?|$)/.test(req.url)) return done(new HttpError(415, "Unsupported content type"), undefined);
     done(null, Object.fromEntries(new URLSearchParams(body as string)));
   });
 
@@ -205,7 +226,8 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get<{ Params: { id: string } }>("/api/auth/sso/:id/metadata", async (req, reply) => {
     const [conn] = await db.select().from(ssoConnection).where(eq(ssoConnection.id, req.params.id));
     if (!conn || conn.type !== "saml") throw notFound("Not found");
-    return reply.type("application/samlmetadata+xml; charset=utf-8").send(spMetadata(conn, cfg.appUrl));
+    // With our signing certificate: providers check our logout messages with it.
+    return reply.type("application/samlmetadata+xml; charset=utf-8").send(spMetadata(conn, cfg.appUrl, await samlSigning(db, box)));
   });
 
   /**
@@ -262,8 +284,77 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
         req.log.warn({ err: e }, "saml sign-in failed");
         return fail(reply, e instanceof SsoError ? e.message : "Single sign-on failed.", st.invite);
       }
-      return finishSignIn(req, reply, conn, identity, st);
+      return finishSignIn(req, reply, conn, identity, st, identity.saml);
     },
+  );
+
+  /* ───────────── Signing out, and single logout ───────────── */
+
+  /**
+   * Signing out. After a SAML sign-in, when the provider offers single logout, the browser goes on to
+   * the provider, which signs the person out there too and sends them back to /slo.
+   */
+  app.post("/api/auth/sso/logout", async (req, reply) => {
+    const headers = fromNodeHeaders(req.headers);
+    const current = await ctx.auth.api.getSession({ headers }).catch(() => null);
+    let redirect: string | null = null;
+    if (current) {
+      const [link] = await db.select().from(ssoSession).where(eq(ssoSession.sessionId, current.session.id));
+      const [conn] = link ? await db.select().from(ssoConnection).where(eq(ssoConnection.id, link.connectionId)) : [];
+      if (link && conn?.enabled && conn.samlSloUrl) {
+        try {
+          redirect = await samlLogoutUrl(conn, cfg.appUrl, await samlSigning(db, box), link);
+        } catch (e) {
+          req.log.warn({ err: e }, "saml logout request failed");
+        }
+      }
+    }
+    // Better Auth ends the session and clears its cookie.
+    const res = await ctx.auth.api.signOut({ headers, asResponse: true }).catch(() => null);
+    for (const c of res?.headers.getSetCookie() ?? []) reply.header("set-cookie", c);
+    return { ok: true, redirect };
+  });
+
+  /**
+   * The provider's logout messages: its request to end someone's sessions (they signed out
+   * elsewhere), answered with a signed response; or its answer to our request.
+   */
+  async function singleLogout(req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply, message: Parameters<typeof samlLogoutMessage>[3], relayState: string) {
+    const [conn] = await db.select().from(ssoConnection).where(eq(ssoConnection.id, req.params.id));
+    if (!conn || conn.type !== "saml") return reply.redirect("/login");
+    const signing = await samlSigning(db, box);
+    const isRequest = "query" in message ? typeof message.query.SAMLRequest === "string" : !!message.body.SAMLRequest;
+    let result;
+    try {
+      result = await samlLogoutMessage(conn, cfg.appUrl, signing, message);
+    } catch (e) {
+      req.log.warn({ err: e }, "saml logout message refused");
+      // An answer to our request: the person is signed out here already.
+      if (!isRequest) return reply.redirect("/login?signed_out=1");
+      return reply.status(400).type("text/plain; charset=utf-8").send(e instanceof SsoError ? e.message : "The logout request couldn't be read.");
+    }
+    if (!result.request) return reply.redirect("/login?signed_out=1");
+    const index = result.request.sessionIndex;
+    const ended = await db
+      .select({ id: ssoSession.sessionId })
+      .from(ssoSession)
+      .where(
+        and(
+          eq(ssoSession.connectionId, conn.id),
+          eq(ssoSession.nameId, result.request.nameID),
+          ...(index ? [or(eq(ssoSession.sessionIndex, index), isNull(ssoSession.sessionIndex))] : []),
+        ),
+      );
+    if (ended.length) await db.delete(session).where(inArray(session.id, ended.map((e) => e.id)));
+    await audit(ctx, { action: "auth.sso_logout", targetType: "sso_connection", targetId: conn.id, meta: { connection: conn.name, sessions: ended.length }, ip: req.ip });
+    return reply.redirect(await samlLogoutResponseUrl(conn, cfg.appUrl, signing, result.request, relayState));
+  }
+
+  app.get<{ Params: { id: string }; Querystring: Record<string, string> }>("/api/auth/sso/:id/slo", async (req, reply) =>
+    singleLogout(req, reply, { query: req.query, originalQuery: req.url.split("?")[1] ?? "" }, typeof req.query.RelayState === "string" ? req.query.RelayState : ""),
+  );
+  app.post<{ Params: { id: string }; Body: Record<string, string> }>("/api/auth/sso/:id/slo", async (req, reply) =>
+    singleLogout(req, reply, { body: req.body ?? {} }, typeof req.body?.RelayState === "string" ? req.body.RelayState : ""),
   );
 
   /** After the provider vouched for someone: find or create their account, then sign them in. */
@@ -273,6 +364,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     conn: typeof ssoConnection.$inferSelect,
     identity: SsoIdentity,
     st: { next: string; invite: string | null },
+    saml?: SamlSubject,
   ) {
     if (!emailDomainAllowed(conn, identity.email))
       return fail(reply, `${identity.email} can't sign in here. Use your ${conn.domains.join(" or ")} account.`, st.invite);
@@ -338,7 +430,11 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
 
     const ticket = randomToken();
     const actx = await ctx.auth.$context;
-    await actx.internalAdapter.createVerificationValue({ identifier: ssoTicketId(sha256(ticket)), value: u.id, expiresAt: new Date(Date.now() + 2 * 60_000) });
+    await actx.internalAdapter.createVerificationValue({
+      identifier: ssoTicketId(sha256(ticket)),
+      value: ticketValue({ userId: u.id, ...(saml ? { saml: { connectionId: conn.id, ...saml } } : {}) }),
+      expiresAt: new Date(Date.now() + 2 * 60_000),
+    });
     return reply
       .header("set-cookie", stateCookie("", 0))
       .redirect(`/api/auth/sso/ticket?ticket=${encodeURIComponent(ticket)}&next=${encodeURIComponent(st.next)}`);
@@ -454,7 +550,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
   }
 
   /** What each kind of provider needs: client ID and secret for OpenID, sign-in URL and certificate for SAML. */
-  function credentials(type: SsoType, body: { clientId?: string; clientSecret?: string; samlSsoUrl?: string; samlCerts?: string }) {
+  function credentials(type: SsoType, body: { clientId?: string; clientSecret?: string; samlSsoUrl?: string; samlSloUrl?: string | null; samlCerts?: string }) {
     if (type === "saml") {
       const samlSsoUrl = httpsUrl(body.samlSsoUrl, "https://acme.okta.com/app/…/sso/saml", "identity provider's sign-in URL (SSO URL)");
       let samlCerts: string[];
@@ -463,7 +559,8 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
       } catch (e) {
         throw badRequest((e as Error).message);
       }
-      return { clientId: null, clientSecretEnc: null, samlSsoUrl, samlCerts };
+      const samlSloUrl = body.samlSloUrl ? httpsUrl(body.samlSloUrl, "https://acme.okta.com/app/…/slo/saml", "identity provider's single logout URL") : null;
+      return { clientId: null, clientSecretEnc: null, samlSsoUrl, samlSloUrl, samlCerts };
     }
     if (!body.clientId) throw badRequest("Enter the client ID.");
     if (!body.clientSecret) throw badRequest("Enter the client secret.");
@@ -518,6 +615,8 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     let samlFields = {};
     if (c.type === "saml") {
       if (body.samlSsoUrl !== undefined) samlFields = { ...samlFields, samlSsoUrl: httpsUrl(body.samlSsoUrl, "https://acme.okta.com/app/…/sso/saml", "identity provider's sign-in URL (SSO URL)") };
+      if (body.samlSloUrl !== undefined)
+        samlFields = { ...samlFields, samlSloUrl: body.samlSloUrl ? httpsUrl(body.samlSloUrl, "https://acme.okta.com/app/…/slo/saml", "identity provider's single logout URL") : null };
       if (body.samlCerts !== undefined) {
         try {
           samlFields = { ...samlFields, samlCerts: normalizeCerts(body.samlCerts) };
@@ -602,7 +701,7 @@ export async function ssoRoutes(app: FastifyInstance, ctx: AppContext) {
     const body = parse(z.object({ url: z.string().trim().optional(), xml: z.string().max(500_000).optional() }), req.body);
     try {
       const m = body.xml?.trim() ? parseIdpMetadata(body.xml) : await fetchIdpMetadata(httpsUrl(body.url, "https://login.microsoftonline.com/…/federationmetadata.xml", "metadata URL"));
-      return { entityId: m.entityId, ssoUrl: m.ssoUrl, certs: m.certs.join("\n"), certExpires: certExpiry(m.certs) };
+      return { entityId: m.entityId, ssoUrl: m.ssoUrl, sloUrl: m.sloUrl, certs: m.certs.join("\n"), certExpires: certExpiry(m.certs) };
     } catch (e) {
       if (e instanceof SsoError) throw badRequest(e.message);
       throw e;

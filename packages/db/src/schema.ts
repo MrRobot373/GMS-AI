@@ -91,6 +91,12 @@ export const organization = pgTable("organization", {
   emailSettings: jsonb("email_settings").$type<EmailSettingsStored>(),
   /** Auto model choice (see RoutingSettings). */
   routingSettings: jsonb("routing_settings").$type<Partial<RoutingSettings>>(),
+  /** SCIM provisioning from the identity provider (the token is stored hashed). */
+  scimSettings: jsonb("scim_settings").$type<ScimSettingsStored>(),
+  /** LDAP / Active Directory sync (the bind password is encrypted). */
+  ldapSettings: jsonb("ldap_settings").$type<LdapSettingsStored>(),
+  /** Aatmiq's own SAML signing key and certificate, for single logout (made when first needed). */
+  samlSigning: jsonb("saml_signing").$type<{ keyEnc: string; cert: string }>(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -112,9 +118,15 @@ export const user = pgTable("user", {
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
   /** Two-step sign-in with an authenticator app (Better Auth two-factor plugin). */
   twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+  /** Who keeps this account up to date: "scim" or "ldap" (null: Aatmiq). */
+  directory: text("directory"),
+  /** The directory's id for this person (SCIM externalId or id; LDAP entryUUID / objectGUID). */
+  externalId: text("external_id"),
+  /** Deactivated because the directory said so (the directory may reactivate; an admin's choice it won't). */
+  directoryDisabled: boolean("directory_disabled").notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-});
+}, (t) => [uniqueIndex("user_directory_external_idx").on(t.directory, t.externalId)]);
 
 export const session = pgTable(
   "session",
@@ -309,9 +321,12 @@ export const userGroup = pgTable("user_group", {
   tokenLimit: bigint("token_limit", { mode: "number" }),
   /** Tokens per person per period; null = the group budget split evenly among members. */
   memberTokenLimit: bigint("member_token_limit", { mode: "number" }),
+  /** Kept in step with a directory group ("scim" or "ldap"): its members come from there. */
+  directory: text("directory"),
+  externalId: text("external_id"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-});
+}, (t) => [uniqueIndex("user_group_directory_external_idx").on(t.directory, t.externalId)]);
 
 export const userGroupMember = pgTable(
   "user_group_member",
@@ -478,6 +493,8 @@ export const ssoConnection = pgTable("sso_connection", {
   samlSsoUrl: text("saml_sso_url"),
   /** SAML only: the identity provider's signing certificates (PEM; several while it rotates them). */
   samlCerts: text("saml_certs").array(),
+  /** SAML only: where signing out is passed on to the identity provider (single logout, HTTP-Redirect). */
+  samlSloUrl: text("saml_slo_url"),
   /** Allowed email domains. Empty: any address the provider vouches for. */
   domains: text("domains").array().notNull().default(sql`'{}'::text[]`),
   /** Let people from these domains create an account on first sign-in (otherwise invitation only). */
@@ -487,6 +504,27 @@ export const ssoConnection = pgTable("sso_connection", {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/**
+ * A session that started with SAML: who the identity provider signed in, so signing out of Aatmiq
+ * can sign them out there too, and the provider's logout can end this session (single logout).
+ */
+export const ssoSession = pgTable(
+  "sso_session",
+  {
+    sessionId: text("session_id")
+      .primaryKey()
+      .references(() => session.id, { onDelete: "cascade" }),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => ssoConnection.id, { onDelete: "cascade" }),
+    nameId: text("name_id").notNull(),
+    nameIdFormat: text("name_id_format"),
+    sessionIndex: text("session_index"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("sso_session_name_idx").on(t.connectionId, t.nameId)],
+);
 
 /* ───────────── License (client side) ───────────── */
 
@@ -676,6 +714,42 @@ export const projectSource = pgTable(
 );
 
 /** Outgoing mail server as stored (the password is encrypted with the app secret). */
+export interface ScimSettingsStored {
+  /** sha256 of the bearer token the identity provider sends. */
+  tokenHash: string;
+  /** Its last four characters, so admins can tell tokens apart. */
+  tokenHint: string;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  /** Where new people join (null: the first workspace). */
+  workspaceId: string | null;
+}
+
+export interface LdapSettingsStored {
+  enabled: boolean;
+  /** ldaps://dc.acme.local:636 or ldap://…:389 (with startTls). */
+  url: string;
+  startTls: boolean;
+  /** The server's CA certificate (PEM), when it isn't publicly trusted. */
+  caCert: string | null;
+  bindDn: string;
+  bindPasswordEnc: string | null;
+  userBase: string;
+  userFilter: string;
+  emailAttr: string;
+  nameAttr: string;
+  /** The attribute that never changes for a person (objectGUID, entryUUID…). */
+  idAttr: string;
+  /** Empty: groups aren't synced. */
+  groupBase: string | null;
+  groupFilter: string;
+  groupNameAttr: string;
+  memberAttr: string;
+  intervalMinutes: number;
+  /** Where new people join (null: the first workspace). */
+  workspaceId: string | null;
+}
+
 export interface EmailSettingsStored {
   host: string;
   port: number;

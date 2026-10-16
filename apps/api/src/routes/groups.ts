@@ -99,6 +99,13 @@ export async function groupRoutes(app: FastifyInstance, ctx: AppContext) {
     const b = parse(groupSchema.partial(), req.body);
     const [g] = await db.select().from(userGroup).where(eq(userGroup.id, req.params.id));
     if (!g) throw notFound("Group not found");
+    // A directory's group: its name and members come from there (models and budgets are set here).
+    if (g.directory) {
+      const current = new Set((await db.select({ id: userGroupMember.userId }).from(userGroupMember).where(eq(userGroupMember.groupId, g.id))).map((m) => m.id));
+      const sameMembers = !b.memberIds || (b.memberIds.length === current.size && b.memberIds.every((id) => current.has(id)));
+      if (!sameMembers || (b.name !== undefined && b.name !== g.name)) throw badRequest("This group's name and members come from your directory: change them there.");
+      delete b.memberIds;
+    }
     await checkIds(b.memberIds, b.modelIds);
     const { memberIds, modelIds, ...fields } = b;
     if (Object.keys(fields).length)

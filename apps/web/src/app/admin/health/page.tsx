@@ -30,7 +30,7 @@ interface Health {
   settings: { email: boolean; mailConfigured: boolean; intervalMinutes: number };
 }
 
-const AREAS = [msg("Models"), msg("Database"), msg("Disk"), msg("Backups"), msg("Work AI"), msg("Background jobs"), msg("Security"), msg("License"), msg("Email")];
+const AREAS = [msg("Models"), msg("Database"), msg("Disk"), msg("Backups"), msg("Work AI"), msg("Background jobs"), msg("Security"), msg("License"), msg("Email"), msg("Directory")];
 
 const LEVEL = {
   ok: { icon: CircleCheck, className: "text-success", tone: "success", label: msg("Working") },

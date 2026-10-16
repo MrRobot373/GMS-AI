@@ -5,7 +5,7 @@ ship (production dependencies). CI fails when it's out of date or a license need
 license texts go into each image as `THIRD_PARTY_NOTICES.txt`; container images, system packages,
 fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 
-555 packages: MIT 464, Apache-2.0 41, ISC 24, BSD-3-Clause 8, BSD-2-Clause 5, OFL-1.1 3, LGPL-3.0-or-later 1, CC-BY-4.0 1, BSD 1, SIL OPEN FONT LICENSE 1, (MIT OR GPL-3.0-or-later) 1, MIT-0 1, (MIT AND Zlib) 1, Unlicense 1, BlueOak-1.0.0 1, 0BSD 1.
+557 packages: MIT 465, Apache-2.0 41, ISC 25, BSD-3-Clause 8, BSD-2-Clause 5, OFL-1.1 3, LGPL-3.0-or-later 1, CC-BY-4.0 1, BSD 1, SIL OPEN FONT LICENSE 1, (MIT OR GPL-3.0-or-later) 1, MIT-0 1, (MIT AND Zlib) 1, Unlicense 1, BlueOak-1.0.0 1, 0BSD 1.
 
 | Package | Version | License |
 |---|---|---|
@@ -348,6 +348,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | jszip | 3.10.2 | (MIT OR GPL-3.0-or-later) |
 | kysely | 0.29.6 | MIT |
 | lazystream | 1.0.1 | MIT |
+| ldapts | 9.2.0 | MIT |
 | lie | 3.3.0 | MIT |
 | light-my-request | 6.6.0 | BSD-3-Clause |
 | locate-path | 5.0.0 | MIT |
@@ -506,6 +507,7 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | split2 | 4.2.0 | ISC |
 | sprintf-js | 1.0.3 | BSD-3-Clause |
 | standard-as-callback | 2.1.0 | MIT |
+| strict-event-emitter-types | 2.0.0 | ISC |
 | string_decoder | 1.1.1 | MIT |
 | string-width | 4.2.3 | MIT |
 | stringify-entities | 4.0.4 | MIT |

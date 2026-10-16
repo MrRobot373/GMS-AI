@@ -16,6 +16,8 @@ type Connection = typeof ssoConnection.$inferSelect;
 /** What the identity provider needs from us: our entity ID and where it posts its answer. */
 export const spEntityId = (appUrl: string, connId: string) => `${appUrl}/api/auth/sso/${connId}/metadata`;
 export const acsUrl = (appUrl: string, connId: string) => `${appUrl}/api/auth/sso/${connId}/acs`;
+/** Single logout: where the provider sends its logout requests and its answers to ours. */
+export const sloUrl = (appUrl: string, connId: string) => `${appUrl}/api/auth/sso/${connId}/slo`;
 
 const BEGIN = "-----BEGIN CERTIFICATE-----";
 const END = "-----END CERTIFICATE-----";
@@ -55,6 +57,8 @@ export function certExpiry(certs: string[]): string | null {
 export interface IdpMetadata {
   entityId: string;
   ssoUrl: string;
+  /** Its single logout address (HTTP-Redirect), when it offers one. */
+  sloUrl: string | null;
   certs: string[];
 }
 
@@ -73,7 +77,8 @@ export function parseIdpMetadata(xml: string): IdpMetadata {
   if (!sso) throw new SsoError("The identity provider doesn't offer the HTTP-Redirect sign-in binding, which Aatmiq uses.");
   const keys = all(idp, "KeyDescriptor").filter((k) => (k.getAttribute("use") ?? "signing") === "signing");
   const certs = keys.flatMap((k) => all(k, "X509Certificate").map((c) => c.textContent ?? ""));
-  return { entityId: entity.getAttribute("entityID") ?? "", ssoUrl: sso.getAttribute("Location") ?? "", certs: normalizeCerts(certs) };
+  const slo = all(idp, "SingleLogoutService").find((e) => e.getAttribute("Binding") === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect");
+  return { entityId: entity.getAttribute("entityID") ?? "", ssoUrl: sso.getAttribute("Location") ?? "", sloUrl: slo?.getAttribute("Location") ?? null, certs: normalizeCerts(certs) };
 }
 
 /** Fetch metadata from the identity provider's metadata URL. */
@@ -175,8 +180,15 @@ export function identityFromProfile(profile: Profile): SsoIdentity {
   return { subject, email, name, claims: {} };
 }
 
+/** Who the provider signed in, as single logout names them. */
+export interface SamlSubject {
+  nameId: string;
+  nameIdFormat: string | null;
+  sessionIndex: string | null;
+}
+
 /** Check the provider's answer to this browser's request, and say who signed in. */
-export async function samlComplete(conn: Connection, appUrl: string, samlResponse: string, request: { id: string; at: string }): Promise<SsoIdentity> {
+export async function samlComplete(conn: Connection, appUrl: string, samlResponse: string, request: { id: string; at: string }): Promise<SsoIdentity & { saml: SamlSubject }> {
   let profile: Profile | null;
   try {
     ({ profile } = await client(conn, appUrl, new OneRequest(request.id, request.at)).validatePostResponseAsync({ SAMLResponse: samlResponse }));
@@ -194,11 +206,102 @@ export async function samlComplete(conn: Connection, appUrl: string, samlRespons
   if (!profile) throw new SsoError("The identity provider didn't say who signed in.");
   // node-saml checks the issuer of logout messages only: the signed assertion's is checked here.
   if (profile.issuer !== conn.issuer) throw new SsoError("The response came from a different identity provider than the one set up. Check its entity ID.");
-  return identityFromProfile(profile);
+  return {
+    ...identityFromProfile(profile),
+    saml: { nameId: profile.nameID, nameIdFormat: profile.nameIDFormat || null, sessionIndex: profile.sessionIndex ?? null },
+  };
 }
 
-/** Our metadata, for the identity provider (most can import it from the URL). */
-export function spMetadata(conn: Connection, appUrl: string) {
+/**
+ * Our metadata, for the identity provider (most can import it from the URL): where it answers, our
+ * single logout address (both bindings) and the certificate our logout messages are signed with.
+ * Sign-in requests stay unsigned, and the metadata says so.
+ */
+export function spMetadata(conn: Connection, appUrl: string, signing?: { key: string; cert: string }) {
   const entityId = spEntityId(appUrl, conn.id);
-  return new SAML({ issuer: entityId, callbackUrl: acsUrl(appUrl, conn.id), idpCert: "unused", identifierFormat: null, wantAssertionsSigned: false }).generateServiceProviderMetadata(null);
+  const slo = sloUrl(appUrl, conn.id);
+  const xml = new SAML({
+    issuer: entityId,
+    callbackUrl: acsUrl(appUrl, conn.id),
+    logoutCallbackUrl: slo,
+    idpCert: "unused",
+    identifierFormat: null,
+    wantAssertionsSigned: false,
+    ...(signing ? { privateKey: signing.key, publicCert: signing.cert } : {}),
+  }).generateServiceProviderMetadata(null, signing?.cert ?? null);
+  return xml
+    .replace(/AuthnRequestsSigned="true"/, 'AuthnRequestsSigned="false"')
+    .replace(/(\s*)<SingleLogoutService /, `$1<SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="${slo}"/>$1<SingleLogoutService `);
+}
+
+/* ───────────── Single logout ───────────── */
+
+/**
+ * The client for logout messages: signed with our key (providers check it), and without the
+ * request-ID check (a provider's logout request answers nothing of ours). Sign-in requests stay
+ * unsigned, as before, so providers set up earlier keep working.
+ */
+function logoutClient(conn: Connection, appUrl: string, signing: { key: string; cert: string }) {
+  if (!conn.samlCerts?.length) throw new SsoError("This sign-in option isn't set up completely.");
+  const entityId = spEntityId(appUrl, conn.id);
+  return new SAML({
+    issuer: entityId,
+    audience: entityId,
+    callbackUrl: acsUrl(appUrl, conn.id),
+    entryPoint: conn.samlSloUrl ?? conn.samlSsoUrl ?? undefined,
+    logoutUrl: conn.samlSloUrl ?? undefined,
+    logoutCallbackUrl: sloUrl(appUrl, conn.id),
+    idpIssuer: conn.issuer,
+    idpCert: conn.samlCerts,
+    privateKey: signing.key,
+    publicCert: signing.cert,
+    signatureAlgorithm: "sha256",
+    wantAssertionsSigned: false,
+    wantAuthnResponseSigned: false,
+    validateInResponseTo: ValidateInResponseTo.never,
+    acceptedClockSkewMs: 60_000,
+    identifierFormat: null,
+  });
+}
+
+/** Where to send someone who signs out of Aatmiq, so the provider signs them out too. */
+export async function samlLogoutUrl(conn: Connection, appUrl: string, signing: { key: string; cert: string }, subject: SamlSubject, relayState = "") {
+  if (!conn.samlSloUrl) return null;
+  const profile: Profile = { issuer: conn.issuer, nameID: subject.nameId, nameIDFormat: subject.nameIdFormat ?? "", ...(subject.sessionIndex ? { sessionIndex: subject.sessionIndex } : {}) };
+  return logoutClient(conn, appUrl, signing).getLogoutUrlAsync(profile, relayState, {});
+}
+
+/**
+ * A logout message from the provider: its request to sign someone out (it signed them out
+ * elsewhere), or its answer to ours. Signatures are checked with its certificate.
+ */
+export async function samlLogoutMessage(
+  conn: Connection,
+  appUrl: string,
+  signing: { key: string; cert: string },
+  message: { query: Record<string, unknown>; originalQuery: string } | { body: Record<string, string> },
+): Promise<{ request: Profile | null; response: boolean }> {
+  const saml = logoutClient(conn, appUrl, signing);
+  try {
+    if ("query" in message) {
+      const isRequest = typeof message.query.SAMLRequest === "string";
+      // node-saml accepts an unsigned redirect: anyone could then sign people out.
+      if (isRequest && typeof message.query.Signature !== "string") throw new SsoError("The identity provider's logout request isn't signed.");
+      const { profile } = await saml.validateRedirectAsync(message.query as never, message.originalQuery);
+      return isRequest ? { request: profile, response: false } : { request: null, response: true };
+    }
+    if (message.body.SAMLRequest) return { request: (await saml.validatePostRequestAsync(message.body)).profile, response: false };
+    const { loggedOut } = await saml.validatePostResponseAsync(message.body);
+    return { request: null, response: loggedOut };
+  } catch (e) {
+    if (e instanceof SsoError) throw e;
+    const m = (e as Error).message ?? "";
+    if (/signature/i.test(m)) throw new SsoError("The identity provider's signature couldn't be verified. Check its certificate in Admin → Authentication.");
+    throw new SsoError(`The logout message couldn't be read (${m}).`);
+  }
+}
+
+/** Our answer to the provider's logout request. */
+export async function samlLogoutResponseUrl(conn: Connection, appUrl: string, signing: { key: string; cert: string }, request: Profile, relayState = "") {
+  return logoutClient(conn, appUrl, signing).getLogoutResponseUrlAsync(request, relayState, {}, true);
 }

@@ -21,7 +21,7 @@ A ZIP, made as it downloads (large exports don't fill the server's memory):
 
 | File | What |
 |---|---|
-| `profile.json` | Name, email, role, status, job title, custom instructions, two-step sign-in on or off, sign-in methods, sessions (devices, addresses, times), workspaces and groups |
+| `profile.json` | Name, email, role, status, job title, custom instructions, two-step sign-in on or off, the directory that keeps them up to date (SCIM or LDAP, with its id for them), sign-in methods, sessions (devices, addresses, times), workspaces and groups |
 | `chats/` | Every chat, every message and version: JSON with the full branch structure, and readable Markdown |
 | `documents/`, `documents.json` | The files they uploaded (originals), notes and saved answers, and their details |
 | `projects.json` | Projects they own (with instructions) and the ones they're a member of |
@@ -55,7 +55,7 @@ and chooses who receives the shared things:
 | Activity log | kept; their id and email replaced by a pseudonym (`erased-…`), in entry details too | same |
 | Pending invitations to their email | deleted | deleted |
 
-The seat is free at once. The erase is recorded as `user.erased` with the pseudonym, who received
+The seat is free at once. Someone kept by directory sync (SCIM or LDAP) comes back as a new, empty account at the next sync, unless you first remove them from the directory or from what it syncs (the app's assignments at the provider, or the LDAP filter). The erase is recorded as `user.erased` with the pseudonym, who received
 the shared items and how many of each kind went.
 
 Two things erasing can't reach right away, worth telling the person:

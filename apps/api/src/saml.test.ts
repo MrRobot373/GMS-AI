@@ -27,7 +27,7 @@ describe("SAML: certificates, metadata and attributes", () => {
     const idp = await startMockSamlIdp();
     try {
       const m = parseIdpMetadata(idp.metadata());
-      expect(m).toEqual({ entityId: idp.entityId, ssoUrl: idp.ssoUrl, certs: [idp.cert.trim()] });
+      expect(m).toEqual({ entityId: idp.entityId, ssoUrl: idp.ssoUrl, sloUrl: idp.sloUrl, certs: [idp.cert.trim()] });
     } finally {
       await idp.close();
     }
@@ -285,6 +285,65 @@ d("SAML single sign-on", () => {
     expect(formPost.statusCode).toBe(415);
     const elsewhere = await app.inject({ method: "POST", url: "/api/admin/sso/saml-metadata", headers: { origin: new URL(idp.ssoUrl).origin, cookie: owner.cookie, "content-type": "application/json" }, payload: "{}" });
     expect(elsewhere.statusCode).toBe(403);
+  });
+
+  it("single logout: signing out of Aatmiq signs out at the provider too, with a signed request", async () => {
+    // The provider's logout address comes with its metadata; ours, with our signing certificate, with ours.
+    const m = (await call(owner, "POST", "/api/admin/sso/saml-metadata", { url: idp.metadataUrl })).json;
+    expect(m.sloUrl).toBe(idp.sloUrl);
+    const saved = await call(owner, "PATCH", `/api/admin/sso/${connId}`, { samlSloUrl: m.sloUrl });
+    expect(saved.json).toMatchObject({ samlSloUrl: idp.sloUrl, sp: { sloUrl: `${APP_URL}/api/auth/sso/${connId}/slo` } });
+    const sp = (await call(null, "GET", `/api/auth/sso/${connId}/metadata`)).body;
+    expect(sp).toContain(`SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="${APP_URL}/api/auth/sso/${connId}/slo"`);
+    const certB64 = /<(?:\w+:)?X509Certificate>([^<]+)</.exec(sp)![1]!;
+    idp.state.spCert = `-----BEGIN CERTIFICATE-----\n${certB64.match(/.{1,64}/g)!.join("\n")}\n-----END CERTIFICATE-----\n`;
+    // The same certificate every time (made once).
+    expect((await call(null, "GET", `/api/auth/sso/${connId}/metadata`)).body).toContain(certB64);
+
+    const r = await samlLogin("dev@acme.test");
+    const out = await call(r.j!, "POST", "/api/auth/sso/logout", {});
+    expect(out.json.redirect).toMatch(new RegExp(`^${idp.sloUrl}\\?SAMLRequest=`));
+    expect((await call(r.j!, "GET", "/api/me")).status).toBe(401);
+    // The provider gets a request it can check, naming the person and the sign-in.
+    const back = await fetch(out.json.redirect, { redirect: "manual" });
+    expect(idp.state.lastLogout).toMatchObject({ nameId: "dev@acme.test", signature: "valid", issuer: `${APP_URL}/api/auth/sso/${connId}/metadata` });
+    expect(idp.state.lastLogout!.sessionIndex).toBeTruthy();
+    // It sends the person back with its answer, which lands on the sign-in page.
+    const answer = back.headers.get("location")!;
+    expect(answer.startsWith(`${APP_URL}/api/auth/sso/${connId}/slo?SAMLResponse=`)).toBe(true);
+    const done = await app.inject({ method: "GET", url: answer.replace(APP_URL, "") });
+    expect(done.headers.location).toBe("/login?signed_out=1");
+    // Signing out of a password session just signs out.
+    const pw = jar();
+    await call(pw, "POST", "/api/auth/sign-in/email", { email: "owner@acme.test", password: "correct-horse-battery" });
+    expect((await call(pw, "POST", "/api/auth/sso/logout", {})).json).toEqual({ ok: true, redirect: null });
+    expect((await call(pw, "GET", "/api/me")).status).toBe(401);
+  });
+
+  it("single logout: the provider signs someone out of Aatmiq, with signed requests only", async () => {
+    const slo = `${APP_URL}/api/auth/sso/${connId}/slo`;
+    const a = await samlLogin("dev@acme.test");
+    const b = await samlLogin("dev@acme.test");
+    const other = await samlLogin("owner@acme.test");
+    const get = (u: string) => app.inject({ method: "GET", url: u.replace(APP_URL, "") });
+    // Unsigned, or from another provider: refused, nobody is signed out.
+    expect((await get(idp.logoutRequest({ destination: slo, nameId: "dev@acme.test", sign: false }))).statusCode).toBe(400);
+    expect((await get(idp.logoutRequest({ destination: slo, nameId: "dev@acme.test", issuer: "https://evil.test/idp" }))).statusCode).toBe(400);
+    expect((await call(a.j!, "GET", "/api/me")).status).toBe(200);
+
+    const res = await get(idp.logoutRequest({ destination: slo, nameId: "dev@acme.test" }));
+    expect(res.statusCode).toBe(302);
+    // Our answer goes back to the provider, signed.
+    const answer = new URL(String(res.headers.location));
+    expect(answer.origin + answer.pathname).toBe(idp.sloUrl);
+    expect(answer.searchParams.get("SAMLResponse")).toBeTruthy();
+    expect(answer.searchParams.get("Signature")).toBeTruthy();
+    // Both of their sessions end; someone else's doesn't.
+    expect((await call(a.j!, "GET", "/api/me")).status).toBe(401);
+    expect((await call(b.j!, "GET", "/api/me")).status).toBe(401);
+    expect((await call(other.j!, "GET", "/api/me")).status).toBe(200);
+    const audit = (await call(owner, "GET", "/api/admin/audit")).json.map((x: { action: string }) => x.action);
+    expect(audit).toContain("auth.sso_logout");
   });
 
   it("turned off, it can't be used", async () => {

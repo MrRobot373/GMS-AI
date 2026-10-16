@@ -19,15 +19,15 @@ function decodeQp(s) {
 const decodeWords = (h) =>
   h.replace(/=\?utf-8\?([bq])\?([^?]*)\?=\s*/gi, (_, enc, data) => (enc.toLowerCase() === "b" ? Buffer.from(data, "base64").toString("utf8") : decodeQp(data.replace(/_/g, " "))));
 
-/** Every part's body, decoded (quoted-printable or base64), so tests can read the text and links. */
+/** Every part, its body decoded (quoted-printable or base64) after its headers, so tests can read the text and links. */
 function bodies(raw) {
   return raw
     .split(/\r\n--[^\r\n]+\r\n/)
     .map((part) => {
       const [head, ...rest] = part.split("\r\n\r\n");
       const body = rest.join("\r\n\r\n");
-      if (/content-transfer-encoding:\s*base64/i.test(head)) return Buffer.from(body.replace(/\s+/g, ""), "base64").toString("utf8");
-      if (/content-transfer-encoding:\s*quoted-printable/i.test(head)) return decodeQp(body);
+      if (/content-transfer-encoding:\s*base64/i.test(head)) return `${head}\r\n\r\n${Buffer.from(body.replace(/\s+/g, ""), "base64").toString("utf8")}`;
+      if (/content-transfer-encoding:\s*quoted-printable/i.test(head)) return `${head}\r\n\r\n${decodeQp(body)}`;
       return part;
     })
     .join("\n");

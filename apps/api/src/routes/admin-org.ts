@@ -81,6 +81,7 @@ export async function adminOrgRoutes(app: FastifyInstance, ctx: AppContext) {
         createdAt: user.createdAt,
         twoFactorEnabled: user.twoFactorEnabled,
         emailVerified: user.emailVerified,
+        directory: user.directory,
         tokensThisPeriod: sql<number>`coalesce((select sum(${usageEvent.inputTokens} + ${usageEvent.outputTokens}) from ${usageEvent} where ${usageEvent.userId} = ${OUTER_USER_ID} and ${usageEvent.createdAt} >= ${start.toISOString()}), 0)::bigint`,
       })
       .from(user)
@@ -118,7 +119,8 @@ export async function adminOrgRoutes(app: FastifyInstance, ctx: AppContext) {
     if (target.orgRole === "owner") throw forbidden("The owner's role and status can't be changed here.");
     if (target.id === u.id) throw forbidden("You can't change your own role or status.");
     if (body.status === "active" && target.status !== "active") await ctx.license.requireSeats(1, { countPending: false });
-    await db.update(user).set(body).where(eq(user.id, target.id));
+    // An admin's choice: the directory won't undo it.
+    await db.update(user).set({ ...body, ...(body.status ? { directoryDisabled: false } : {}) }).where(eq(user.id, target.id));
     if (body.status === "deactivated") await db.delete(session).where(eq(session.userId, target.id));
     await audit(ctx, {
       actor: u,

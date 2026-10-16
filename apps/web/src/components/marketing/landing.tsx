@@ -247,7 +247,7 @@ export function Landing() {
           <Plan name="Chat" desc="A private assistant for everyone." items={["Chat + document Q&A", "Up to 3 workspaces", "Google / Microsoft sign-in", "Token budgets and audit log"]} />
           <Plan name="Work" desc="Agents that get things done." items={["Everything in Chat", "Work AI agents", "Connectors and web search", "Up to 10 workspaces"]} />
           <Plan name="Complete" desc="Chat, agents and code." items={["Everything in Work", "Aatmiq Code IDE", "Desktop and browser", "Unlimited workspaces"]} featured />
-          <Plan name="Enterprise" desc="For larger organizations." items={["Everything in Complete", "SAML and OIDC single sign-on", "Managed model hosting", "SLA and dedicated support"]} />
+          <Plan name="Enterprise" desc="For larger organizations." items={["Everything in Complete", "SAML and OIDC single sign-on", "SCIM and LDAP directory sync", "Managed model hosting", "SLA and dedicated support"]} />
         </div>
       </Section>
 

@@ -11,6 +11,13 @@ without one.
 
 - Single sign-on with any SAML 2.0 identity provider (Okta, Entra ID, Google Workspace, ADFS…):
   import its metadata in Admin → Authentication; the provider's app tile works too.
+- Directory sync (Enterprise), in Admin → Authentication → Directory:
+  - **SCIM provisioning** for Okta, Entra ID, OneLogin and JumpCloud: they create people, keep
+    their names and emails up to date, deactivate leavers and send groups with their members.
+  - **LDAP / Active Directory sync**: a read-only service account, on a schedule. It holds back
+    when a sync would deactivate more than half the people.
+- SAML single logout: signing out of Aatmiq signs you out at the identity provider, and signing out
+  there signs you out of Aatmiq.
 - The interface in Hindi (हिन्दी): each person picks it in Settings → Appearance, or admins make it
   the organization's default. The admin console is in Hindi too, and so is what the server says:
   error messages, notifications, emails (in each recipient's language), health checks and alerts,

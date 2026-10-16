@@ -60,7 +60,7 @@ they're told). **Admin → Usage** shows who used what, by model and section, wi
 
 | Where | What to set |
 |---|---|
-| Admin → Authentication | Require two-step sign-in (right away, or with a few days' grace and reminders); single sign-on with Google, Microsoft, any OpenID Connect or SAML 2.0 provider (import its metadata); require it for everyone but the owner |
+| Admin → Authentication | Require two-step sign-in (right away, or with a few days' grace and reminders); single sign-on with Google, Microsoft, any OpenID Connect or SAML 2.0 provider (import its metadata; single logout when it has it); require it for everyone but the owner. **Directory:** SCIM provisioning from Okta or Entra ID (a base URL and a token), or a read-only LDAP / Active Directory sync on a schedule (Test, then Sync now). New people, changes and leavers follow; groups arrive with their members ([setup](../04-single-sign-on.md#directory-sync)) |
 | Admin → Work AI | When the agent asks first (risky steps, always, never), how many tasks run at once, web search, the browser and which internal sites it may open, container limits |
 | Admin → Audit log | Who did what and when: sign-ins, changes, downloads, erasures |
 | Admin → Settings | The name, logo and colors; illustrations on the sign-in, empty and error pages (on by default; off for a plainer look); the default language (English or Hindi, for the whole product and its emails: the admin console too); prompt logging (off by default: say so to your people if you turn it on); how long chats are kept (chats nobody has touched for that many days are deleted within the hour); email |

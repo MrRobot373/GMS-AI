@@ -8,15 +8,17 @@
  *
  * In the browser it shows a sign-in form (any email); `login_hint` signs that address in directly,
  * and so does its session cookie after a first sign-in. GET /start?acs=…&audience=…&email=… signs in
- * without a request, as an app tile does.
+ * without a request, as an app tile does. GET /slo takes a logout request (single logout): it checks
+ * the app's signature when it knows the app's certificate (`spCert`), forgets its session, and
+ * answers with a signed logout response.
  */
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createVerify, randomBytes, sign as cryptoSign } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inflateRawSync } from "node:zlib";
+import { deflateRawSync, inflateRawSync } from "node:zlib";
 import { SignedXml } from "xml-crypto";
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -40,7 +42,61 @@ export async function startMockSamlIdp({ port = 0, host = "localhost" } = {}) {
   const { key, cert } = makeCert();
   let entityId = "";
   let ssoUrl = "";
-  const state = { logins: 0, lastRequest: null };
+  let sloUrl = "";
+  /** Aatmiq's single logout address, from its entity ID (…/sso/<id>/metadata → …/sso/<id>/slo). */
+  const spSlo = (spEntityId) => String(spEntityId).replace(/\/metadata$/, "/slo");
+  const state = { logins: 0, lastRequest: null, lastLogout: null, spCert: null };
+  const SIG_ALG = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+
+  /** A message for the HTTP-Redirect binding, signed as the binding signs (over the query string). */
+  function redirectUrl(destination, param, xml, { relayState = "", sign = true } = {}) {
+    let q = `${param}=${encodeURIComponent(deflateRawSync(Buffer.from(xml)).toString("base64"))}`;
+    if (relayState) q += `&RelayState=${encodeURIComponent(relayState)}`;
+    if (sign) {
+      q += `&SigAlg=${encodeURIComponent(SIG_ALG)}`;
+      q += `&Signature=${encodeURIComponent(cryptoSign("RSA-SHA256", Buffer.from(q), key).toString("base64"))}`;
+    }
+    return `${destination}${destination.includes("?") ? "&" : "?"}${q}`;
+  }
+
+  /** The provider asking the app to sign someone out (they signed out elsewhere). */
+  function logoutRequest({ destination, nameId, sessionIndex = null, nameIdFormat = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress", sign = true, issuer = entityId }) {
+    const xml =
+      `<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="${id()}" Version="2.0" IssueInstant="${iso(0)}" Destination="${esc(destination)}">` +
+      `<saml:Issuer>${esc(issuer)}</saml:Issuer><saml:NameID Format="${esc(nameIdFormat)}">${esc(nameId)}</saml:NameID>` +
+      (sessionIndex ? `<samlp:SessionIndex>${esc(sessionIndex)}</samlp:SessionIndex>` : "") +
+      `</samlp:LogoutRequest>`;
+    return redirectUrl(destination, "SAMLRequest", xml, { sign });
+  }
+
+  /** The provider's answer to the app's logout request. */
+  function logoutResponse({ destination, inResponseTo, relayState = "" }) {
+    const xml =
+      `<samlp:LogoutResponse xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="${id()}" Version="2.0" IssueInstant="${iso(0)}" Destination="${esc(destination)}" InResponseTo="${esc(inResponseTo)}">` +
+      `<saml:Issuer>${esc(entityId)}</saml:Issuer><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status></samlp:LogoutResponse>`;
+    return redirectUrl(destination, "SAMLResponse", xml, { relayState });
+  }
+
+  /** The app's logout request: who it names, and whether its signature checks out with `spCert`. */
+  function readLogout(url) {
+    const xml = inflateRawSync(Buffer.from(url.searchParams.get("SAMLRequest"), "base64")).toString("utf8");
+    const raw = url.search.slice(1);
+    const part = (k) => raw.split("&").find((t) => t.startsWith(`${k}=`));
+    let signed = null;
+    if (state.spCert && url.searchParams.get("Signature")) {
+      const signedPart = [part("SAMLRequest"), part("RelayState"), part("SigAlg")].filter(Boolean).join("&");
+      signed = createVerify("RSA-SHA256").update(signedPart).verify(state.spCert, url.searchParams.get("Signature"), "base64");
+    }
+    return {
+      id: /\sID="([^"]+)"/.exec(xml)?.[1] ?? null,
+      issuer: /<(?:\w+:)?Issuer[^>]*>([^<]+)</.exec(xml)?.[1] ?? null,
+      nameId: /<(?:\w+:)?NameID[^>]*>([^<]+)</.exec(xml)?.[1] ?? null,
+      sessionIndex: /<(?:\w+:)?SessionIndex[^>]*>([^<]+)</.exec(xml)?.[1] ?? null,
+      signature: url.searchParams.get("Signature") ? (signed === null ? "unchecked" : signed ? "valid" : "invalid") : "none",
+      relayState: url.searchParams.get("RelayState"),
+      xml,
+    };
+  }
 
   /**
    * A signed response. `sign`: "assertion" (default), "response" or "none"; the other options make
@@ -103,6 +159,7 @@ export async function startMockSamlIdp({ port = 0, host = "localhost" } = {}) {
     `<md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>` +
     `<md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${esc(ssoUrl)}"/>` +
     `<md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="${esc(ssoUrl)}"/>` +
+    `<md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="${esc(sloUrl)}"/>` +
     `</md:IDPSSODescriptor></md:EntityDescriptor>`;
 
   const html = (body) => `<!doctype html><meta charset="utf-8"><title>Mock SAML IdP</title><body style="font-family:sans-serif;max-width:360px;margin:60px auto">${body}</body>`;
@@ -135,6 +192,14 @@ export async function startMockSamlIdp({ port = 0, host = "localhost" } = {}) {
       const name = email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       return send(200, "text/html", postBack(r.acs, respond({ email, name, inResponseTo: r.id, acs: r.acs, audience: r.issuer }), relay), email);
     }
+    if (url.pathname === "/slo") {
+      if (!url.searchParams.get("SAMLRequest")) return send(400, "text/plain", "No SAMLRequest");
+      const r = readLogout(url);
+      state.lastLogout = r;
+      // Signed out here too; back to the app with the answer.
+      res.writeHead(302, { location: logoutResponse({ destination: spSlo(r.issuer), inResponseTo: r.id, relayState: r.relayState ?? "" }), "set-cookie": "mock_saml_user=; Path=/; Max-Age=0" });
+      return res.end();
+    }
     if (url.pathname === "/start") {
       const acs = url.searchParams.get("acs");
       const email = url.searchParams.get("email");
@@ -146,12 +211,16 @@ export async function startMockSamlIdp({ port = 0, host = "localhost" } = {}) {
   const base = `http://${host}:${server.address().port}`;
   entityId = `${base}/metadata`;
   ssoUrl = `${base}/sso`;
+  sloUrl = `${base}/slo`;
   return {
     get entityId() {
       return entityId;
     },
     ssoUrl,
+    sloUrl,
     metadataUrl: entityId,
+    logoutRequest,
+    logoutResponse,
     cert,
     key,
     state,

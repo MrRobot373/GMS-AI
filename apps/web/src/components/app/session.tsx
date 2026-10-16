@@ -84,9 +84,12 @@ export function SessionGate({ children, requireAdmin }: { children: ReactNode; r
   }, []);
 
   const signOut = useCallback(async () => {
-    await post("/api/auth/sign-out").catch(() => {});
+    // After a SAML sign-in with single logout, the provider signs them out too (and sends them back).
+    const r = await post<{ redirect: string | null }>("/api/auth/sso/logout").catch(() => null);
+    if (!r) await post("/api/auth/sign-out").catch(() => {});
     qc.clear();
-    router.replace("/login");
+    if (r?.redirect) window.location.assign(r.redirect);
+    else router.replace("/login");
   }, [qc, router]);
 
   const value = useMemo<SessionValue | null>(
