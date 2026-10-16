@@ -12,6 +12,7 @@ import { testProvider } from "@aatmiq/model-gateway";
 import { statfs } from "node:fs/promises";
 import { resolve } from "node:path";
 import { getOrg, notify, type AppContext } from "../context";
+import { fill, msg } from "../i18n";
 import { getWorkSettings } from "./work";
 
 export type Level = "ok" | "warn" | "error";
@@ -61,7 +62,14 @@ export function bytes(n: number): string {
   return `${Math.round(n / 1024)} KB`;
 }
 
-const ago = (ms: number) => (ms < 3_600_000 ? `${Math.max(1, Math.round(ms / 60_000))} min` : ms < 2 * DAY_MS ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / DAY_MS)} days`);
+const ago = (ms: number) =>
+  ms < 3_600_000
+    ? fill(msg("{n} min"), { n: Math.max(1, Math.round(ms / 60_000)) })
+    : ms < 2 * DAY_MS
+      ? Math.round(ms / 3_600_000) === 1
+        ? msg("1 hour")
+        : fill(msg("{n} hours"), { n: Math.round(ms / 3_600_000) })
+      : fill(msg("{n} days"), { n: Math.round(ms / DAY_MS) });
 
 export async function readStatus<T extends Record<string, unknown>>(db: DB, key: string): Promise<{ value: T; updatedAt: Date } | null> {
   const [row] = await db.select().from(systemStatus).where(eq(systemStatus.key, key));
@@ -90,9 +98,9 @@ async function databaseCheck(db: DB): Promise<Check> {
 /** One check per filesystem that holds Aatmiq's data. */
 async function diskChecks(ctx: AppContext): Promise<Check[]> {
   const folders: [string, string | undefined | null][] = [
-    ["uploads", ctx.cfg.s3 ? null : ctx.cfg.storageDir],
-    ["Work AI task folders", ctx.cfg.workDir],
-    ["Code homes", ctx.cfg.codeDir],
+    [msg("uploads"), ctx.cfg.s3 ? null : ctx.cfg.storageDir],
+    [msg("Work AI task folders"), ctx.cfg.workDir],
+    [msg("Code homes"), ctx.cfg.codeDir],
   ];
   const disks = new Map<string, { free: number; total: number; what: string[] }>();
   for (const [what, dir] of folders) {
@@ -153,7 +161,7 @@ async function modelChecks(ctx: AppContext): Promise<Check[]> {
             id: `model:${p.id}`,
             area: "Models",
             level: "error",
-            summary: `${p.name} isn't answering: ${health.error ?? "no reply"}`,
+            summary: health.error ? `${p.name} isn't answering: ${health.error}` : `${p.name} isn't answering.`,
             hint: "Chat, Work AI and document search that use it fail until it's back. Check the model server (on the team server: deploy/team.sh ps and logs).",
             alert: true,
           };
@@ -171,7 +179,12 @@ async function workCheck(ctx: AppContext): Promise<Check> {
   const [asking] = await db.select({ n: sql<number>`count(*)::int` }).from(workApproval).where(eq(workApproval.status, "pending"));
   const working = ctx.work.working();
   const waitedMs = queued?.oldest ? Date.now() - new Date(queued.oldest).getTime() : 0;
-  const summary = `${working} of ${settings.maxRunning} task${settings.maxRunning === 1 ? "" : "s"} working, ${queued?.n ?? 0} waiting for a slot, ${asking?.n ?? 0} waiting for someone's approval.`;
+  const summary = fill(
+    settings.maxRunning === 1
+      ? msg("{working} of 1 task working, {queued} waiting for a slot, {asking} waiting for someone's approval.")
+      : msg("{working} of {max} tasks working, {queued} waiting for a slot, {asking} waiting for someone's approval."),
+    { working, max: settings.maxRunning, queued: queued?.n ?? 0, asking: asking?.n ?? 0 },
+  );
   if (waitedMs > QUEUE_SLOW_MS)
     return {
       id: "work:queue",
@@ -190,14 +203,15 @@ async function jobsCheck(ctx: AppContext): Promise<Check> {
     .select({ n: sql<number>`count(*)::int` })
     .from(document)
     .where(and(eq(document.status, "processing"), lt(document.updatedAt, new Date(Date.now() - DOCUMENT_STUCK_MS))));
-  const where = s.mode === "in-process" ? "inside the API" : `in ${s.workers.length} worker${s.workers.length === 1 ? "" : "s"}`;
+  const where =
+    s.mode === "in-process" ? msg("Running inside the API") : s.workers.length === 1 ? msg("Running in 1 worker") : fill(msg("Running in {n} workers"), { n: s.workers.length });
   if (s.mode !== "in-process" && s.workers.length === 0)
     return { id: "jobs", area: "Background jobs", level: "error", summary: "No background worker is running: uploaded documents aren't being read.", hint: "Start the worker service (docker compose … --profile worker up -d).", alert: true };
   if ((stuck?.n ?? 0) > 0)
-    return { id: "jobs", area: "Background jobs", level: "warn", summary: `${stuck!.n} document${stuck!.n === 1 ? " has" : "s have"} been processing for over 30 minutes.`, hint: "Reprocess them from Documents; if it keeps happening, check the API's logs.", alert: true };
+    return { id: "jobs", area: "Background jobs", level: "warn", summary: stuck!.n === 1 ? "1 document has been processing for over 30 minutes." : `${stuck!.n} documents have been processing for over 30 minutes.`, hint: "Reprocess them from Documents; if it keeps happening, check the API's logs.", alert: true };
   if (s.counts.failed > 0)
-    return { id: "jobs", area: "Background jobs", level: "warn", summary: `Running ${where}; ${s.counts.failed} job${s.counts.failed === 1 ? "" : "s"} failed.`, hint: "Admin → Overview lists them.", alert: true };
-  return { id: "jobs", area: "Background jobs", level: "ok", summary: `Running ${where}; ${s.counts.waiting} waiting.`, alert: true };
+    return { id: "jobs", area: "Background jobs", level: "warn", summary: s.counts.failed === 1 ? `${where}; 1 job failed.` : `${where}; ${s.counts.failed} jobs failed.`, hint: "Admin → Overview lists them.", alert: true };
+  return { id: "jobs", area: "Background jobs", level: "ok", summary: `${where}; ${s.counts.waiting} waiting.`, alert: true };
 }
 
 async function backupCheck(ctx: AppContext): Promise<Check> {
@@ -217,14 +231,23 @@ async function backupCheck(ctx: AppContext): Promise<Check> {
       id: "backup",
       area: "Backups",
       level: "error",
-      summary: `The last backup failed (${ago(Date.now() - at.getTime())} ago).${b.value.lastOk ? ` The last good one is ${ago(Date.now() - new Date(b.value.lastOk).getTime())} old.` : ""}`,
+      summary: b.value.lastOk
+        ? `The last backup failed (${ago(Date.now() - at.getTime())} ago). The last good one is ${ago(Date.now() - new Date(b.value.lastOk).getTime())} old.`
+        : `The last backup failed (${ago(Date.now() - at.getTime())} ago).`,
       hint: "See the backup service's log (deploy/team.sh logs backup): often the backup disk is full or not mounted.",
       alert: true,
     };
   const age = Date.now() - at.getTime();
   if (age > BACKUP_STALE_MS)
     return { id: "backup", area: "Backups", level: "warn", summary: `The last backup is ${ago(age)} old.`, hint: "Backups run every night: check that the backup service is running (deploy/team.sh ps).", alert: true };
-  return { id: "backup", area: "Backups", level: "ok", summary: `Last backup ${b.value.name ?? ""} ${ago(age)} ago${b.value.bytes ? ` (${bytes(b.value.bytes)})` : ""}.`, alert: true };
+  const name = b.value.name ?? "";
+  return {
+    id: "backup",
+    area: "Backups",
+    level: "ok",
+    summary: b.value.bytes ? `Last backup ${name} ${ago(age)} ago (${bytes(b.value.bytes)}).` : `Last backup ${name} ${ago(age)} ago.`,
+    alert: true,
+  };
 }
 
 function securityCheck(ctx: AppContext): Check {
@@ -245,7 +268,13 @@ function securityCheck(ctx: AppContext): Check {
       id: "security:firewall",
       area: "Security",
       level: "warn",
-      summary: `${containers ? "IDE terminals" : "Work AI tasks and IDE terminals"} can reach private networks (the database, model servers, your office network): the user firewall is ${fw === "failed" ? "failing" : "off"}.`,
+      summary: containers
+        ? fw === "failed"
+          ? "IDE terminals can reach private networks (the database, model servers, your office network): the user firewall is failing."
+          : "IDE terminals can reach private networks (the database, model servers, your office network): the user firewall is off."
+        : fw === "failed"
+          ? "Work AI tasks and IDE terminals can reach private networks (the database, model servers, your office network): the user firewall is failing."
+          : "Work AI tasks and IDE terminals can reach private networks (the database, model servers, your office network): the user firewall is off.",
       hint: "Give the API container the NET_ADMIN capability (deploy/docker-compose.yml does). See docs/10-team-server.md#security.",
       alert: true,
     };
@@ -253,7 +282,9 @@ function securityCheck(ctx: AppContext): Check {
     id: "security:firewall",
     area: "Security",
     level: "ok",
-    summary: `${containers ? "Work AI tasks run in their own containers. " : ""}Tasks and IDEs each run as their own user and can't reach private networks.`,
+    summary: containers
+      ? "Work AI tasks run in their own containers. Tasks and IDEs each run as their own user and can't reach private networks."
+      : "Tasks and IDEs each run as their own user and can't reach private networks.",
     alert: true,
   };
 }
@@ -265,7 +296,7 @@ async function licenseCheck(ctx: AppContext): Promise<Check> {
   switch (status.state) {
     case "valid":
       return days !== null && days <= 14
-        ? { ...base, level: "warn", summary: `The license ends in ${days} day${days === 1 ? "" : "s"}.`, hint: "Renew it and enter the new key in Admin → License." }
+        ? { ...base, level: "warn", summary: days === 1 ? "The license ends in 1 day." : `The license ends in ${days} days.`, hint: "Renew it and enter the new key in Admin → License." }
         : { ...base, level: "ok", summary: days !== null ? `Valid, ${days} days left.` : "Valid." };
     case "development":
       return { ...base, level: "warn", summary: "Development mode: no license is set up.", hint: "Set LICENSE_PUBLIC_KEY and enter your license in Admin → License.", alert: false };
@@ -389,21 +420,39 @@ export class HealthMonitor {
     const product = (await getOrg(db))?.productName ?? "Aatmiq";
     const problems = items.filter((i) => i.kind !== "resolved");
     const fixed = items.filter((i) => i.kind === "resolved");
-    const title = problems.length
-      ? `${problems.length === 1 ? `${problems[0]!.check.area}: ` : `${problems.length} problems: `}${problems.length === 1 ? problems[0]!.check.summary : problems.map((p) => p.check.area).join(", ")}`
-      : `Fixed: ${fixed.map((f) => f.check.area).join(", ")}`;
-    const line = (i: { check: Check; kind: string }) =>
-      `${i.kind === "resolved" ? "Fixed" : i.check.level === "error" ? "Problem" : "Warning"}${i.kind === "reminder" ? " (still)" : ""} · ${i.check.area}: ${i.check.summary}${i.kind !== "resolved" && i.check.hint ? ` ${i.check.hint}` : ""}`;
+    // Written in English and translated for each reader (the notification when it's read, the email for its recipient).
+    const title =
+      problems.length === 1
+        ? fill(msg("{area}: {summary}"), { area: problems[0]!.check.area, summary: problems[0]!.check.summary })
+        : problems.length
+          ? fill(msg("{n} problems: {areas}"), { n: problems.length, areas: problems.map((p) => p.check.area).join(", ") })
+          : fill(msg("Fixed: {areas}"), { areas: fixed.map((f) => f.check.area).join(", ") });
+    const line = (i: { check: Check; kind: string }) => {
+      const head =
+        i.kind === "resolved"
+          ? msg("Fixed · {area}: {summary}")
+          : i.check.level === "error"
+            ? i.kind === "reminder"
+              ? msg("Problem (still) · {area}: {summary}")
+              : msg("Problem · {area}: {summary}")
+            : i.kind === "reminder"
+              ? msg("Warning (still) · {area}: {summary}")
+              : msg("Warning · {area}: {summary}");
+      const text = fill(head, { area: i.check.area, summary: i.check.summary });
+      return i.kind !== "resolved" && i.check.hint ? `${text} ${i.check.hint}` : text;
+    };
     await notify(
       db,
       admins.map((a) => a.id),
       { type: "health", title: title.slice(0, 200), body: items.map(line).join("\n").slice(0, 2000), link: "/admin/health" },
     );
     if (!(await healthSettings(db)).email || !(await this.ctx.mail.configured())) return;
-    const subject = problems.length ? `${product}: ${problems.length === 1 ? "a problem needs" : `${problems.length} problems need`} attention` : `${product}: fixed`;
+    const subject =
+      problems.length === 1 ? `${product}: a problem needs attention` : problems.length ? `${product}: ${problems.length} problems need attention` : `${product}: fixed`;
+    const intro = problems.length === 1 ? `${product} found a problem on your server.` : problems.length ? `${product} found problems on your server.` : "These are working again:";
     for (const a of admins) {
       await this.ctx.mail
-        .send({ to: a.email, subject, lines: [problems.length ? `${product} found ${problems.length === 1 ? "a problem" : "problems"} on your server.` : "These are working again:", ...items.map(line)], button: { label: "Open Health", url: `${cfg.appUrl}/admin/health` } })
+        .send({ to: a.email, subject, lines: [intro, ...items.map(line)], button: { label: "Open Health", url: `${cfg.appUrl}/admin/health` } })
         .catch((e) => this.opts.log("health alert email failed", e));
     }
   }

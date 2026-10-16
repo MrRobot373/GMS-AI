@@ -51,7 +51,7 @@ import { MoveToProjectDialog, ProjectIcon } from "@/components/projects/projects
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/overlay";
 import { ApiError, get, patch, post, readSse, uploadDocument } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { chatTitle, greeting, timeAgo, TIER_NAMES } from "@/lib/format";
+import { chatTitle, greeting, routingReason, timeAgo, TIER_NAMES } from "@/lib/format";
 import type { Routing } from "@aatmiq/shared";
 import type { AvailableModel, ChatDetail, Citation, DocumentRow, QuotaStatus } from "@/lib/types";
 import { SourcesRow, useSourceDialog } from "./citations";
@@ -877,8 +877,8 @@ function MessageBlock({
           <Tooltip
             content={
               m.routing.thinking
-                ? t("Auto picked {model}: {reason}, so it thought it through first.", { model: modelLabel, reason: m.routing.reason })
-                : t("Auto picked {model}: {reason}.", { model: modelLabel, reason: m.routing.reason })
+                ? t("Auto picked {model}: {reason}, so it thought it through first.", { model: modelLabel, reason: routingReason(m.routing.reason, t) })
+                : t("Auto picked {model}: {reason}.", { model: modelLabel, reason: routingReason(m.routing.reason, t) })
             }
           >
             <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-1.5 py-px text-[11px] text-fg-muted" data-testid="routed" data-tier={m.routing.tier}>

@@ -156,7 +156,12 @@ export function createConnectors(opts: ConnectorsOptions) {
         signal: AbortSignal.timeout(TIMEOUT),
       }).catch(() => null);
       const j = (await r?.json().catch(() => null)) as { client_id?: string; client_secret?: string; error_description?: string } | null;
-      if (!r?.ok || !j?.client_id) throw new ConnectorError(`The service didn't accept Aatmiq as an app${j?.error_description ? ` (${j.error_description})` : ""}. An admin can enter an OAuth app's client ID instead.`);
+      if (!r?.ok || !j?.client_id)
+        throw new ConnectorError(
+          j?.error_description
+            ? `The service didn't accept Aatmiq as an app (${j.error_description}). An admin can enter an OAuth app's client ID instead.`
+            : "The service didn't accept Aatmiq as an app. An admin can enter an OAuth app's client ID instead.",
+        );
       meta = { ...base, client: "dynamic", redirectUri };
       clientId = j.client_id;
       clientSecret = j.client_secret ?? null;
@@ -283,7 +288,11 @@ export function createConnectors(opts: ConnectorsOptions) {
         return t.accessToken;
       } catch (e) {
         await db.update(connectorAccount).set({ status: "expired", updatedAt: new Date() }).where(eq(connectorAccount.id, acc.id));
-        throw new ConnectorError(`Your ${c.displayName} connection expired (${e instanceof Error ? e.message : "refresh failed"}). Connect it again in Work AI → Connections.`);
+        throw new ConnectorError(
+          e instanceof Error
+            ? `Your ${c.displayName} connection expired (${e.message}). Connect it again in Work AI → Connections.`
+            : `Your ${c.displayName} connection expired. Connect it again in Work AI → Connections.`,
+        );
       } finally {
         refreshing.delete(key);
       }

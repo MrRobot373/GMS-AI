@@ -20,6 +20,7 @@ import { availableModels } from "../services/models";
 import { routingSettings, withAuto } from "../services/router";
 import { logoUrl } from "../services/branding";
 import { getQuotaStatus, quotaFor } from "../services/quota";
+import { localeOf, tr } from "../i18n";
 
 export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db } = ctx;
@@ -75,7 +76,7 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
         sections: lic.status.state === "development" ? ["chat", "work", "code"] : (lic.claims?.sections ?? []),
         features: lic.status.state === "development" ? null : (lic.claims?.features ?? []),
         // Admins see every notice; others only when they can't use the product.
-        message: admin || !lic.status.canUse ? lic.status.message : null,
+        message: (admin || !lic.status.canUse) && lic.status.message ? tr(localeOf(req), lic.status.message) : null,
       },
     };
   });
@@ -107,12 +108,15 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get("/api/notifications", async (req) => {
     const u = await requireUser(ctx, req);
-    return db
+    const rows = await db
       .select()
       .from(notification)
       .where(eq(notification.userId, u.id))
       .orderBy(desc(notification.createdAt))
       .limit(50);
+    // Written in English, read in the person's language.
+    const locale = localeOf(req);
+    return rows.map((n) => ({ ...n, title: tr(locale, n.title), body: n.body && tr(locale, n.body) }));
   });
 
   app.post("/api/notifications/read", async (req) => {

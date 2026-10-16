@@ -201,6 +201,17 @@ d("Aatmiq API", () => {
     expect(memberNotes.json[0].type).toBe("token_request.approved");
   });
 
+  it("answers in the person's language: errors and notifications (D49)", async () => {
+    const hindi = (j: Jar): Jar => ({ cookie: `${j.cookie}; aatmiq_lang=hi` });
+    expect((await call(member, "GET", "/api/chats/no-such-chat")).json.error).toBe("Chat not found");
+    expect((await call(hindi(member), "GET", "/api/chats/no-such-chat")).json.error).toBe("चैट नहीं मिली");
+    const [approved] = (await call(hindi(member), "GET", "/api/notifications")).json;
+    expect(approved.title).toMatch(/^आपका अनुरोध मंज़ूर हुआ: \+\S+ टोकन$/);
+    const requested = (await call(hindi(owner), "GET", "/api/notifications")).json.find((n: { type: string }) => n.type === "token_request.created");
+    expect(requested.title).toMatch(/ ने \S+ और टोकन माँगे$/);
+    expect((await call(owner, "GET", "/api/notifications")).json.find((n: { type: string }) => n.type === "token_request.created").title).toMatch(/requested \S+ more tokens$/);
+  });
+
   it("a permanent approval unblocks the member even when the workspace budget is used up", async () => {
     // Give the member a large personal allowance so the workspace is the tighter limit.
     await call(owner, "PATCH", `/api/admin/workspaces/${workspaceId}/members/${memberId}`, { tokenLimit: 100_000_000 });

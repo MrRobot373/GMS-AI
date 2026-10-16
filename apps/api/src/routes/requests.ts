@@ -51,7 +51,7 @@ export async function requestRoutes(app: FastifyInstance, ctx: AppContext) {
       {
         type: "token_request.created",
         title: `${u.name} requested ${formatTokens(body.amount)} more tokens`,
-        body: `${ws?.name ?? "Workspace"}${body.reason ? ` · "${body.reason}"` : ""}`,
+        body: body.reason ? `${ws?.name ?? ""} · "${body.reason}"` : (ws?.name ?? undefined),
         link: "/admin/requests",
       },
     );

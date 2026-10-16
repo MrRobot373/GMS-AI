@@ -9,6 +9,7 @@ import { chatToDocx, chatToMarkdown, fileNameFor, type ExportMessage } from "../
 import { getProjectAccess } from "../services/projects";
 import { chooseModel } from "../services/router";
 import { quotaFor } from "../services/quota";
+import { localeOf, msg, tr } from "../i18n";
 
 const MAX_HISTORY = 40;
 
@@ -153,7 +154,15 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const access = c.projectId ? await getProjectAccess(ctx, u, c.projectId).catch(() => null) : null;
     const proj = access && { id: access.project.id, name: access.project.name, color: access.project.color, canEdit: access.canEdit };
     const [author] = readOnly ? await db.select({ name: user.name }).from(user).where(eq(user.id, c.userId)) : [];
-    return { ...c, messages, documents, readOnly, project: proj ?? null, authorName: author?.name ?? null };
+    const locale = localeOf(req);
+    return {
+      ...c,
+      messages: messages.map((m) => (m.error ? { ...m, error: tr(locale, m.error) } : m)),
+      documents,
+      readOnly,
+      project: proj ?? null,
+      authorName: author?.name ?? null,
+    };
   });
 
   /** Download the branch being shown (or one message) as Word or Markdown. */
@@ -422,7 +431,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         }
       }
     } catch (e) {
-      if (!abort.signal.aborted) error = e instanceof Error ? e.message : "The model failed to respond.";
+      if (!abort.signal.aborted) error = e instanceof Error ? e.message : msg("The model failed to respond.");
     }
     if (abort.signal.aborted && usage.outputTokens === 0) {
       usage = { inputTokens: messages.reduce((n, x) => n + Math.ceil(x.content.length / 4), 0), outputTokens: Math.ceil(text.length / 4), estimated: true };
@@ -458,7 +467,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     });
 
     if (!res.writableEnded && !res.destroyed) {
-      if (error) send("error", { message: error, messageId: assistant!.id });
+      if (error) send("error", { message: tr(localeOf(req), error), messageId: assistant!.id });
       else send("done", { messageId: assistant!.id, usage, quota: (await quotaFor(db, c.workspaceId, u.id, m)).status });
       res.end();
     }

@@ -117,7 +117,7 @@ d("Health and alerts", () => {
   it("backups as the backup service records them: fine, overdue, failed", async () => {
     const now = Date.now();
     await writeStatus(db, "backup", { ok: true, name: "aatmiq-20261009-023000", bytes: 3 * GB, at: new Date(now - 3_600_000).toISOString(), lastOk: new Date(now - 3_600_000).toISOString() });
-    expect(await check("backup")).toMatchObject({ level: "ok", summary: "Last backup aatmiq-20261009-023000 1 h ago (3.0 GB)." });
+    expect(await check("backup")).toMatchObject({ level: "ok", summary: "Last backup aatmiq-20261009-023000 1 hour ago (3.0 GB)." });
     await writeStatus(db, "backup", { ok: true, name: "aatmiq-20261005-023000", at: new Date(now - 4 * 86_400_000).toISOString() });
     expect(await check("backup")).toMatchObject({ level: "warn", summary: "The last backup is 4 days old." });
     await writeStatus(db, "backup", { ok: false, name: "aatmiq-20261009-023000", bytes: 0, at: new Date(now - 600_000).toISOString(), lastOk: new Date(now - 2 * 86_400_000).toISOString() });

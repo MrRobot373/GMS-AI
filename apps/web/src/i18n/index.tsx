@@ -5,8 +5,6 @@
  * `t.n(count, "{n} file", "{n} files")` for plurals. A key missing from a catalog shows in English.
  * Strings defined outside components are marked with `msg("…")` and translated where they're shown.
  * `scripts/check-i18n.mjs` checks every key has its translation (it runs with the web app's tests).
- *
- * The admin console stays in English (it renders under <I18nProvider locale="en">).
  */
 import { createContext, Fragment, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { UiTextContext } from "@aatmiq/ui/text";
@@ -66,7 +64,7 @@ export function makeT(locale: Locale): Translate {
 const TContext = createContext<Translate>(makeT("en"));
 const SetContext = createContext<(l: Locale) => void>(() => {});
 
-/** A fixed language for part of the page (the admin console is English). */
+/** A fixed language for part of the page. */
 export function I18nProvider({ locale, children }: { locale: Locale; children: ReactNode }) {
   const t = useMemo(() => makeT(locale), [locale]);
   const ui = useMemo(() => ({ close: t("Close") }), [t]);

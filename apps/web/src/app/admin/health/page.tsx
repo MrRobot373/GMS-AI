@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/spinner";
 import { get, post, put } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 
+import { msg, useT } from "@/i18n";
 type Level = "ok" | "warn" | "error";
 interface Check {
   id: string;
@@ -29,15 +30,16 @@ interface Health {
   settings: { email: boolean; mailConfigured: boolean; intervalMinutes: number };
 }
 
-const AREAS = ["Models", "Database", "Disk", "Backups", "Work AI", "Background jobs", "Security", "License", "Email"];
+const AREAS = [msg("Models"), msg("Database"), msg("Disk"), msg("Backups"), msg("Work AI"), msg("Background jobs"), msg("Security"), msg("License"), msg("Email")];
 
 const LEVEL = {
-  ok: { icon: CircleCheck, className: "text-success", tone: "success", label: "Working" },
-  warn: { icon: CircleAlert, className: "text-warning", tone: "warning", label: "Needs a look" },
-  error: { icon: CircleX, className: "text-danger", tone: "danger", label: "Not working" },
+  ok: { icon: CircleCheck, className: "text-success", tone: "success", label: msg("Working") },
+  warn: { icon: CircleAlert, className: "text-warning", tone: "warning", label: msg("Needs a look") },
+  error: { icon: CircleX, className: "text-danger", tone: "danger", label: msg("Not working") },
 } as const;
 
 export default function HealthPage() {
+  const t = useT();
   const { me } = useSession();
   const qc = useQueryClient();
   const h = useQuery({ queryKey: ["admin-health"], queryFn: () => get<Health>("/api/admin/health"), enabled: me.isAdmin, refetchInterval: 60_000 });
@@ -48,7 +50,7 @@ export default function HealthPage() {
   });
   const test = useMutation({
     mutationFn: () => post<{ ok: boolean; emailed: boolean }>("/api/admin/health/test-alert"),
-    onSuccess: (r) => toast.success(r.emailed ? "Test alert sent: check your notifications and your inbox" : "Test alert sent to your notifications (email is off)"),
+    onSuccess: (r) => toast.success(r.emailed ? t("Test alert sent: check your notifications and your inbox") : t("Test alert sent to your notifications (email is off)")),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -59,11 +61,11 @@ export default function HealthPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Health"
-        description={`What's working on the ${me.org.productName} server, and what needs a look. Admins are told when something breaks.`}
+        title={t("Health")}
+        description={t("What's working on the {productName} server, and what needs a look. Admins are told when something breaks.", { productName: me.org.productName })}
         actions={
           <Button variant="secondary" size="sm" onClick={() => h.refetch()} disabled={h.isFetching} data-testid="health-refresh">
-            <RefreshCw className={h.isFetching ? "size-3.5 animate-spin" : "size-3.5"} /> Check now
+            <RefreshCw className={h.isFetching ? "size-3.5 animate-spin" : "size-3.5"} /> {t("Check now")}
           </Button>
         }
       />
@@ -77,9 +79,11 @@ export default function HealthPage() {
           })()}
           <div className="min-w-0 flex-1">
             <div className="text-[15px] font-medium">
-              {d.level === "ok" ? "Everything is working" : `${problems.length} ${problems.length === 1 ? "thing needs" : "things need"} a look`}
+              {d.level === "ok" ? t("Everything is working") : t.n(problems.length, "{n} thing needs a look", "{n} things need a look")}
             </div>
-            <div className="text-xs text-fg-subtle">Checked {timeAgo(d.checkedAt)}{d.settings.intervalMinutes ? ` · checked every ${d.settings.intervalMinutes} minutes` : ""}</div>
+            <div className="text-xs text-fg-subtle">{d.settings.intervalMinutes
+                ? t("Checked {when} · checked every {minutes} minutes", { when: timeAgo(d.checkedAt, t), minutes: d.settings.intervalMinutes })
+                : t("Checked {when}", { when: timeAgo(d.checkedAt, t) })}</div>
           </div>
         </Card>
       ) : (
@@ -91,10 +95,10 @@ export default function HealthPage() {
           ? byArea.map(({ area, checks }) => (
               <Card key={area} className="p-4" data-testid={`health-${area.toLowerCase().replaceAll(" ", "-")}`}>
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-medium">{area}</h2>
+                  <h2 className="text-sm font-medium">{t(area)}</h2>
                   {(() => {
                     const worst: Level = checks.some((c) => c.level === "error") ? "error" : checks.some((c) => c.level === "warn") ? "warn" : "ok";
-                    return <Badge tone={LEVEL[worst].tone}>{LEVEL[worst].label}</Badge>;
+                    return <Badge tone={LEVEL[worst].tone}>{t(LEVEL[worst].label)}</Badge>;
                   })()}
                 </div>
                 <ul className="space-y-2">
@@ -107,7 +111,7 @@ export default function HealthPage() {
                         <div className="min-w-0">
                           <div>{c.summary}</div>
                           {c.hint && c.level !== "ok" ? <div className="mt-0.5 text-xs text-fg-muted">{c.hint}</div> : null}
-                          {open ? <div className="mt-0.5 text-xs text-fg-subtle">Since {timeAgo(new Date(open.since))} · admins told {timeAgo(new Date(open.notifiedAt))}</div> : null}
+                          {open ? <div className="mt-0.5 text-xs text-fg-subtle">{t("Since {timeAgo} · admins told {timeAgo2}", { timeAgo: timeAgo(new Date(open.since), t), timeAgo2: timeAgo(new Date(open.notifiedAt), t) })}</div> : null}
                         </div>
                       </li>
                     );
@@ -120,10 +124,9 @@ export default function HealthPage() {
 
       {d ? (
         <Card className="space-y-3 p-5">
-          <h2 className="text-[15px] font-medium">Alerts</h2>
+          <h2 className="text-[15px] font-medium">{t("Alerts")}</h2>
           <p className="text-sm text-fg-muted">
-            When something breaks (a model server stops answering, the disk fills up, a backup fails), every admin gets a notification here, then a reminder each day while it lasts, and a
-            note when it&apos;s fixed.
+            {t("When something breaks (a model server stops answering, the disk fills up, a backup fails), every admin gets a notification here, then a reminder each day while it lasts, and a note when it's fixed.")}
           </p>
           <div className="flex flex-wrap items-center gap-4">
             <label className="flex items-center gap-2 text-sm" data-testid="health-email-alerts">
@@ -131,17 +134,17 @@ export default function HealthPage() {
                 checked={d.settings.email && d.settings.mailConfigured}
                 disabled={!d.settings.mailConfigured || setEmail.isPending}
                 onCheckedChange={(v) => setEmail.mutate(v)}
-                label="Also email admins"
+                label={t("Also email admins")}
               />
-              Also email admins
+              {t("Also email admins")}
             </label>
             <Button variant="ghost" size="sm" onClick={() => test.mutate()} disabled={test.isPending} data-testid="health-test-alert">
-              <Send className="size-3.5" /> Send a test alert
+              <Send className="size-3.5" /> {t("Send a test alert")}
             </Button>
           </div>
           {!d.settings.mailConfigured ? (
             <p className="text-xs text-fg-subtle">
-              Email isn&apos;t set up, so alerts only appear in {me.org.productName}. <Link className="underline underline-offset-2" href="/admin/settings">Set up email</Link>
+              {t("Email isn't set up, so alerts only appear in {productName}.", { productName: me.org.productName })} <Link className="underline underline-offset-2" href="/admin/settings">{t("Set up email")}</Link>
             </p>
           ) : null}
         </Card>

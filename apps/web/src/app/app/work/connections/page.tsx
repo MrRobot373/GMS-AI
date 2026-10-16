@@ -113,7 +113,7 @@ function Connections() {
                             {c.account?.status === "expired" && <Badge tone="warning">{t("Needs reconnecting")}</Badge>}
                           </div>
                           <div className="truncate text-[12px] text-fg-subtle">
-                            {c.connected && c.account?.label ? t("Signed in as {label}", { label: c.account.label }) : (c.description ?? "")}
+                            {c.connected && c.account?.label ? t("Signed in as {label}", { label: c.account.label }) : c.description ? t(c.description) : ""}
                           </div>
                         </div>
                         {c.connected ? (
@@ -139,7 +139,7 @@ function Connections() {
                         <ConnectorIcon catalogId={c.catalogId} name={c.displayName} category={c.category} />
                         <div className="min-w-0 flex-1">
                           <div className="text-[13.5px] text-fg">{c.displayName}</div>
-                          <div className="truncate text-[12px] text-fg-subtle">{c.description ?? (c.auth === "token" ? t("Set up by your admin.") : t("Open service."))}</div>
+                          <div className="truncate text-[12px] text-fg-subtle">{c.description ? t(c.description) : c.auth === "token" ? t("Set up by your admin.") : t("Open service.")}</div>
                         </div>
                         <Badge>{t("On")}</Badge>
                       </div>

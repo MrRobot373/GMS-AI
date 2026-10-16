@@ -16,7 +16,7 @@ export function nextRun(cron: string, timezone: string, from = new Date()): Date
   try {
     return CronExpressionParser.parse(cron, { tz: timezone, currentDate: from }).next().toDate();
   } catch (e) {
-    throw badRequest(`That schedule isn't valid: ${e instanceof Error ? e.message : "check the fields"}`);
+    throw badRequest(e instanceof Error ? `That schedule isn't valid: ${e.message}` : "That schedule isn't valid: check the fields.");
   }
 }
 

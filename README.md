@@ -34,7 +34,7 @@
 | Admin console: overview, users, workspaces, models, requests, usage (+CSV), audit log, settings/branding | ✅ |
 | Health: the database, disk, model servers, Work AI's queue, jobs, backups, isolation, license and email checked every 5 minutes; admins are told (in the app and by email) when something breaks and when it's fixed | ✅ |
 | Compliance recording notice, branding (name, accent color, logo on sign-in, app, emails and tab icon), dark/light themes | ✅ |
-| Interface in English and Hindi (हिन्दी), per person or the organization's default; accessibility (WCAG 2.1 AA, keyboard) checked on every push ([languages](docs/14-languages.md)) | ✅ |
+| Interface in English and Hindi (हिन्दी), per person or the organization's default, the admin console, emails and server messages included; accessibility (WCAG 2.1 AA, keyboard) checked on every push ([languages](docs/14-languages.md)) | ✅ |
 | Docker images + Compose stack | ✅ |
 | Background jobs (document processing, housekeeping): inside the API on one server, or a Redis/Valkey queue with separate worker processes (retries, restart recovery, Admin status) | ✅ |
 | Uploads on local disk or any S3-compatible bucket (AWS S3, MinIO, Ceph, SeaweedFS, R2…), bundled MinIO profile, copy script for existing installs | ✅ |

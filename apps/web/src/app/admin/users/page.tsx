@@ -16,6 +16,7 @@ import { del, get, patch, post } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatTokens, timeAgo } from "@/lib/format";
 
+import { useT } from "@/i18n";
 interface UserRow {
   id: string;
   name: string;
@@ -46,6 +47,7 @@ interface WorkspaceLite {
 }
 
 export default function UsersPage() {
+  const t = useT();
   const { me } = useSession();
   const qc = useQueryClient();
   const users = useQuery({ queryKey: ["admin-users"], queryFn: () => get<UserRow[]>("/api/admin/users") });
@@ -65,7 +67,7 @@ export default function UsersPage() {
     mutationFn: ({ id, ...body }: { id: string; orgRole?: string; status?: string }) => patch(`/api/admin/users/${id}`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-users"] });
-      toast.success("User updated");
+      toast.success(t("User updated"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -77,24 +79,24 @@ export default function UsersPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Users"
-        description="Everyone in your organization. Only org admins can invite new people."
+        title={t("Users")}
+        description={t("Everyone in your organization. Only org admins can invite new people.")}
         actions={
           <Button variant="primary" onClick={() => setInviteOpen(true)}>
-            <UserPlus className="size-4" /> Invite people
+            <UserPlus className="size-4" /> {t("Invite people")}
           </Button>
         }
       />
 
       <div className="relative max-w-xs">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or email" className="pl-9" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search by name or email")} className="pl-9" />
       </div>
 
       {users.isLoading ? (
         <Skeleton className="h-64 rounded-xl" />
       ) : (
-        <Table head={["Name", "Role", "Workspaces", "Tokens this period", "Last active", ""]}>
+        <Table head={[t("Name"), t("Role"), t("Workspaces"), t("Tokens this period"), t("Last active"), ""]}>
           {filtered.map((u) => (
             <tr key={u.id} className={cn("transition-colors hover:bg-surface-2/50", u.status === "deactivated" && "opacity-55")}>
               <Td>
@@ -102,7 +104,7 @@ export default function UsersPage() {
                   <Avatar name={u.name} image={u.image} />
                   <div className="min-w-0">
                     <div className="truncate font-medium">
-                      {u.name} {u.id === me.user.id && <span className="text-xs font-normal text-fg-subtle">(you)</span>}
+                      {u.name} {u.id === me.user.id && <span className="text-xs font-normal text-fg-subtle">{t("(you)")}</span>}
                     </div>
                     <div className="truncate text-xs text-fg-subtle">{u.email}</div>
                   </div>
@@ -110,17 +112,17 @@ export default function UsersPage() {
               </Td>
               <Td>
                 {u.status === "deactivated" ? (
-                  <Badge tone="danger">Deactivated</Badge>
+                  <Badge tone="danger">{t("Deactivated")}</Badge>
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
-                    <Badge tone={u.orgRole === "member" ? "neutral" : "accent"}>{u.orgRole === "owner" ? "Owner" : u.orgRole === "admin" ? "Admin" : "Member"}</Badge>
+                    <Badge tone={u.orgRole === "member" ? "neutral" : "accent"}>{u.orgRole === "owner" ? t("Owner") : u.orgRole === "admin" ? t("Admin") : t("Member")}</Badge>
                     {u.twoFactorEnabled && (
-                      <span title="Two-step sign-in is on" className="inline-flex text-fg-subtle" data-testid="two-factor-badge">
+                      <span title={t("Two-step sign-in is on")} className="inline-flex text-fg-subtle" data-testid="two-factor-badge">
                         <Smartphone className="size-3.5" />
                       </span>
                     )}
                     {!u.emailVerified && (
-                      <span title="Email address not confirmed yet" className="inline-flex text-warning" data-testid="email-unconfirmed">
+                      <span title={t("Email address not confirmed yet")} className="inline-flex text-warning" data-testid="email-unconfirmed">
                         <MailWarning className="size-3.5" />
                       </span>
                     )}
@@ -135,9 +137,9 @@ export default function UsersPage() {
                       {w.role === "admin" && <ShieldCheck className="ml-1 inline size-3 text-accent" />}
                     </span>
                   ))}
-                  {u.workspaces.length === 0 && <span className="text-xs text-fg-subtle">None</span>}
+                  {u.workspaces.length === 0 && <span className="text-xs text-fg-subtle">{t("None")}</span>}
                   {u.groups?.map((g) => (
-                    <span key={g.id} title="Group" className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[11.5px] text-fg-muted" data-testid="user-group">
+                    <span key={g.id} title={t("Group")} className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[11.5px] text-fg-muted" data-testid="user-group">
                       <UsersRound className="size-3" />
                       {g.name}
                     </span>
@@ -145,36 +147,36 @@ export default function UsersPage() {
                 </div>
               </Td>
               <Td className="tabular-nums text-fg-muted">{formatTokens(u.tokensThisPeriod)}</Td>
-              <Td className="text-fg-muted">{u.lastActiveAt ? timeAgo(u.lastActiveAt) : "Never"}</Td>
+              <Td className="text-fg-muted">{u.lastActiveAt ? timeAgo(u.lastActiveAt, t) : t("Never")}</Td>
               <Td className="w-10 text-right">
                 {u.orgRole !== "owner" && u.id !== me.user.id && (
                   <Menu>
                     <MenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${u.name}`}>
+                      <Button variant="ghost" size="icon-sm" aria-label={t("Actions for {name}", { name: u.name })}>
                         <MoreHorizontal className="size-4" />
                       </Button>
                     </MenuTrigger>
                     <MenuContent align="end">
                       {u.orgRole === "member" ? (
-                        <MenuItem icon={<ShieldCheck />} onSelect={() => update.mutate({ id: u.id, orgRole: "admin" })}>Make org admin</MenuItem>
+                        <MenuItem icon={<ShieldCheck />} onSelect={() => update.mutate({ id: u.id, orgRole: "admin" })}>{t("Make org admin")}</MenuItem>
                       ) : (
-                        <MenuItem icon={<ShieldCheck />} onSelect={() => update.mutate({ id: u.id, orgRole: "member" })}>Remove admin role</MenuItem>
+                        <MenuItem icon={<ShieldCheck />} onSelect={() => update.mutate({ id: u.id, orgRole: "member" })}>{t("Remove admin role")}</MenuItem>
                       )}
                       <MenuSeparator />
                       {u.status === "active" && (
-                        <MenuItem icon={<KeyRound />} onSelect={() => setResetFor(u)}>Send password reset link</MenuItem>
+                        <MenuItem icon={<KeyRound />} onSelect={() => setResetFor(u)}>{t("Send password reset link")}</MenuItem>
                       )}
                       {u.twoFactorEnabled && (
-                        <MenuItem icon={<ShieldOff />} onSelect={() => setTwoStepFor(u)}>Turn off two-step sign-in</MenuItem>
+                        <MenuItem icon={<ShieldOff />} onSelect={() => setTwoStepFor(u)}>{t("Turn off two-step sign-in")}</MenuItem>
                       )}
                       <MenuSeparator />
-                      <MenuItem icon={<Download />} onSelect={() => window.location.assign(`/api/admin/users/${u.id}/export`)}>Download their data</MenuItem>
+                      <MenuItem icon={<Download />} onSelect={() => window.location.assign(`/api/admin/users/${u.id}/export`)}>{t("Download their data")}</MenuItem>
                       {u.status === "active" ? (
-                        <MenuItem icon={<UserMinus />} danger onSelect={() => update.mutate({ id: u.id, status: "deactivated" })}>Deactivate</MenuItem>
+                        <MenuItem icon={<UserMinus />} danger onSelect={() => update.mutate({ id: u.id, status: "deactivated" })}>{t("Deactivate")}</MenuItem>
                       ) : (
-                        <MenuItem icon={<UserCheck />} onSelect={() => update.mutate({ id: u.id, status: "active" })}>Reactivate</MenuItem>
+                        <MenuItem icon={<UserCheck />} onSelect={() => update.mutate({ id: u.id, status: "active" })}>{t("Reactivate")}</MenuItem>
                       )}
-                      <MenuItem icon={<Eraser />} danger onSelect={() => setEraseFor(u)}>Erase person and data…</MenuItem>
+                      <MenuItem icon={<Eraser />} danger onSelect={() => setEraseFor(u)}>{t("Erase person and data…")}</MenuItem>
                     </MenuContent>
                   </Menu>
                 )}
@@ -184,7 +186,7 @@ export default function UsersPage() {
         </Table>
       )}
 
-      <Section title="Pending invitations" description="Links expire after 7 days.">
+      <Section title={t("Pending invitations")} description={t("Links expire after 7 days.")}>
         {invites.data?.length ? (
           <Card className="divide-y divide-border">
             {invites.data.map((i) => (
@@ -193,18 +195,18 @@ export default function UsersPage() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate">{i.email}</div>
                   <div className="text-xs text-fg-subtle">
-                    {i.orgRole} · sent {timeAgo(i.createdAt)} · expires {new Date(i.expiresAt).toLocaleDateString()}
+                    {t("{role} · sent {sent} · expires {expires}", { role: i.orgRole === "admin" ? t("Admin") : t("Member"), sent: timeAgo(i.createdAt, t), expires: t.date(i.expiresAt) })}
                   </div>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => revoke.mutate(i.id)}>
-                  <X className="size-3.5" /> Revoke
+                  <X className="size-3.5" /> {t("Revoke")}
                 </Button>
               </div>
             ))}
           </Card>
         ) : (
           <Card>
-            <EmptyState art="empty-inbox" title="No pending invitations" description="Invite teammates and they'll appear here until they accept." className="py-8" />
+            <EmptyState art="empty-inbox" title={t("No pending invitations")} description={t("Invite teammates and they'll appear here until they accept.")} className="py-8" />
           </Card>
         )}
       </Section>
@@ -215,17 +217,17 @@ export default function UsersPage() {
       <Dialog
         open={!!twoStepFor}
         onOpenChange={(o) => !o && setTwoStepFor(null)}
-        title={`Turn off two-step sign-in for ${twoStepFor?.name ?? ""}?`}
-        description="Do this only if they lost their phone and backup codes. Their password alone will sign them in until they set it up again."
+        title={t("Turn off two-step sign-in for {name}?", { name: twoStepFor?.name ?? "" })}
+        description={t("Do this only if they lost their phone and backup codes. Their password alone will sign them in until they set it up again.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setTwoStepFor(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setTwoStepFor(null)}>{t("Cancel")}</Button>
             <Button
               variant="danger"
               onClick={async () => {
                 try {
                   await post(`/api/admin/users/${twoStepFor!.id}/two-factor/disable`);
-                  toast.success(`Two-step sign-in is off for ${twoStepFor!.name}`);
+                  toast.success(t("Two-step sign-in is off for {name}", { name: twoStepFor!.name }));
                   qc.invalidateQueries({ queryKey: ["admin-users"] });
                 } catch (e) {
                   toast.error((e as Error).message);
@@ -233,7 +235,7 @@ export default function UsersPage() {
                 setTwoStepFor(null);
               }}
             >
-              Turn off
+              {t("Turn off")}
             </Button>
           </>
         }
@@ -243,6 +245,7 @@ export default function UsersPage() {
 }
 
 function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const workspaces = useQuery({ queryKey: ["admin-workspaces"], queryFn: () => get<WorkspaceLite[]>("/api/admin/workspaces"), enabled: open });
   const [email, setEmail] = useState("");
@@ -309,15 +312,17 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
         onOpenChange(o);
         if (!o) setTimeout(reset, 200);
       }}
-      title={results ? `${made.length} invitation${made.length === 1 ? "" : "s"} created` : link ? "Invitation created" : bulk ? "Invite several people" : "Invite someone"}
+      title={results ? t.n(made.length, "{n} invitation created", "{n} invitations created") : link ? t("Invitation created") : bulk ? t("Invite several people") : t("Invite someone")}
       description={
         results
-          ? `${made.filter((r) => r.emailed).length ? `${made.filter((r) => r.emailed).length} were emailed. ` : ""}Each link works once and expires in 7 days.`
+          ? made.some((r) => r.emailed)
+            ? t.n(made.filter((r) => r.emailed).length, "{n} was emailed. Each link works once and expires in 7 days.", "{n} were emailed. Each link works once and expires in 7 days.")
+            : t("Each link works once and expires in 7 days.")
           : link
           ? emailed
-            ? `We emailed the invitation to ${email}. You can also share this link. It works once and expires in 7 days.`
-            : "Share this link with them. It works once and expires in 7 days."
-          : "They'll set their own password when they accept."
+            ? t("We emailed the invitation to {email}. You can also share this link. It works once and expires in 7 days.", { email: email })
+            : t("Share this link with them. It works once and expires in 7 days.")
+          : t("They'll set their own password when they accept.")
       }
       footer={
         results ? (
@@ -327,30 +332,30 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
                 variant="ghost"
                 onClick={() => {
                   void navigator.clipboard.writeText(made.map((r) => `${r.email}\t${r.link}`).join("\n"));
-                  toast.success("Copied every address and its link");
+                  toast.success(t("Copied every address and its link"));
                 }}
               >
-                <Copy className="size-4" /> Copy all links
+                <Copy className="size-4" /> {t("Copy all links")}
               </Button>
             )}
-            <Button variant="primary" onClick={() => onOpenChange(false)}>Done</Button>
+            <Button variant="primary" onClick={() => onOpenChange(false)}>{t("Done")}</Button>
           </>
         ) : bulk ? (
           <>
-            <Button variant="ghost" onClick={() => setBulk(false)}>One person</Button>
+            <Button variant="ghost" onClick={() => setBulk(false)}>{t("One person")}</Button>
             <Button variant="primary" loading={many.isPending} disabled={!list.length || list.length > 100} onClick={() => many.mutate()} data-testid="invite-many">
-              Create {list.length || ""} invitation{list.length === 1 ? "" : "s"}
+              {list.length ? t.n(list.length, "Create {n} invitation", "Create {n} invitations") : t("Create invitations")}
             </Button>
           </>
         ) : link ? (
           <>
-            <Button variant="ghost" onClick={reset}>Invite another</Button>
-            <Button variant="primary" onClick={() => onOpenChange(false)}>Done</Button>
+            <Button variant="ghost" onClick={reset}>{t("Invite another")}</Button>
+            <Button variant="primary" onClick={() => onOpenChange(false)}>{t("Done")}</Button>
           </>
         ) : (
           <>
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button variant="primary" loading={m.isPending} disabled={!email} onClick={() => m.mutate()}>Create invitation</Button>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
+            <Button variant="primary" loading={m.isPending} disabled={!email} onClick={() => m.mutate()}>{t("Create invitation")}</Button>
           </>
         )
       }
@@ -369,24 +374,24 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
       ) : (
         <div className="space-y-4">
           {bulk ? (
-            <Field label="Emails" hint={`One per line, or separated by commas (up to 100). ${list.length ? `${list.length} address${list.length === 1 ? "" : "es"}.` : ""}`}>
-              <Textarea autoFocus rows={6} value={emails} onChange={(e) => setEmails(e.target.value)} placeholder={"maya@company.com\nravi@company.com"} className="font-mono text-[12.5px]" data-testid="invite-emails" />
+            <Field label={t("Emails")} hint={list.length ? t.n(list.length, "One per line, or separated by commas (up to 100). {n} address.", "One per line, or separated by commas (up to 100). {n} addresses.") : t("One per line, or separated by commas (up to 100).")}>
+              <Textarea autoFocus rows={6} value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="maya@company.com\nravi@company.com" className="font-mono text-[12.5px]" data-testid="invite-emails" />
             </Field>
           ) : (
-            <Field label="Email">
+            <Field label={t("Email")}>
               <Input type="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" />
               <button type="button" onClick={() => setBulk(true)} className="mt-1.5 text-[12px] text-fg-subtle hover:text-fg" data-testid="invite-several">
-                Invite several people at once
+                {t("Invite several people at once")}
               </button>
             </Field>
           )}
-          <Field label="Organization role">
+          <Field label={t("Organization role")}>
             <Select value={orgRole} onChange={(e) => setOrgRole(e.target.value as "member" | "admin")}>
-              <option value="member">Member: uses the workspaces they're added to</option>
-              <option value="admin">Admin: manages the whole organization</option>
+              <option value="member">{t("Member: uses the workspaces they're added to")}</option>
+              <option value="admin">{t("Admin: manages the whole organization")}</option>
             </Select>
           </Field>
-          <Field label="Workspaces">
+          <Field label={t("Workspaces")}>
             <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
               {workspaces.data?.map((w) => (
                 <div key={w.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-surface-2">
@@ -404,8 +409,8 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
                       onChange={(e) => setSelected((s) => ({ ...s, [w.id]: e.target.value as "member" | "admin" }))}
                       className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-xs"
                     >
-                      <option value="member">Member</option>
-                      <option value="admin">Workspace admin</option>
+                      <option value="member">{t("Member")}</option>
+                      <option value="admin">{t("Workspace admin")}</option>
                     </select>
                   )}
                 </div>
@@ -419,6 +424,7 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
 }
 
 function CopyLink({ link }: { link: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-subtle p-2 pl-3" data-testid="copy-link">
@@ -431,7 +437,7 @@ function CopyLink({ link }: { link: string }) {
           setTimeout(() => setCopied(false), 1500);
         }}
       >
-        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
+        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />} {copied ? t("Copied") : t("Copy")}
       </Button>
     </div>
   );
@@ -439,6 +445,7 @@ function CopyLink({ link }: { link: string }) {
 
 /** A one-time link to choose a new password: emailed to the person when email is set up, otherwise shown here. */
 function ResetLinkDialog({ person, onClose }: { person: UserRow; onClose: () => void }) {
+  const t = useT();
   const send = useMutation({
     mutationFn: () => post<{ emailed: boolean; link?: string; email?: string; expiresInMinutes: number }>(`/api/admin/users/${person.id}/reset-link`),
     onError: (e: Error) => toast.error(e.message),
@@ -448,22 +455,22 @@ function ResetLinkDialog({ person, onClose }: { person: UserRow; onClose: () => 
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={r ? (r.emailed ? "Reset link sent" : "Reset link created") : `Reset ${person.name}'s password?`}
+      title={r ? (r.emailed ? t("Reset link sent") : t("Reset link created")) : t("Reset {name}'s password?", { name: person.name })}
       description={
         r
           ? r.emailed
-            ? `We emailed ${r.email} a link to choose a new password. It works once and expires in ${r.expiresInMinutes} minutes.`
-            : `Email isn't set up, so share this link with ${person.name} yourself. It works once and expires in ${r.expiresInMinutes} minutes.`
-          : `They'll get a one-time link to choose a new password, and be signed out on their devices once they do. Their password works until then.`
+            ? t("We emailed {email} a link to choose a new password. It works once and expires in {expiresInMinutes} minutes.", { email: r.email, expiresInMinutes: r.expiresInMinutes })
+            : t("Email isn't set up, so share this link with {name} yourself. It works once and expires in {expiresInMinutes} minutes.", { name: person.name, expiresInMinutes: r.expiresInMinutes })
+          : t("They'll get a one-time link to choose a new password, and be signed out on their devices once they do. Their password works until then.")
       }
       footer={
         r ? (
-          <Button variant="primary" onClick={onClose}>Done</Button>
+          <Button variant="primary" onClick={onClose}>{t("Done")}</Button>
         ) : (
           <>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
             <Button variant="primary" loading={send.isPending} onClick={() => send.mutate()} data-testid="send-reset-link">
-              Create link
+              {t("Create link")}
             </Button>
           </>
         )
@@ -476,6 +483,7 @@ function ResetLinkDialog({ person, onClose }: { person: UserRow; onClose: () => 
 
 /** Erase a person and their data for good (privacy law requests, someone leaving for good). */
 function EraseDialog({ person, others, onClose }: { person: UserRow; others: UserRow[]; onClose: () => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState("");
   const [heir, setHeir] = useState("");
@@ -487,7 +495,11 @@ function EraseDialog({ person, others, onClose }: { person: UserRow; others: Use
       ),
     onSuccess: (r) => {
       const moved = r.projectsTransferred + r.documentsTransferred;
-      toast.success(`${person.name} was erased${moved ? `; ${moved} shared item${moved === 1 ? "" : "s"} moved to ${others.find((o) => o.id === heir)?.name}` : ""}`);
+      toast.success(
+        moved
+          ? t.n(moved, "{name} was erased; {n} shared item moved to {heir}", "{name} was erased; {n} shared items moved to {heir}", { name: person.name, heir: others.find((o) => o.id === heir)?.name ?? "" })
+          : t("{name} was erased", { name: person.name }),
+      );
       qc.invalidateQueries({ queryKey: ["admin-users"] });
       onClose();
     },
@@ -497,35 +509,34 @@ function EraseDialog({ person, others, onClose }: { person: UserRow; others: Use
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Erase ${person.name}?`}
-      description="Their account and everything they made are deleted for good: chats, private documents, Work AI tasks and their files, code workspaces, schedules, personal skills and connected apps. This can't be undone. Download their data first if they asked for a copy."
+      title={t("Erase {name}?", { name: person.name })}
+      description={t("Their account and everything they made are deleted for good: chats, private documents, Work AI tasks and their files, code workspaces, schedules, personal skills and connected apps. This can't be undone. Download their data first if they asked for a copy.")}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="danger" disabled={confirm.trim().toLowerCase() !== person.email.toLowerCase() || erase.isPending} onClick={() => erase.mutate()} data-testid="erase-confirm">
-            <Eraser /> Erase for good
+            <Eraser /> {t("Erase for good")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         <Field
-          label="Give their shared projects and documents to"
-          hint="Projects, documents shared with a workspace and organization skills move to this person. Nobody: shared projects and documents are deleted too (organization skills go to you)."
+          label={t("Give their shared projects and documents to")}
+          hint={t("Projects, documents shared with a workspace and organization skills move to this person. Nobody: shared projects and documents are deleted too (organization skills go to you).")}
         >
           <Select value={heir} onChange={(e) => setHeir(e.target.value)} data-testid="erase-heir">
-            <option value="">Nobody (delete them)</option>
+            <option value="">{t("Nobody (delete them)")}</option>
             {others.map((o) => (
               <option key={o.id} value={o.id}>{o.name} ({o.email})</option>
             ))}
           </Select>
         </Field>
-        <Field label={`Type ${person.email} to confirm`}>
+        <Field label={t("Type {email} to confirm", { email: person.email })}>
           <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={person.email} autoComplete="off" data-testid="erase-email" />
         </Field>
         <p className="text-[12.5px] leading-relaxed text-fg-subtle">
-          Usage stays in the totals without their name, and the activity log keeps what happened under a pseudonym. Backups made before today still
-          contain them until they expire.
+          {t("Usage stays in the totals without their name, and the activity log keeps what happened under a pseudonym. Backups made before today still contain them until they expire.")}
         </p>
       </div>
     </Dialog>

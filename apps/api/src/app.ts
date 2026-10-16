@@ -8,6 +8,7 @@ import { createAuth } from "./auth";
 import type { Config } from "./config";
 import type { AppContext } from "./context";
 import { createSecretBox, sha256 } from "./crypto";
+import { localeOf, msg, tr } from "./i18n";
 import { HttpError } from "./errors";
 import { documentRoutes } from "./routes/documents";
 import { createStorage, type Storage } from "./services/storage";
@@ -148,14 +149,14 @@ export async function buildApp(
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) {
-      return reply.status(err.statusCode).send({ error: err.message, code: err.code, details: err.details });
+      return reply.status(err.statusCode).send({ error: tr(localeOf(req), err.message), code: err.code, details: err.details });
     }
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status < 500) {
       return reply.status(status).send({ error: (err as Error).message, code: "request_error" });
     }
     req.log.error(err);
-    return reply.status(500).send({ error: "Something went wrong on the server.", code: "internal" });
+    return reply.status(500).send({ error: tr(localeOf(req), msg("Something went wrong on the server.")), code: "internal" });
   });
 
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 1 } });

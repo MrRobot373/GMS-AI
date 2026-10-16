@@ -1,14 +1,16 @@
 /**
  * Outgoing email (SMTP) for invitations and password resets. The server comes from SMTP_URL in the
  * environment when set, otherwise from Admin → Settings → Email. Without either, nothing is sent and
- * people share links by hand (invitations) or ask an admin (password resets).
+ * people share links by hand (invitations) or ask an admin (password resets). Emails are written in
+ * English and sent in the recipient's language (theirs, else the organization's default).
  */
-import { organization, type DB, type EmailSettingsStored } from "@aatmiq/db";
+import { eq, organization, sql, user, type DB, type EmailSettingsStored } from "@aatmiq/db";
 import { DEFAULT_ACCENT, PRODUCT_NAME } from "@aatmiq/shared";
 import nodemailer, { type Transporter } from "nodemailer";
 import type { Config } from "../config";
 import type { Storage } from "./storage";
 import type { SecretBox } from "../crypto";
+import { isLocale, msg, tr, type Locale } from "../i18n";
 
 export interface MailServer {
   host: string;
@@ -50,14 +52,14 @@ const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<":
 const LOGO_CID = "org-logo@aatmiq";
 
 /** Plain, readable HTML that works in every mail client (tables, inline styles; the logo is an inline attachment). */
-export function renderMail(m: OutgoingMail, brand: { productName: string; accent: string; logo?: { type: string; data: Buffer } | null }) {
+export function renderMail(m: OutgoingMail, brand: { productName: string; accent: string; logo?: { type: string; data: Buffer } | null }, locale: Locale = "en") {
   const p = (s: string) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#1f2328">${escape(s)}</p>`;
   const button = m.button
     ? `<p style="margin:22px 0"><a href="${escape(m.button.url)}" style="display:inline-block;background:#111418;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 18px;border-radius:8px">${escape(m.button.label)}</a></p>
-<p style="margin:0 0 14px;font-size:12.5px;line-height:1.5;color:#5b636e">Or paste this link into your browser:<br><span style="word-break:break-all;color:#1f2328">${escape(m.button.url)}</span></p>`
+<p style="margin:0 0 14px;font-size:12.5px;line-height:1.5;color:#5b636e">${escape(tr(locale, msg("Or paste this link into your browser:")))}<br><span style="word-break:break-all;color:#1f2328">${escape(m.button.url)}</span></p>`
     : "";
   const note = m.note ? `<p style="margin:14px 0 0;font-size:12.5px;line-height:1.5;color:#5b636e">${escape(m.note)}</p>` : "";
-  const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  const html = `<!doctype html><html lang="${locale}"><body style="margin:0;padding:24px;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e3e6ea;border-radius:12px">
 <tr><td style="padding:22px 28px 6px;font-size:14px;font-weight:600;color:#1f2328">${
@@ -129,9 +131,24 @@ export function createMailer(opts: { db: DB; cfg: Config; box: SecretBox; storag
     return { type: logo.type, data: await storage.get(logo.key) };
   }
 
-  async function deliver(s: MailServer, m: OutgoingMail) {
+  /** The recipient's language: theirs when they have an account, else the organization's default. */
+  async function localeFor(email: string): Promise<Locale> {
+    const [u] = await db.select({ locale: user.locale }).from(user).where(eq(sql`lower(${user.email})`, email.toLowerCase())).limit(1);
+    const l = u?.locale ?? (await org())?.defaultLocale;
+    return isLocale(l) ? l : "en";
+  }
+
+  async function deliver(s: MailServer, mail: OutgoingMail) {
+    const locale = await localeFor(mail.to).catch((): Locale => "en");
+    const m: OutgoingMail = {
+      ...mail,
+      subject: tr(locale, mail.subject),
+      lines: mail.lines.map((l) => tr(locale, l)),
+      button: mail.button && { ...mail.button, label: tr(locale, mail.button.label) },
+      note: mail.note && tr(locale, mail.note),
+    };
     const logo = await emailLogo().catch(() => null);
-    const { html, text } = renderMail(m, { ...(await brand()), logo });
+    const { html, text } = renderMail(m, { ...(await brand()), logo }, locale);
     await transporter(s).sendMail({
       from: s.from,
       to: m.to,

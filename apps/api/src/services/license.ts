@@ -141,12 +141,21 @@ export class LicenseService {
     if (status.state === "development" || !claims) return;
     const { active, pending } = await this.seatsUsed();
     const used = active + (opts.countPending ? pending : 0);
-    if (used + extra > claims.seats)
+    if (used + extra > claims.seats) {
+      const { seats } = claims;
+      const counted = opts.countPending && pending > 0;
       throw new HttpError(
         402,
-        `Your license covers ${claims.seats} people and ${used} ${used === 1 ? "seat is" : "seats are"} in use${opts.countPending && pending ? ` (including ${pending} pending invitation${pending === 1 ? "" : "s"})` : ""}. Ask Aatmiq for more seats.`,
+        used === 1
+          ? `Your license covers ${seats} people and 1 seat is in use. Ask Aatmiq for more seats.`
+          : !counted
+            ? `Your license covers ${seats} people and ${used} seats are in use. Ask Aatmiq for more seats.`
+            : pending === 1
+              ? `Your license covers ${seats} people and ${used} seats are in use (including 1 pending invitation). Ask Aatmiq for more seats.`
+              : `Your license covers ${seats} people and ${used} seats are in use (including ${pending} pending invitations). Ask Aatmiq for more seats.`,
         "seat_limit",
       );
+    }
   }
 
   async requireWorkspaceSlot() {

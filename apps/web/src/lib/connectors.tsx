@@ -3,6 +3,7 @@ import { BookOpen, Code2, CreditCard, Database, FileText, ListChecks, Mail, Mess
 import type { CSSProperties } from "react";
 import { BRAND_ICONS } from "@/lib/brand-icons";
 import { cn } from "@/lib/cn";
+import { msg, type Translate } from "@/i18n";
 
 const ICONS: Record<CatalogCategory, typeof Plug> = {
   "Email & calendar": Mail,
@@ -66,18 +67,18 @@ export function approvalPresetOf(rule: string): ApprovalPreset {
 }
 
 export const APPROVAL_LABELS: Record<ApprovalPreset, string> = {
-  changes: "Ask before changes (reading runs freely)",
-  all: "Ask before every action",
-  none: "Never ask",
-  custom: "Custom rule",
+  changes: msg("Ask before changes (reading runs freely)"),
+  all: msg("Ask before every action"),
+  none: msg("Never ask"),
+  custom: msg("Custom rule"),
 };
 
-export function approvalSummary(rule: string) {
+export function approvalSummary(rule: string, t: Translate) {
   const p = approvalPresetOf(rule);
-  if (p === "changes") return "asks before changes";
-  if (p === "all") return "asks before every action";
-  if (p === "none") return "never asks";
-  return `asks before: ${rule}`;
+  if (p === "changes") return t("asks before changes");
+  if (p === "all") return t("asks before every action");
+  if (p === "none") return t("never asks");
+  return t("asks before: {rule}", { rule });
 }
 
-export const AUTH_LABELS = { oauth: "Each person signs in", token: "Shared token", none: "No sign-in" } as const;
+export const AUTH_LABELS = { oauth: msg("Each person signs in"), token: msg("Shared token"), none: msg("No sign-in") } as const;

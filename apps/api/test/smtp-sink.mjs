@@ -1,9 +1,36 @@
 // A tiny SMTP server for tests: accepts every message and keeps it in memory (no TLS, no auth).
 import { createServer } from "node:net";
 
-/** Decodes the quoted-printable bodies nodemailer writes, so tests can read links. */
+/** Decodes quoted-printable (UTF-8), as nodemailer writes it. */
 function decodeQp(s) {
-  return s.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  const soft = s.replace(/=\r?\n/g, "");
+  const bytes = [];
+  for (let i = 0; i < soft.length; i++) {
+    const hex = soft.slice(i + 1, i + 3);
+    if (soft[i] === "=" && /^[0-9A-F]{2}$/i.test(hex)) {
+      bytes.push(parseInt(hex, 16));
+      i += 2;
+    } else bytes.push(...Buffer.from(soft[i], "utf8"));
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+/** A header's encoded words (=?UTF-8?B?…?=), as text. */
+const decodeWords = (h) =>
+  h.replace(/=\?utf-8\?([bq])\?([^?]*)\?=\s*/gi, (_, enc, data) => (enc.toLowerCase() === "b" ? Buffer.from(data, "base64").toString("utf8") : decodeQp(data.replace(/_/g, " "))));
+
+/** Every part's body, decoded (quoted-printable or base64), so tests can read the text and links. */
+function bodies(raw) {
+  return raw
+    .split(/\r\n--[^\r\n]+\r\n/)
+    .map((part) => {
+      const [head, ...rest] = part.split("\r\n\r\n");
+      const body = rest.join("\r\n\r\n");
+      if (/content-transfer-encoding:\s*base64/i.test(head)) return Buffer.from(body.replace(/\s+/g, ""), "base64").toString("utf8");
+      if (/content-transfer-encoding:\s*quoted-printable/i.test(head)) return decodeQp(body);
+      return part;
+    })
+    .join("\n");
 }
 
 export async function startSmtpSink() {
@@ -22,9 +49,9 @@ export async function startSmtpSink() {
           msg.raw = buf.slice(0, end);
           buf = buf.slice(end + 5);
           inData = false;
-          const head = msg.raw.split("\r\n\r\n")[0];
-          const subject = /^Subject: (.*)$/m.exec(head)?.[1] ?? "";
-          const text = decodeQp(msg.raw);
+          const head = msg.raw.split("\r\n\r\n")[0].replace(/\r\n[ \t]+/g, " ");
+          const subject = decodeWords(/^Subject: (.*)$/m.exec(head)?.[1] ?? "");
+          const text = bodies(msg.raw);
           messages.push({ from: msg.from, to: msg.to, subject, text, links: [...text.matchAll(/https?:\/\/[^\s"<>]+/g)].map((m) => m[0].replace(/&amp;/g, "&")) });
           msg = { from: "", to: [], raw: "" };
           sock.write("250 OK queued\r\n");

@@ -184,6 +184,18 @@ d("Email, password reset and two-step sign-in", () => {
     expect(sink.messages.length).toBe(before);
   });
 
+  it("emails come in the recipient's language (D49)", async () => {
+    const maya = jar();
+    await signIn(maya, "maya@acme.test", "fourth-password-000");
+    expect((await call(maya, "PATCH", "/api/me", { locale: "hi" })).status).toBe(200);
+    await call(null, "POST", "/api/auth/request-password-reset", { email: "maya@acme.test", redirectTo: "/reset-password" });
+    const m = await sink.next("maya@acme.test", "पासवर्ड रीसेट करें");
+    expect(m.text).toContain("60 मिनट में समाप्त हो जाता है");
+    expect(m.text).toContain('<html lang="hi">');
+    expect(m.text).toContain("या यह लिंक अपने ब्राउज़र में चिपकाएँ:");
+    await call(maya, "PATCH", "/api/me", { locale: null });
+  });
+
   it("no reset email for deactivated people or, with SSO required, anyone but the owner", async () => {
     const ravi = (await call(owner, "GET", "/api/admin/users")).json.find((u: { email: string }) => u.email === "ravi@acme.test");
     await call(owner, "PATCH", `/api/admin/users/${ravi.id}`, { status: "deactivated" });

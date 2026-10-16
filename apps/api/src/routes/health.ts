@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { audit, parse, requireOrgCap, requireUser, type AppContext } from "../context";
 import { healthSettings, readStatus, runChecks, writeStatus } from "../services/health";
+import { localeOf, tr } from "../i18n";
 
 export async function healthRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db } = ctx;
@@ -22,8 +23,10 @@ export async function healthRoutes(app: FastifyInstance, ctx: AppContext) {
       readStatus<Record<string, { since: number; notifiedAt: number }>>(db, "health_alerts"),
       ctx.mail.configured(),
     ]);
+    const locale = localeOf(req);
     return {
       ...report,
+      checks: report.checks.map((c) => ({ ...c, summary: tr(locale, c.summary), hint: c.hint && tr(locale, c.hint) })),
       // When each open problem started, and when admins were last told.
       alerts: alerts?.value ?? {},
       settings: { ...settings, mailConfigured, intervalMinutes: ctx.cfg.healthIntervalMinutes ?? 0 },

@@ -78,7 +78,7 @@ sense when heard. Do that once per release with NVDA or VoiceOver on Chat, a tas
 
 `hindi.mjs` switches a person to Hindi and checks the main pages, `lang="hi"` (also in the
 server-rendered page), dates, the sign-in page after signing out, the organization's default and
-a person's own choice, that the admin console stays English, and runs axe in Hindi. Screenshots of
+a person's own choice, the admin console's pages, and runs axe in Hindi. Screenshots of
 the pages in Hindi go to `results-hindi/` for review ([docs/14-languages.md](../../docs/14-languages.md)).
 
 ```bash

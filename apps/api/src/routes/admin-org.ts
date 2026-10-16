@@ -215,7 +215,9 @@ export async function adminOrgRoutes(app: FastifyInstance, ctx: AppContext) {
         subject: `${u.name} invited you to ${org?.name ?? productName}`,
         lines: [
           "Hi,",
-          `${u.name} invited you to join ${org?.name ?? "your team"} on ${productName}, your organization's private AI workspace.`,
+          org?.name
+            ? `${u.name} invited you to join ${org.name} on ${productName}, your organization's private AI workspace.`
+            : `${u.name} invited you to join your team on ${productName}, your organization's private AI workspace.`,
         ],
         button: { label: "Accept the invitation", url: link },
         note: `The invitation expires in ${INVITE_TTL_DAYS} days.`,

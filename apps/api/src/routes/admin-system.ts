@@ -39,6 +39,7 @@ import { audit, getOrg, parse, requireOrgCap, requireUser, type AppContext } fro
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { chooseModel, routingSettings } from "../services/router";
 import { LOGO_TYPES, logoUrl, MAX_LOGO_BYTES, newLogoVersion, sniffLogo, svgProblem } from "../services/branding";
+import { localeOf, tr } from "../i18n";
 
 export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db, box, cfg } = ctx;
@@ -398,7 +399,7 @@ export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
         tier: lic.claims?.tier ?? null,
         seats: lic.claims?.seats ?? null,
         expiresAt: lic.claims ? new Date(lic.claims.exp * 1000).toISOString() : null,
-        message: lic.status.message,
+        message: lic.status.message && tr(localeOf(req), lic.status.message),
       },
     };
   });

@@ -196,7 +196,10 @@ export function evaluateLicense(input: {
         state: "expiring_grace",
         canUse: true,
         canAdmin: true,
-        message: `The license expired. Aatmiq stops working in ${daysLeft} day${daysLeft === 1 ? "" : "s"} unless it is renewed.`,
+        message:
+          daysLeft === 1
+            ? "The license expired. Aatmiq stops working in 1 day unless it is renewed."
+            : `The license expired. Aatmiq stops working in ${daysLeft} days unless it is renewed.`,
         daysLeft,
       };
     }
@@ -226,7 +229,7 @@ export function evaluateLicense(input: {
     state: "valid",
     canUse: true,
     canAdmin: true,
-    message: daysToExpiry <= 30 ? `The license renews or expires in ${daysToExpiry} day${daysToExpiry === 1 ? "" : "s"}.` : null,
+    message: daysToExpiry > 30 ? null : daysToExpiry === 1 ? "The license renews or expires in 1 day." : `The license renews or expires in ${daysToExpiry} days.`,
     daysLeft: daysToExpiry,
   };
 }

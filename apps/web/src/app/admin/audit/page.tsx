@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/spinner";
 import { get } from "@/lib/api";
 
+import { msg, useT } from "@/i18n";
 interface AuditRow {
   id: string;
   actorEmail: string | null;
@@ -21,14 +22,14 @@ interface AuditRow {
 }
 
 const FILTERS = [
-  { v: "", l: "All events" },
-  { v: "user.", l: "Users" },
-  { v: "workspace.", l: "Workspaces" },
-  { v: "model.", l: "Models" },
-  { v: "provider.", l: "Providers" },
-  { v: "budget.", l: "Budgets" },
-  { v: "token_request.", l: "Token requests" },
-  { v: "settings.", l: "Settings" },
+  { v: "", l: msg("All events") },
+  { v: "user.", l: msg("Users") },
+  { v: "workspace.", l: msg("Workspaces") },
+  { v: "model.", l: msg("Models") },
+  { v: "provider.", l: msg("Providers") },
+  { v: "budget.", l: msg("Budgets") },
+  { v: "token_request.", l: msg("Token requests") },
+  { v: "settings.", l: msg("Settings") },
 ];
 
 function tone(action: string) {
@@ -38,28 +39,29 @@ function tone(action: string) {
 }
 
 export default function AuditPage() {
+  const t = useT();
   const [filter, setFilter] = useState("");
   const q = useQuery({ queryKey: ["audit", filter], queryFn: () => get<AuditRow[]>(`/api/admin/audit?action=${encodeURIComponent(filter)}`) });
   return (
     <div className="space-y-6">
-      <PageHeader title="Audit log" description="Every sign-up, permission change, approval and setting change in your organization." />
+      <PageHeader title={t("Audit log")} description={t("Every sign-up, permission change, approval and setting change in your organization.")} />
       <div className="w-56">
-        <Select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter events">
+        <Select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t("Filter events")}>
           {FILTERS.map((f) => (
-            <option key={f.v} value={f.v}>{f.l}</option>
+            <option key={f.v} value={f.v}>{t(f.l)}</option>
           ))}
         </Select>
       </div>
       {q.isLoading ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (
-        <Table head={["When", "Who", "Event", "Details"]}>
+        <Table head={[t("When"), t("Who"), t("Event"), t("Details")]}>
           {q.data?.map((a) => (
             <tr key={a.id}>
               <Td className="whitespace-nowrap text-fg-muted tabular-nums">
-                {new Date(a.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {t.dateTime(a.createdAt, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
               </Td>
-              <Td className="text-fg-muted">{a.actorEmail ?? "system"}</Td>
+              <Td className="text-fg-muted">{a.actorEmail ?? t("system")}</Td>
               <Td>
                 <Badge tone={tone(a.action)}>{a.action}</Badge>
               </Td>

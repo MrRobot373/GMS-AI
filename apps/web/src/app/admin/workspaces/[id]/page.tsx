@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { formatTokens } from "@/lib/format";
 import type { WorkspaceRow } from "@/lib/types";
 
+import { msg, useT } from "@/i18n";
 interface Member {
   userId: string;
   name: string;
@@ -41,39 +42,40 @@ interface ModelRow {
   sections: string[];
 }
 
-const TABS = ["Members", "Models", "Budget", "Settings"] as const;
-const SECTION_LABELS: Record<string, string> = { chat: "Chat", work: "Work AI", code: "Code" };
+const TABS = [msg("Members"), msg("Models"), msg("Budget"), msg("Settings")] as const;
+const SECTION_LABELS: Record<string, string> = { chat: msg("Chat"), work: msg("Work AI"), code: msg("Code") };
 
 export default function WorkspaceDetail() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const { me } = useSession();
   const list = useQuery({ queryKey: ["admin-workspaces"], queryFn: () => get<WorkspaceRow[]>("/api/admin/workspaces") });
   const ws = list.data?.find((w) => w.id === id);
-  const tabs = TABS.filter((t) => me.isAdmin || t === "Members");
+  const tabs = TABS.filter((x) => me.isAdmin || x === "Members");
   const [tab, setTab] = useState<(typeof TABS)[number]>("Members");
 
   if (list.isLoading) return <Skeleton className="h-64 rounded-xl" />;
-  if (!ws) return <p className="text-sm text-fg-muted">Workspace not found.</p>;
+  if (!ws) return <p className="text-sm text-fg-muted">{t("Workspace not found.")}</p>;
 
   return (
     <div className="space-y-6">
       <Link href="/admin/workspaces" className="inline-flex items-center gap-1.5 text-[13px] text-fg-muted transition-colors hover:text-fg">
-        <ArrowLeft className="size-3.5" /> Workspaces
+        <ArrowLeft className="size-3.5" /> {t("Workspaces")}
       </Link>
       <div className="flex items-center gap-3">
         <div className="flex size-11 items-center justify-center rounded-xl bg-surface-2 text-lg">{ws.icon ?? "◆"}</div>
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{ws.name}</h1>
           <p className="text-sm text-fg-muted">
-            {ws.memberCount} members · {formatTokens(ws.used)} tokens used this period
+            {t.n(ws.memberCount, "{n} member · {used} tokens used this period", "{n} members · {used} tokens used this period", { used: formatTokens(ws.used) })}
           </p>
         </div>
       </div>
       <div className="flex gap-1 border-b border-border">
-        {tabs.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={cn("relative px-3 pb-2.5 text-sm transition-colors", tab === t ? "text-fg" : "text-fg-muted hover:text-fg")}>
-            {t}
-            {tab === t && <span className="absolute inset-x-2 -bottom-px h-px bg-fg" />}
+        {tabs.map((x) => (
+          <button key={x} onClick={() => setTab(x)} className={cn("relative px-3 pb-2.5 text-sm transition-colors", tab === x ? "text-fg" : "text-fg-muted hover:text-fg")}>
+            {t(x)}
+            {tab === x && <span className="absolute inset-x-2 -bottom-px h-px bg-fg" />}
           </button>
         ))}
       </div>
@@ -88,6 +90,7 @@ export default function WorkspaceDetail() {
 }
 
 function Members({ ws }: { ws: WorkspaceRow }) {
+  const t = useT();
   const qc = useQueryClient();
   const { me } = useSession();
   const members = useQuery({ queryKey: ["ws-members", ws.id], queryFn: () => get<Member[]>(`/api/admin/workspaces/${ws.id}/members`) });
@@ -111,22 +114,22 @@ function Members({ ws }: { ws: WorkspaceRow }) {
 
   return (
     <Section
-      title="Members"
+      title={t("Members")}
       description={
         ws.tokenLimit === null
-          ? "This workspace has no token budget, so members are unlimited."
-          : `Default allowance: the ${formatTokens(ws.tokenLimit)} budget split evenly. You can override it for anyone.`
+          ? t("This workspace has no token budget, so members are unlimited.")
+          : t("Default allowance: the {tokenLimit} budget split evenly. You can override it for anyone.", { tokenLimit: formatTokens(ws.tokenLimit) })
       }
       actions={
         <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
-          <UserPlus className="size-3.5" /> Add member
+          <UserPlus className="size-3.5" /> {t("Add member")}
         </Button>
       }
     >
       {members.isLoading ? (
         <Skeleton className="h-40 rounded-xl" />
       ) : (
-        <Table head={["Member", "Role", "Sections", "Usage this period", ""]}>
+        <Table head={[t("Member"), t("Role"), t("Sections"), t("Usage this period"), ""]}>
           {members.data?.map((m) => (
             <tr key={m.userId} className="hover:bg-surface-2/50">
               <Td>
@@ -138,7 +141,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
                   </div>
                 </div>
               </Td>
-              <Td>{m.role === "admin" ? <Badge tone="accent">Workspace admin</Badge> : <Badge>Member</Badge>}</Td>
+              <Td>{m.role === "admin" ? <Badge tone="accent">{t("Workspace admin")}</Badge> : <Badge>{t("Member")}</Badge>}</Td>
               <Td>
                 <div className="flex gap-1">
                   {(["chat", "work", "code"] as const).map((s) => {
@@ -154,7 +157,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
                           on ? "border-border-strong bg-surface-3 text-fg" : "border-border text-fg-subtle hover:text-fg-muted",
                         )}
                       >
-                        {SECTION_LABELS[s]}
+                        {t(SECTION_LABELS[s])}
                       </button>
                     );
                   })}
@@ -164,8 +167,11 @@ function Members({ ws }: { ws: WorkspaceRow }) {
                 <div className="flex justify-between text-xs">
                   <span className="tabular-nums">{formatTokens(m.used)}</span>
                   <span className="text-fg-subtle">
-                    {m.effectiveLimit === null ? "Unlimited" : `of ${formatTokens(m.effectiveLimit)}`}
-                    {m.isOverride && " · custom"}
+                    {m.effectiveLimit === null
+                      ? m.isOverride ? t("Unlimited · custom") : t("Unlimited")
+                      : m.isOverride
+                        ? t("of {limit} · custom", { limit: formatTokens(m.effectiveLimit) })
+                        : t("of {limit}", { limit: formatTokens(m.effectiveLimit) })}
                   </span>
                 </div>
                 <Meter className="mt-1.5" value={m.effectiveLimit ? m.used / m.effectiveLimit : null} />
@@ -173,18 +179,18 @@ function Members({ ws }: { ws: WorkspaceRow }) {
               <Td className="w-10 text-right">
                 <Menu>
                   <MenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" aria-label="Member actions">
+                    <Button variant="ghost" size="icon-sm" aria-label={t("Member actions")}>
                       <MoreHorizontal className="size-4" />
                     </Button>
                   </MenuTrigger>
                   <MenuContent align="end">
                     <MenuItem icon={<ShieldCheck />} onSelect={() => update.mutate({ userId: m.userId, role: m.role === "admin" ? "member" : "admin" })}>
-                      {m.role === "admin" ? "Make member" : "Make workspace admin"}
+                      {m.role === "admin" ? t("Make member") : t("Make workspace admin")}
                     </MenuItem>
-                    <MenuItem icon={<RotateCcw />} onSelect={() => setQuotaFor(m)}>Set token allowance</MenuItem>
+                    <MenuItem icon={<RotateCcw />} onSelect={() => setQuotaFor(m)}>{t("Set token allowance")}</MenuItem>
                     <MenuSeparator />
                     <MenuItem icon={<UserMinus />} danger disabled={m.userId === me.user.id} onSelect={() => remove.mutate(m.userId)}>
-                      Remove from workspace
+                      {t("Remove from workspace")}
                     </MenuItem>
                   </MenuContent>
                 </Menu>
@@ -201,7 +207,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
           onSave={(tokenLimit) => {
             update.mutate({ userId: quotaFor.userId, tokenLimit });
             setQuotaFor(null);
-            toast.success("Allowance updated");
+            toast.success(t("Allowance updated"));
           }}
         />
       )}
@@ -210,6 +216,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
 }
 
 function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: boolean; onOpenChange: (o: boolean) => void; ws: WorkspaceRow; existing: string[]; onAdded: () => void }) {
+  const t = useT();
   const { me } = useSession();
   const users = useQuery({
     queryKey: ["admin-users"],
@@ -225,7 +232,7 @@ function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: 
       onAdded();
       onOpenChange(false);
       setUserId("");
-      toast.success("Member added");
+      toast.success(t("Member added"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -233,20 +240,20 @@ function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: 
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`Add to ${ws.name}`}
-      description="Choose someone who is already in your organization. Org admins invite new people from Users."
+      title={t("Add to {name}", { name: ws.name })}
+      description={t("Choose someone who is already in your organization. Org admins invite new people from Users.")}
       footer={
         <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!userId} loading={add.isPending} onClick={() => add.mutate()}>Add member</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
+          <Button variant="primary" disabled={!userId} loading={add.isPending} onClick={() => add.mutate()}>{t("Add member")}</Button>
         </>
       }
     >
       {me.isAdmin ? (
         <div className="space-y-4">
-          <Field label="Person">
+          <Field label={t("Person")}>
             <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
-              <option value="">Select…</option>
+              <option value="">{t("Select…")}</option>
               {candidates.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name} ({u.email})
@@ -254,15 +261,15 @@ function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: 
               ))}
             </Select>
           </Field>
-          <Field label="Role">
+          <Field label={t("Role")}>
             <Select value={role} onChange={(e) => setRole(e.target.value as "member" | "admin")}>
-              <option value="member">Member</option>
-              <option value="admin">Workspace admin</option>
+              <option value="member">{t("Member")}</option>
+              <option value="admin">{t("Workspace admin")}</option>
             </Select>
           </Field>
         </div>
       ) : (
-        <Field label="User ID" hint="Ask an org admin for the person's ID, or ask them to add the member.">
+        <Field label={t("User ID")} hint={t("Ask an org admin for the person's ID, or ask them to add the member.")}>
           <Input value={userId} onChange={(e) => setUserId(e.target.value)} />
         </Field>
       )}
@@ -271,17 +278,18 @@ function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: 
 }
 
 function QuotaDialog({ member, onClose, onSave }: { member: Member; onClose: () => void; onSave: (v: number | null) => void }) {
+  const t = useT();
   const [mode, setMode] = useState<"default" | "custom">(member.isOverride ? "custom" : "default");
   const [value, setValue] = useState(member.tokenLimit ? String(member.tokenLimit / 1000) : "");
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Token allowance for ${member.name}`}
+      title={t("Token allowance for {name}", { name: member.name })}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => onSave(mode === "default" ? null : Math.round(Number(value || 0) * 1000))}>Save</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
+          <Button variant="primary" onClick={() => onSave(mode === "default" ? null : Math.round(Number(value || 0) * 1000))}>{t("Save")}</Button>
         </>
       }
     >
@@ -290,14 +298,14 @@ function QuotaDialog({ member, onClose, onSave }: { member: Member; onClose: () 
           <label key={m} className={cn("flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors", mode === m ? "border-fg-subtle bg-surface-2" : "border-border")}>
             <input type="radio" className="mt-1 accent-[var(--fg)]" checked={mode === m} onChange={() => setMode(m)} />
             <div className="flex-1">
-              <div className="text-sm font-medium">{m === "default" ? "Workspace default" : "Custom allowance"}</div>
+              <div className="text-sm font-medium">{m === "default" ? t("Workspace default") : t("Custom allowance")}</div>
               <div className="text-xs text-fg-muted">
-                {m === "default" ? "An even share of the workspace budget, recalculated as members change." : "A fixed allowance for this person each period."}
+                {m === "default" ? t("An even share of the workspace budget, recalculated as members change.") : t("A fixed allowance for this person each period.")}
               </div>
               {m === "custom" && mode === "custom" && (
                 <div className="mt-2 flex items-center gap-2">
                   <Input autoFocus inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ""))} className="w-32" />
-                  <span className="text-xs text-fg-muted">thousand tokens</span>
+                  <span className="text-xs text-fg-muted">{t("thousand tokens")}</span>
                 </div>
               )}
             </div>
@@ -309,6 +317,7 @@ function QuotaDialog({ member, onClose, onSave }: { member: Member; onClose: () 
 }
 
 function Models({ ws }: { ws: WorkspaceRow }) {
+  const t = useT();
   const qc = useQueryClient();
   const all = useQuery({ queryKey: ["admin-models"], queryFn: () => get<ModelRow[]>("/api/admin/models") });
   const current = useQuery({
@@ -330,7 +339,7 @@ function Models({ ws }: { ws: WorkspaceRow }) {
   const save = useMutation({
     mutationFn: () => put(`/api/admin/workspaces/${ws.id}/models`, { modelIds: ids, defaultModelId: def, embeddingModelId: emb }),
     onSuccess: () => {
-      toast.success("Models updated");
+      toast.success(t("Models updated"));
       qc.invalidateQueries({ queryKey: ["ws-models", ws.id] });
       qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
       qc.invalidateQueries({ queryKey: ["models"] });
@@ -344,57 +353,57 @@ function Models({ ws }: { ws: WorkspaceRow }) {
       emb !== current.data.embeddingModelId);
   return (
     <Section
-      title="Models in this workspace"
-      description="Members can choose from these. Add models to the organization under Models."
-      actions={<Button variant="primary" size="sm" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>Save changes</Button>}
+      title={t("Models in this workspace")}
+      description={t("Members can choose from these. Add models to the organization under Models.")}
+      actions={<Button variant="primary" size="sm" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>{t("Save changes")}</Button>}
     >
       <Card className="divide-y divide-border">
         {chatModels?.map((m) => {
           const on = ids.includes(m.id);
           return (
             <div key={m.id} className="flex items-center gap-4 px-4 py-3">
-              <Switch checked={on} onCheckedChange={(v) => setIds((s) => (v ? [...s, m.id] : s.filter((x) => x !== m.id)))} label={`Enable ${m.displayName}`} />
+              <Switch checked={on} onCheckedChange={(v) => setIds((s) => (v ? [...s, m.id] : s.filter((x) => x !== m.id)))} label={t("Enable {displayName}", { displayName: m.displayName })} />
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium">
-                  {m.displayName} {!m.enabled && <Badge tone="warning">Disabled org-wide</Badge>}
+                  {m.displayName} {!m.enabled && <Badge tone="warning">{t("Disabled org-wide")}</Badge>}
                 </div>
-                <div className="text-xs text-fg-subtle">{m.providerName} · {m.sections.map((s) => SECTION_LABELS[s]).join(", ")}</div>
+                <div className="text-xs text-fg-subtle">{m.providerName} · {m.sections.map((s) => t(SECTION_LABELS[s])).join(", ")}</div>
               </div>
               {on && (
                 <button
                   onClick={() => setDef(m.id)}
                   className={cn("rounded-md border px-2 py-1 text-xs transition-colors", def === m.id ? "border-border-strong bg-surface-3 text-fg" : "border-border text-fg-subtle hover:text-fg")}
                 >
-                  {def === m.id ? "Default" : "Make default"}
+                  {def === m.id ? t("Default") : t("Make default")}
                 </button>
               )}
             </div>
           );
         })}
-        {chatModels?.length === 0 && <p className="px-4 py-8 text-center text-sm text-fg-subtle">No chat models in the organization yet.</p>}
+        {chatModels?.length === 0 && <p className="px-4 py-8 text-center text-sm text-fg-subtle">{t("No chat models in the organization yet.")}</p>}
       </Card>
       <div className="pt-6">
-        <h3 className="text-[14px] text-fg">Document search</h3>
+        <h3 className="text-[14px] text-fg">{t("Document search")}</h3>
         <p className="mt-0.5 text-[12.5px] text-fg-subtle">
-          Keyword search always works. Add an embedding model to also search by meaning, which finds answers phrased differently from the question.
+          {t("Keyword search always works. Add an embedding model to also search by meaning, which finds answers phrased differently from the question.")}
         </p>
         <Card className="mt-3 flex flex-wrap items-center gap-3 p-4">
           <select
             value={emb ?? ""}
             onChange={(e) => setEmb(e.target.value || null)}
-            aria-label="Embedding model"
+            aria-label={t("Embedding model")}
             className="h-9 min-w-64 rounded-lg border border-border bg-surface px-2 text-[13px]"
           >
-            <option value="">Keyword search only</option>
+            <option value="">{t("Keyword search only")}</option>
             {embedModels.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.displayName} · {m.providerName}
               </option>
             ))}
           </select>
-          {embedModels.length === 0 && <span className="text-[12.5px] text-fg-subtle">Add an embedding model (e.g. nomic-embed-text) under Models.</span>}
+          {embedModels.length === 0 && <span className="text-[12.5px] text-fg-subtle">{t("Add an embedding model (e.g. nomic-embed-text) under Models.")}</span>}
           {emb && emb !== current.data?.embeddingModelId && (
-            <span className="text-[12.5px] text-fg-subtle">New uploads use it right away. Existing documents use it after you reprocess them.</span>
+            <span className="text-[12.5px] text-fg-subtle">{t("New uploads use it right away. Existing documents use it after you reprocess them.")}</span>
           )}
         </Card>
       </div>
@@ -403,13 +412,14 @@ function Models({ ws }: { ws: WorkspaceRow }) {
 }
 
 function Budget({ ws }: { ws: WorkspaceRow }) {
+  const t = useT();
   const qc = useQueryClient();
   const [unlimited, setUnlimited] = useState(ws.tokenLimit === null);
   const [value, setValue] = useState(ws.tokenLimit ? String(ws.tokenLimit / 1_000_000) : "10");
   const save = useMutation({
     mutationFn: () => put(`/api/admin/workspaces/${ws.id}/budget`, { tokenLimit: unlimited ? null : Math.round(Number(value) * 1_000_000) }),
     onSuccess: () => {
-      toast.success("Budget saved");
+      toast.success(t("Budget saved"));
       qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
       qc.invalidateQueries({ queryKey: ["ws-members", ws.id] });
     },
@@ -417,37 +427,38 @@ function Budget({ ws }: { ws: WorkspaceRow }) {
   });
   const perMember = !unlimited && ws.memberCount ? (Number(value) * 1_000_000) / ws.memberCount : null;
   return (
-    <Section title="Token budget" description="The total tokens this workspace can use each period. The period is set in Settings.">
+    <Section title={t("Token budget")} description={t("The total tokens this workspace can use each period. The period is set in Settings.")}>
       <Card className="space-y-5 p-5">
         <label className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-sm font-medium">Limit this workspace</div>
-            <div className="text-xs text-fg-muted">When off, members can use models without a cap.</div>
+            <div className="text-sm font-medium">{t("Limit this workspace")}</div>
+            <div className="text-xs text-fg-muted">{t("When off, members can use models without a cap.")}</div>
           </div>
-          <Switch checked={!unlimited} onCheckedChange={(v) => setUnlimited(!v)} label="Limit this workspace" />
+          <Switch checked={!unlimited} onCheckedChange={(v) => setUnlimited(!v)} label={t("Limit this workspace")} />
         </label>
         {!unlimited && (
           <div className="flex flex-wrap items-end gap-4">
-            <Field label="Budget per period">
+            <Field label={t("Budget per period")}>
               <div className="flex items-center gap-2">
                 <Input inputMode="decimal" className="w-32" value={value} onChange={(e) => setValue(e.target.value.replace(/[^0-9.]/g, ""))} />
-                <span className="text-sm text-fg-muted">million tokens</span>
+                <span className="text-sm text-fg-muted">{t("million tokens")}</span>
               </div>
             </Field>
             {perMember !== null && (
               <p className="pb-2 text-sm text-fg-muted">
-                ≈ <span className="text-fg">{formatTokens(perMember)}</span> per member by default ({ws.memberCount} members)
+                ≈ <span className="text-fg">{formatTokens(perMember)}</span> {t("per member by default ({memberCount} members)", { memberCount: ws.memberCount })}
               </p>
             )}
           </div>
         )}
-        <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>Save budget</Button>
+        <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>{t("Save budget")}</Button>
       </Card>
     </Section>
   );
 }
 
 function Settings({ ws }: { ws: WorkspaceRow }) {
+  const t = useT();
   const qc = useQueryClient();
   const router = useRouter();
   const [name, setName] = useState(ws.name);
@@ -455,7 +466,7 @@ function Settings({ ws }: { ws: WorkspaceRow }) {
   const save = useMutation({
     mutationFn: () => patch(`/api/admin/workspaces/${ws.id}`, { name }),
     onSuccess: () => {
-      toast.success("Saved");
+      toast.success(t("Saved"));
       qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
       qc.invalidateQueries({ queryKey: ["me"] });
     },
@@ -466,37 +477,37 @@ function Settings({ ws }: { ws: WorkspaceRow }) {
       qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
       qc.invalidateQueries({ queryKey: ["me"] });
       router.push("/admin/workspaces");
-      toast("Workspace archived");
+      toast(t("Workspace archived"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
   return (
     <div className="space-y-8">
-      <Section title="General">
+      <Section title={t("General")}>
         <Card className="space-y-4 p-5">
-          <Field label="Name">
+          <Field label={t("Name")}>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="max-w-sm" />
           </Field>
-          <Button variant="primary" disabled={name === ws.name || !name.trim()} loading={save.isPending} onClick={() => save.mutate()}>Save</Button>
+          <Button variant="primary" disabled={name === ws.name || !name.trim()} loading={save.isPending} onClick={() => save.mutate()}>{t("Save")}</Button>
         </Card>
       </Section>
-      <Section title="Archive workspace">
+      <Section title={t("Archive workspace")}>
         <Card className="flex flex-wrap items-center justify-between gap-4 border-danger/30 p-5">
-          <p className="max-w-md text-sm text-fg-muted">Members lose access. Chats and usage history are kept for audit.</p>
+          <p className="max-w-md text-sm text-fg-muted">{t("Members lose access. Chats and usage history are kept for audit.")}</p>
           <Button variant="outline" className="text-danger" onClick={() => setConfirm(true)}>
-            <Archive className="size-4" /> Archive
+            <Archive className="size-4" /> {t("Archive")}
           </Button>
         </Card>
       </Section>
       <Dialog
         open={confirm}
         onOpenChange={setConfirm}
-        title={`Archive ${ws.name}?`}
-        description="Members will no longer see this workspace."
+        title={t("Archive {name}?", { name: ws.name })}
+        description={t("Members will no longer see this workspace.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setConfirm(false)}>Cancel</Button>
-            <Button variant="danger" loading={archive.isPending} onClick={() => archive.mutate()}>Archive workspace</Button>
+            <Button variant="ghost" onClick={() => setConfirm(false)}>{t("Cancel")}</Button>
+            <Button variant="danger" loading={archive.isPending} onClick={() => archive.mutate()}>{t("Archive workspace")}</Button>
           </>
         }
       />

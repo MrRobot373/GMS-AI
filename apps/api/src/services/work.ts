@@ -588,7 +588,7 @@ export class WorkRunner {
     const [t] = await this.ctx.db.select({ title: workTask.title }).from(workTask).where(eq(workTask.id, l.taskId));
     await notify(this.ctx.db, [l.userId], {
       type: error ? "work_failed" : "work_done",
-      title: error ? `Task needs attention: ${t?.title ?? "task"}` : `Task finished: ${t?.title ?? "task"}`,
+      title: error ? (t ? `Task needs attention: ${t.title}` : "A task needs attention") : t ? `Task finished: ${t.title}` : "A task finished",
       body: error ?? (l.lastAnswer ? clip(l.lastAnswer, 200) : undefined),
       link: `/app/work/${l.taskId}`,
     });
@@ -712,7 +712,7 @@ export class WorkRunner {
     if (l) {
       await notify(db, [l.userId], {
         type: "work_approval",
-        title: `Approval needed: ${t?.title ?? "task"}`,
+        title: t ? `Approval needed: ${t.title}` : "A task needs your approval",
         body: a.reason ?? `The agent wants to use ${a.toolName}.`,
         link: `/app/work/${taskId}`,
       });

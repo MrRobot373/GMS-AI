@@ -20,6 +20,7 @@ import { PROJECT_FOLDER } from "../services/project-work";
 import { getProjectAccess, requireProjectEdit } from "../services/projects";
 import { quotaFor } from "../services/quota";
 import { getWorkSettings, titleFrom, type WorkStreamEvent } from "../services/work";
+import { localeOf, tr } from "../i18n";
 
 const MAX_FILES = 1000;
 const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".venv", ".cache"]);
@@ -187,7 +188,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const access = t.projectId ? await getProjectAccess(ctx, u, t.projectId).catch(() => null) : null;
     const [owner] = own ? [] : await db.select({ name: user.name }).from(user).where(eq(user.id, t.userId));
     return {
-      task: t,
+      task: t.error ? { ...t, error: tr(localeOf(req), t.error) } : t,
       events,
       live: work.isLive(t.id),
       own,
@@ -289,7 +290,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       .innerJoin(workTask, eq(workTask.id, workApproval.taskId))
       .where(eq(workApproval.id, req.params.id));
     if (!a || a.userId !== u.id) throw notFound("Approval not found");
-    if (a.status !== "pending") throw new HttpError(409, `This request was already ${a.status}.`, "conflict");
+    if (a.status !== "pending") throw new HttpError(409, a.status === "approved" ? "This request was already approved." : "This request was already declined.", "conflict");
     const decided = await work.decide(a.id, b.decision === "approve" ? "approved" : "rejected", u.id);
     if (!decided) throw new HttpError(409, "This request was already answered.", "conflict");
     await audit(ctx, {

@@ -1,15 +1,16 @@
 import { TIERS, FEATURES } from "@aatmiq/license";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, getOrg, parse, requireOrgCap, requireUser, type AppContext } from "../context";
 import { conflict } from "../errors";
+import { localeOf, tr } from "../i18n";
 
 const keySchema = z.object({ key: z.string().trim().min(20).max(10_000) });
 
 export async function licenseRoutes(app: FastifyInstance, ctx: AppContext) {
   const { license, cfg } = ctx;
 
-  async function summary() {
+  async function summary(req: FastifyRequest) {
     const info = await license.info();
     const c = info.claims;
     const seats = await license.seatsUsed();
@@ -18,7 +19,7 @@ export async function licenseRoutes(app: FastifyInstance, ctx: AppContext) {
       state: info.status.state,
       canUse: info.status.canUse,
       canAdmin: info.status.canAdmin,
-      message: info.status.message,
+      message: info.status.message && tr(localeOf(req), info.status.message),
       daysLeft: info.status.daysLeft,
       license: c && {
         id: c.lid,
@@ -51,7 +52,7 @@ export async function licenseRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get("/api/admin/license", async (req) => {
     const u = await requireUser(ctx, req);
     requireOrgCap(u, "org.license.view");
-    return summary();
+    return summary(req);
   });
 
   app.put("/api/admin/license", async (req) => {
@@ -61,14 +62,14 @@ export async function licenseRoutes(app: FastifyInstance, ctx: AppContext) {
     const claims = await license.install(key);
     await audit(ctx, { actor: u, action: "license.installed", targetType: "license", targetId: claims.lid, meta: { tier: claims.tier, seats: claims.seats } });
     void license.checkIn().catch(() => {});
-    return summary();
+    return summary(req);
   });
 
   app.post("/api/admin/license/check-in", async (req) => {
     const u = await requireUser(ctx, req);
     requireOrgCap(u, "org.license.view");
     const r = await license.checkIn();
-    return { ...(await summary()), result: r };
+    return { ...(await summary(req)), result: r };
   });
 
   /** Setup wizard: show what a key contains before the org exists. */

@@ -37,3 +37,12 @@ export function greeting(t: Translate = EN): string {
 
 /** Auto's tiers, as people read them. */
 export const TIER_NAMES = { fast: msg("Fast"), standard: msg("Standard"), advanced: msg("Advanced") } as const;
+
+const DIFFICULTY = { easy: msg("easy"), medium: msg("medium"), hard: msg("hard") } as const;
+
+/** Why Auto picked a model (apps/api/src/services/router.ts), in the interface language. */
+export function routingReason(reason: string, t: Translate = EN): string {
+  const judged = /^judged (easy|medium|hard) by (.+)$/.exec(reason);
+  if (judged) return t("judged {difficulty} by {model}", { difficulty: t(DIFFICULTY[judged[1] as keyof typeof DIFFICULTY]), model: judged[2]! });
+  return t(reason);
+}

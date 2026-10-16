@@ -15,7 +15,9 @@ import { get, post } from "@/lib/api";
 import { formatTokens, timeAgo } from "@/lib/format";
 import type { TokenRequestRow } from "@/lib/types";
 
+import { useT } from "@/i18n";
 export default function RequestsPage() {
+  const t = useT();
   const qc = useQueryClient();
   const pending = useQuery({
     queryKey: ["review-requests", "pending"],
@@ -31,7 +33,7 @@ export default function RequestsPage() {
     mutationFn: (v: { id: string; decision: "approved" | "denied"; amount?: number; note?: string }) =>
       post(`/api/token-requests/${v.id}/decide`, { decision: v.decision, amount: v.amount, note: v.note }),
     onSuccess: (_d, v) => {
-      toast.success(v.decision === "approved" ? "Approved. They can continue now." : "Request declined");
+      toast.success(v.decision === "approved" ? t("Approved. They can continue now.") : t("Request declined"));
       qc.invalidateQueries({ queryKey: ["review-requests"] });
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
       qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
@@ -42,9 +44,9 @@ export default function RequestsPage() {
 
   return (
     <div className="space-y-10">
-      <PageHeader title="Token requests" description="People who've reached their allowance and asked for more." />
+      <PageHeader title={t("Token requests")} description={t("People who've reached their allowance and asked for more.")} />
 
-      <Section title="Waiting for you">
+      <Section title={t("Waiting for you")}>
         {pending.isLoading ? (
           <Skeleton className="h-32 rounded-xl" />
         ) : pending.data?.length ? (
@@ -58,20 +60,23 @@ export default function RequestsPage() {
                     <Avatar name={r.userName} className="size-9" />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm">
-                        <span className="font-medium">{r.userName}</span>
-                        <span className="text-fg-muted"> asked for </span>
-                        <span className="font-medium">+{formatTokens(r.amount)}</span>
-                        <span className="text-fg-muted"> in {r.workspaceName}</span>
+                        <span className="text-fg-muted">
+                          {t("{name} asked for {amount} in {workspace}", {
+                            name: <span className="font-medium text-fg">{r.userName}</span>,
+                            amount: <span className="font-medium text-fg">+{formatTokens(r.amount)}</span>,
+                            workspace: r.workspaceName,
+                          })}
+                        </span>
                       </div>
                       <div className="mt-0.5 text-xs text-fg-subtle">
-                        {timeAgo(r.createdAt)} · {r.duration === "period" ? "this period only" : "raise their limit"}
+                        {timeAgo(r.createdAt, t)} · {r.duration === "period" ? t("this period only") : t("raise their limit")}
                       </div>
                       {r.reason && <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-fg-muted">“{r.reason}”</p>}
                       {q && (
                         <div className="mt-3 max-w-sm">
                           <div className="flex justify-between text-xs text-fg-subtle">
-                            <span>Used {formatTokens(q.user.used)}</span>
-                            <span>{limit === null ? "no limit" : `of ${formatTokens(limit)}`}</span>
+                            <span>{t("Used {used}", { used: formatTokens(q.user.used) })}</span>
+                            <span>{limit === null ? t("no limit") : t("of {limit}", { limit: formatTokens(limit) })}</span>
                           </div>
                           <Meter className="mt-1" value={limit ? q.user.used / limit : null} />
                         </div>
@@ -79,11 +84,11 @@ export default function RequestsPage() {
                     </div>
                     <div className="flex gap-2">
                       <Button variant="ghost" onClick={() => setDeciding({ r, decision: "denied" })}>
-                        <X className="size-4" /> Decline
+                        <X className="size-4" /> {t("Decline")}
                       </Button>
-                      <Button onClick={() => setDeciding({ r, decision: "approved" })}>Adjust…</Button>
+                      <Button onClick={() => setDeciding({ r, decision: "approved" })}>{t("Adjust…")}</Button>
                       <Button variant="primary" loading={decide.isPending && decide.variables?.id === r.id} onClick={() => decide.mutate({ id: r.id, decision: "approved" })}>
-                        <Check className="size-4" /> Approve
+                        <Check className="size-4" /> {t("Approve")}
                       </Button>
                     </div>
                   </div>
@@ -93,13 +98,13 @@ export default function RequestsPage() {
           </div>
         ) : (
           <Card>
-            <EmptyState art="empty-inbox" icon={<Inbox className="size-5" />} title="No pending requests" description="When someone runs out of tokens and asks for more, it shows up here." />
+            <EmptyState art="empty-inbox" icon={<Inbox className="size-5" />} title={t("No pending requests")} description={t("When someone runs out of tokens and asks for more, it shows up here.")} />
           </Card>
         )}
       </Section>
 
-      <Section title="History">
-        <Table head={["Person", "Workspace", "Requested", "Decision", "When"]}>
+      <Section title={t("History")}>
+        <Table head={[t("Person"), t("Workspace"), t("Requested"), t("Decision"), t("When")]}>
           {history.data
             ?.filter((r) => r.status !== "pending")
             .map((r) => (
@@ -112,11 +117,11 @@ export default function RequestsPage() {
                 <Td className="tabular-nums">+{formatTokens(r.amount)}</Td>
                 <Td>
                   <Badge tone={r.status === "approved" ? "success" : "danger"}>
-                    {r.status === "approved" ? `Approved +${formatTokens(r.decidedAmount)}` : "Declined"}
+                    {r.status === "approved" ? t("Approved +{decidedAmount}", { decidedAmount: formatTokens(r.decidedAmount) }) : t("Declined")}
                   </Badge>
                   {r.note && <div className="mt-1 text-xs text-fg-subtle">“{r.note}”</div>}
                 </Td>
-                <Td className="text-fg-muted">{r.decidedAt ? timeAgo(r.decidedAt) : ""}</Td>
+                <Td className="text-fg-muted">{r.decidedAt ? timeAgo(r.decidedAt, t) : ""}</Td>
               </tr>
             ))}
         </Table>
@@ -148,36 +153,37 @@ function DecideDialog({
   onClose: () => void;
   onSubmit: (amount: number | undefined, note: string | undefined) => void;
 }) {
+  const t = useT();
   const [amount, setAmount] = useState(String(Math.round(request.amount / 1000)));
   const [note, setNote] = useState("");
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={decision === "approved" ? `Approve for ${request.userName}` : `Decline ${request.userName}'s request`}
+      title={decision === "approved" ? t("Approve for {userName}", { userName: request.userName }) : t("Decline {userName}'s request", { userName: request.userName })}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
           <Button
             variant={decision === "approved" ? "primary" : "danger"}
             loading={loading}
             onClick={() => onSubmit(decision === "approved" ? Math.max(1, Number(amount)) * 1000 : undefined, note || undefined)}
           >
-            {decision === "approved" ? "Approve" : "Decline"}
+            {decision === "approved" ? t("Approve") : t("Decline")}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         {decision === "approved" && (
-          <Field label="Amount to grant" hint={`They asked for ${formatTokens(request.amount)}.`}>
+          <Field label={t("Amount to grant")} hint={t("They asked for {amount}.", { amount: formatTokens(request.amount) })}>
             <div className="flex items-center gap-2">
               <Input inputMode="numeric" className="w-36" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))} />
-              <span className="text-sm text-fg-muted">thousand tokens</span>
+              <span className="text-sm text-fg-muted">{t("thousand tokens")}</span>
             </div>
           </Field>
         )}
-        <Field label="Note" hint="Optional. They'll see it in their notification.">
+        <Field label={t("Note")} hint={t("Optional. They'll see it in their notification.")}>
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
         </Field>
       </div>

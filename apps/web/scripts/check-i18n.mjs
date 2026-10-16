@@ -32,14 +32,23 @@ for (const file of files(SRC)) {
     if (ts.isCallExpression(n)) {
       const callee = n.expression.getText(sf);
       if (callee === "t" || callee === "msg") {
-        // A string, or strings chosen by a condition; a variable must hold a key marked with msg().
-        const keys = (e) =>
-          !e ? [] : str(e) !== null ? [str(e)] : ts.isParenthesizedExpression(e) ? keys(e.expression) : ts.isConditionalExpression(e) ? [...keys(e.whenTrue), ...keys(e.whenFalse)] : [null];
+        // A string, or strings chosen by a condition (?:, ??, ||); a variable must hold a key marked with msg().
+        const leaves = (e) =>
+          !e
+            ? []
+            : ts.isParenthesizedExpression(e) || ts.isNonNullExpression(e)
+              ? leaves(e.expression)
+              : ts.isConditionalExpression(e)
+                ? [...leaves(e.whenTrue), ...leaves(e.whenFalse)]
+                : ts.isBinaryExpression(e) && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken].includes(e.operatorToken.kind)
+                  ? [...leaves(e.left), ...leaves(e.right)]
+                  : [e];
         const a = n.arguments[0];
-        const ks = keys(a);
-        for (const k of ks) if (k !== null) used.set(k, at(n));
-        if (callee === "t" && a && ks.includes(null) && !ts.isIdentifier(a) && !ts.isPropertyAccessExpression(a) && !ts.isElementAccessExpression(a) && !ts.isCallExpression(a))
-          problems.push(`${at(n)}: t() needs a plain string (got ${a.getText(sf).slice(0, 50)})`);
+        for (const leaf of leaves(a)) {
+          if (str(leaf) !== null) used.set(str(leaf), at(n));
+          else if (callee === "t" && !ts.isIdentifier(leaf) && !ts.isPropertyAccessExpression(leaf) && !ts.isElementAccessExpression(leaf) && !ts.isCallExpression(leaf))
+            problems.push(`${at(n)}: t() needs a plain string (got ${a.getText(sf).slice(0, 50)})`);
+        }
       } else if (callee === "t.n") {
         const one = str(n.arguments[1]);
         const other = str(n.arguments[2]);
@@ -51,6 +60,33 @@ for (const file of files(SRC)) {
   };
   visit(sf);
 }
+
+// The connector catalog's texts (packages/shared/src/connectors.ts), shown with t(): its categories,
+// descriptions, setup steps and token labels.
+const shared = new URL("../../../packages/shared/src/connectors.ts", import.meta.url).pathname;
+const csf = ts.createSourceFile(shared, readFileSync(shared, "utf8"), ts.ScriptTarget.Latest, true);
+csf.forEachChild(function visit(n) {
+  const where = () => `packages/shared/src/connectors.ts:${csf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
+  if (ts.isPropertyAssignment(n) && ["description", "setup", "label"].includes(n.name.getText(csf)) && ts.isStringLiteral(n.initializer)) used.set(n.initializer.text, where());
+  else if (ts.isVariableDeclaration(n) && /_SETUP$/.test(n.name.getText(csf)) && n.initializer && ts.isStringLiteral(n.initializer)) used.set(n.initializer.text, where());
+  else if (ts.isVariableDeclaration(n) && n.name.getText(csf) === "CATALOG_CATEGORIES" && n.initializer && ts.isArrayLiteralExpression(n.initializer))
+    for (const e of n.initializer.elements) if (ts.isStringLiteral(e)) used.set(e.text, where());
+  ts.forEachChild(n, visit);
+});
+
+// Auto's reasons (apps/api/src/services/router.ts), shown with routingReason(): the `reason:` texts
+// and the second part of each [pattern, reason] pair.
+const router = new URL("../../api/src/services/router.ts", import.meta.url).pathname;
+const rsf = ts.createSourceFile(router, readFileSync(router, "utf8"), ts.ScriptTarget.Latest, true);
+rsf.forEachChild(function visit(n) {
+  const where = () => `apps/api/src/services/router.ts:${rsf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
+  const reasons = (e) =>
+    !e ? [] : ts.isStringLiteral(e) ? [e.text] : ts.isConditionalExpression(e) ? [...reasons(e.whenTrue), ...reasons(e.whenFalse)] : [];
+  if (ts.isPropertyAssignment(n) && n.name.getText(rsf) === "reason") for (const r of reasons(n.initializer)) if (r) used.set(r, where());
+  if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && n.left.getText(rsf) === "reason") for (const r of reasons(n.right)) used.set(r, where());
+  if (ts.isArrayLiteralExpression(n) && n.elements.length === 2 && ts.isRegularExpressionLiteral(n.elements[0]) && ts.isStringLiteral(n.elements[1])) used.set(n.elements[1].text, where());
+  ts.forEachChild(n, visit);
+});
 
 // The catalog: an object literal of string keys and values.
 const catFile = join(SRC, "i18n", "hi.ts");

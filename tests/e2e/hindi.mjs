@@ -1,6 +1,6 @@
 /**
  * The Hindi interface: a person picks Hindi, the pages (and the sign-in page after signing out)
- * are in Hindi with lang="hi", the admin console stays in English, the organization's default
+ * are in Hindi with lang="hi", the admin console too, the organization's default
  * applies to people who haven't picked, dates and counts follow, and axe finds nothing serious.
  * Screenshots of the main pages in Hindi go to results-hindi/ for a native speaker to review.
  * Usage: E2E_SCRIPT=$PWD/tests/e2e/hindi.mjs tests/e2e/run-work.sh
@@ -127,10 +127,36 @@ await step("No serious accessibility problems in Hindi", owner.page, async () =>
   }
 });
 
-await step("The admin console stays in English", owner.page, async () => {
-  await owner.page.goto(`${APP}/admin/users`);
-  await owner.page.getByRole("heading", { name: "Users" }).waitFor();
-  expect((await owner.page.getByText("सेटिंग").count()) === 0, "Hindi in the admin console");
+const adminPages = [
+  ["admin-overview", "/admin", "सारांश"],
+  ["admin-users", "/admin/users", "लंबित आमंत्रण"],
+  ["admin-models", "/admin/models", "प्रोवाइडर जोड़ें"],
+  ["admin-settings", "/admin/settings", "संगठन और ब्रांडिंग"],
+  ["admin-authentication", "/admin/authentication", "साइन-इन प्रोवाइडर"],
+  ["admin-work", "/admin/work", "मंज़ूरियाँ"],
+  ["admin-health", "/admin/health", "सिस्टम की स्थिति"],
+];
+for (const [name, path, text] of adminPages) {
+  await step(`${name} is in Hindi`, owner.page, async () => {
+    await owner.page.goto(`${APP}${path}`);
+    await owner.page.getByText(text, { exact: false }).first().waitFor({ timeout: 10000 });
+    expect((await lang(owner.page)) === "hi", `lang is ${await lang(owner.page)}`);
+    await owner.page.waitForLoadState("networkidle").catch(() => {});
+    await owner.page.screenshot({ path: `${OUT}${name}.png` });
+  });
+}
+
+await step("No serious accessibility problems in the admin console in Hindi", owner.page, async () => {
+  for (const path of ["/admin", "/admin/users", "/admin/settings"]) {
+    await owner.page.goto(`${APP}${path}`);
+    await owner.page.waitForLoadState("networkidle").catch(() => {});
+    await owner.page.addScriptTag({ content: AXE });
+    const bad = await owner.page.evaluate(async () =>
+      // eslint-disable-next-line no-undef
+      (await axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } })).violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id),
+    );
+    expect(!bad.length, `${path}: ${bad.join(", ")}`);
+  }
 });
 
 await step("Signed out, the sign-in page is in Hindi too (the language stays in the browser)", owner.page, async () => {
@@ -149,7 +175,7 @@ await step("The organization's default: Hindi for people who haven't picked, unt
   await owner.page.goto(`${APP}/admin/settings`);
   await owner.page.getByTestId("default-locale").selectOption("hi");
   await owner.page.getByTestId("save-default-locale").click();
-  await owner.page.locator("[data-sonner-toast]", { hasText: "Settings saved" }).first().waitFor();
+  await owner.page.locator("[data-sonner-toast]", { hasText: "सेटिंग सहेजी गई" }).first().waitFor();
   const inv = (await owner.api("POST", "/api/admin/invites", { email: "ravi@acme.test", workspaces: [{ workspaceId, role: "member" }] })).json;
   const ravi = await person();
   await ravi.page.goto(inv.link.replace(/^https?:\/\/[^/]+/, APP));

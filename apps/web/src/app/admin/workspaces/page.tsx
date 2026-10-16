@@ -17,9 +17,11 @@ import { formatTokens } from "@/lib/format";
 import type { WorkspaceRow } from "@/lib/types";
 
 
+import { useT } from "@/i18n";
 const ICONS = ["✦", "◆", "●", "▲", "■", "⬢", "✳", "☾"];
 
 export default function WorkspacesPage() {
+  const t = useT();
   const { me } = useSession();
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["admin-workspaces"], queryFn: () => get<WorkspaceRow[]>("/api/admin/workspaces") });
@@ -30,7 +32,7 @@ export default function WorkspacesPage() {
     mutationFn: () => post<WorkspaceRow>("/api/admin/workspaces", { name, icon }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
-      toast.success(`Created ${name}`);
+      toast.success(t("Created {name}", { name: name }));
       setOpen(false);
       setName("");
     },
@@ -40,12 +42,12 @@ export default function WorkspacesPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Workspaces"
-        description="Each team gets its own models, token budget and members."
+        title={t("Workspaces")}
+        description={t("Each team gets its own models, token budget and members.")}
         actions={
           me.isAdmin && (
             <Button variant="primary" onClick={() => setOpen(true)}>
-              <Plus className="size-4" /> New workspace
+              <Plus className="size-4" /> {t("New workspace")}
             </Button>
           )
         }
@@ -71,11 +73,11 @@ export default function WorkspacesPage() {
               <div className="mt-4 font-medium">{w.name}</div>
               <div className="mt-1 flex gap-3 text-xs text-fg-subtle">
                 <span className="inline-flex items-center gap-1"><Users className="size-3" /> {w.memberCount}</span>
-                <span className="inline-flex items-center gap-1"><Cpu className="size-3" /> {w.modelCount} models</span>
+                <span className="inline-flex items-center gap-1"><Cpu className="size-3" /> {t.n(w.modelCount, "{n} model", "{n} models")}</span>
               </div>
               <div className="mt-5 flex justify-between text-xs">
-                <span className="text-fg-muted">{formatTokens(w.used)} used</span>
-                <span className="text-fg-subtle">{w.tokenLimit === null ? "No budget" : `of ${formatTokens(w.tokenLimit)}`}</span>
+                <span className="text-fg-muted">{t("{used} used", { used: formatTokens(w.used) })}</span>
+                <span className="text-fg-subtle">{w.tokenLimit === null ? t("No budget") : t("of {tokenLimit}", { tokenLimit: formatTokens(w.tokenLimit) })}</span>
               </div>
               <Meter value={frac} className="mt-1.5" />
             </Link>
@@ -86,20 +88,20 @@ export default function WorkspacesPage() {
       <Dialog
         open={open}
         onOpenChange={setOpen}
-        title="New workspace"
-        description="For example a team or department. You can add members and models next."
+        title={t("New workspace")}
+        description={t("For example a team or department. You can add members and models next.")}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!name.trim()} loading={create.isPending} onClick={() => create.mutate()}>Create</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>{t("Cancel")}</Button>
+            <Button variant="primary" disabled={!name.trim()} loading={create.isPending} onClick={() => create.mutate()}>{t("Create")}</Button>
           </>
         }
       >
         <div className="space-y-4">
-          <Field label="Name">
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Engineering" onKeyDown={(e) => e.key === "Enter" && name.trim() && create.mutate()} />
+          <Field label={t("Name")}>
+            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Engineering")} onKeyDown={(e) => e.key === "Enter" && name.trim() && create.mutate()} />
           </Field>
-          <Field label="Icon">
+          <Field label={t("Icon")}>
             <div className="flex gap-1.5">
               {ICONS.map((i) => (
                 <button

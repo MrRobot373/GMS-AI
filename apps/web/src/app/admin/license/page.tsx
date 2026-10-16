@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/spinner";
 import { get, post, put } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 
+import { msg, type Translate, useT } from "@/i18n";
 interface LicenseSummary {
   required: boolean;
   state: string;
@@ -45,10 +46,19 @@ interface LicenseSummary {
   version: string | null;
 }
 
-const SECTION_LABEL: Record<string, string> = { chat: "Chat", work: "Work AI", code: "Code" };
-const fmt = (d: string) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+const SECTION_LABEL: Record<string, string> = { chat: msg("Chat"), work: msg("Work AI"), code: msg("Code") };
+/** The license's features (packages/license FEATURES), in the interface language. */
+const FEATURE_LABELS: Record<string, string> = {
+  sso: msg("Google and Microsoft sign-in"),
+  oidc: msg("Custom single sign-on (OpenID Connect or SAML: Okta, Keycloak, Entra, ADFS…)"),
+  audit_export: msg("Audit log export"),
+  connectors: msg("Connectors for Work AI"),
+  managed_models: msg("Aatmiq-managed models"),
+};
+const fmt = (d: string, t: Translate) => t.date(d, { day: "numeric", month: "long", year: "numeric" });
 
 export default function LicensePage() {
+  const t = useT();
   const { me } = useSession();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["admin-license"], queryFn: () => get<LicenseSummary>("/api/admin/license") });
@@ -66,7 +76,7 @@ export default function LicensePage() {
       refresh(d);
       setEntering(false);
       setKey("");
-      toast.success("License installed");
+      toast.success(t("License installed"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -74,8 +84,8 @@ export default function LicensePage() {
     mutationFn: () => post<LicenseSummary & { result: { ok: boolean; error?: string } }>("/api/admin/license/check-in"),
     onSuccess: (d) => {
       refresh(d);
-      if (d.result.ok) toast.success("Checked in with the license server");
-      else toast.error(d.result.error ?? "Check-in failed");
+      if (d.result.ok) toast.success(t("Checked in with the license server"));
+      else toast.error(d.result.error ?? t("Check-in failed"));
     },
   });
 
@@ -87,13 +97,13 @@ export default function LicensePage() {
   return (
     <div className="space-y-10">
       <PageHeader
-        title="License"
-        description="Your plan, seats and the connection to the Aatmiq license server. Only counts are ever sent: never chats, files or names."
+        title={t("License")}
+        description={t("Your plan, seats and the connection to the Aatmiq license server. Only counts are ever sent: never chats, files or names.")}
         actions={
           isOwner &&
           d.required && (
             <Button variant="primary" size="sm" onClick={() => setEntering(true)}>
-              <KeyRound className="size-3.5" /> Enter new key
+              <KeyRound className="size-3.5" /> {t("Enter new key")}
             </Button>
           )
         }
@@ -101,8 +111,10 @@ export default function LicensePage() {
 
       {!d.required ? (
         <Card className="p-5 text-[13px] text-fg-muted">
-          This server runs in <span className="text-fg">development mode</span>: no license public key is configured, so every feature is
-          available and nothing is checked. Production installs set <code className="font-mono text-[12px]">LICENSE_PUBLIC_KEY</code>.
+          {t("This server runs in {mode}: no license public key is configured, so every feature is available and nothing is checked. Production installs set {variable}.", {
+            mode: <span className="text-fg">{t("development mode")}</span>,
+            variable: <code className="font-mono text-[12px]">LICENSE_PUBLIC_KEY</code>,
+          })}
         </Card>
       ) : (
         <>
@@ -110,14 +122,15 @@ export default function LicensePage() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-serif text-[24px] leading-tight" data-testid="license-tier">
-                  {l ? `${l.tierLabel} plan` : "No license"}
+                  {l ? t("{tierLabel} plan", { tierLabel: l.tierLabel }) : t("No license")}
                 </span>
-                <Badge tone={st.tone === "neutral" ? "neutral" : st.tone}>{st.label}</Badge>
+                <Badge tone={st.tone === "neutral" ? "neutral" : st.tone}>{t(st.label)}</Badge>
               </div>
               {l && (
                 <div className="mt-1 text-[13px] text-fg-subtle">
-                  Licensed to {l.customer} · valid until {fmt(l.expiresAt)}
-                  {d.daysLeft !== null && d.daysLeft <= 60 && d.daysLeft > 0 ? ` (${d.daysLeft} days left)` : ""}
+                  {d.daysLeft !== null && d.daysLeft <= 60 && d.daysLeft > 0
+                    ? t.n(d.daysLeft, "Licensed to {customer} · valid until {date} ({n} day left)", "Licensed to {customer} · valid until {date} ({n} days left)", { customer: l.customer, date: fmt(l.expiresAt, t) })
+                    : t("Licensed to {customer} · valid until {date}", { customer: l.customer, date: fmt(l.expiresAt, t) })}
                 </div>
               )}
               {d.message && <p className="mt-3 text-[13px] text-warning">{d.message}</p>}
@@ -126,81 +139,81 @@ export default function LicensePage() {
             {l && (
               <div className="w-full min-w-56 md:w-64">
                 <div className="flex items-baseline justify-between text-[13px]">
-                  <span className="text-fg-muted">Seats</span>
+                  <span className="text-fg-muted">{t("Seats")}</span>
                   <span className="tabular-nums" data-testid="license-seats">
                     {d.seatsUsed} / {l.seats}
                   </span>
                 </div>
                 <Meter className="mt-2" value={d.seatsUsed / Math.max(1, l.seats)} />
                 <div className="mt-1.5 text-[11.5px] text-fg-subtle">
-                  {d.pendingInvites ? `${d.pendingInvites} pending invitation${d.pendingInvites === 1 ? "" : "s"} also reserve seats.` : "Active people use a seat. Deactivated people don't."}
+                  {d.pendingInvites ? t.n(d.pendingInvites, "{n} pending invitation also reserves a seat.", "{n} pending invitations also reserve seats.") : t("Active people use a seat. Deactivated people don't.")}
                 </div>
               </div>
             )}
           </Card>
 
           {l && (
-            <Section title="What's included">
+            <Section title={t("What's included")}>
               <Card className="grid gap-0 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                 <div className="p-4">
-                  <div className="text-[12px] text-fg-subtle">Sections</div>
+                  <div className="text-[12px] text-fg-subtle">{t("Sections")}</div>
                   <div className="mt-2 space-y-1.5">
                     {["chat", "work", "code"].map((s) => (
                       <div key={s} className={l.sections.includes(s) ? "flex items-center gap-2 text-[13px] text-fg" : "flex items-center gap-2 text-[13px] text-fg-subtle line-through"}>
-                        <Check className={l.sections.includes(s) ? "size-3.5 text-success" : "size-3.5 opacity-0"} /> {SECTION_LABEL[s]}
+                        <Check className={l.sections.includes(s) ? "size-3.5 text-success" : "size-3.5 opacity-0"} /> {t(SECTION_LABEL[s])}
                       </div>
                     ))}
                   </div>
                 </div>
                 <div className="p-4">
-                  <div className="text-[12px] text-fg-subtle">Features</div>
+                  <div className="text-[12px] text-fg-subtle">{t("Features")}</div>
                   <div className="mt-2 space-y-1.5">
                     {l.features.length ? (
                       l.features.map((f) => (
                         <div key={f.id} className="flex items-center gap-2 text-[13px] text-fg">
-                          <Check className="size-3.5 text-success" /> {f.label}
+                          <Check className="size-3.5 text-success" /> {t(FEATURE_LABELS[f.id] ?? f.label)}
                         </div>
                       ))
                     ) : (
-                      <span className="text-[13px] text-fg-subtle">None</span>
+                      <span className="text-[13px] text-fg-subtle">{t("None")}</span>
                     )}
                   </div>
                 </div>
                 <div className="space-y-2 p-4 text-[13px]">
-                  <div className="text-[12px] text-fg-subtle">Limits</div>
-                  <div>{l.workspaceLimit ? `${l.workspaceLimit} workspaces` : "Unlimited workspaces"}</div>
-                  <div>{l.modelMode === "managed" ? "Models managed by Aatmiq" : "Models managed by your admins"}</div>
-                  <div className="text-fg-subtle">Issued {fmt(l.issuedAt)}</div>
+                  <div className="text-[12px] text-fg-subtle">{t("Limits")}</div>
+                  <div>{l.workspaceLimit ? t.n(l.workspaceLimit, "{n} workspace", "{n} workspaces") : t("Unlimited workspaces")}</div>
+                  <div>{l.modelMode === "managed" ? t("Models managed by Aatmiq") : t("Models managed by your admins")}</div>
+                  <div className="text-fg-subtle">{t("Issued {issuedAt}", { issuedAt: fmt(l.issuedAt, t) })}</div>
                 </div>
               </Card>
             </Section>
           )}
 
           <Section
-            title="License server"
-            description="This server checks in about once a day. Without check-ins Aatmiq keeps working for 14 days, then shows a warning; after 30 days admin changes pause until it reconnects."
+            title={t("License server")}
+            description={t("This server checks in about once a day. Without check-ins Aatmiq keeps working for 14 days, then shows a warning; after 30 days admin changes pause until it reconnects.")}
             actions={
               <Button variant="outline" size="sm" loading={checkIn.isPending} disabled={!d.checkIn?.enabled || !l} onClick={() => checkIn.mutate()}>
-                <RefreshCw className="size-3.5" /> Check in now
+                <RefreshCw className="size-3.5" /> {t("Check in now")}
               </Button>
             }
           >
             <Card className="divide-y divide-border text-[13px]">
-              <Row label="Last check-in" value={d.checkIn?.lastCheckInAt ? timeAgo(d.checkIn.lastCheckInAt) : "Never"} testid="last-check-in" />
-              {d.checkIn?.lastError && <Row label="Last error" value={<span className="text-danger">{d.checkIn.lastError}</span>} />}
-              <Row label="Check-ins" value={d.checkIn?.enabled ? `Every ${l?.checkInHours ?? 24} hours` : "Off (air-gapped)"} />
-              <Row label="Installation id" value={<code className="font-mono text-[12px]">{d.checkIn?.instanceId}</code>} />
-              <Row label="Version" value={d.version ?? "—"} />
+              <Row label={t("Last check-in")} value={d.checkIn?.lastCheckInAt ? timeAgo(d.checkIn.lastCheckInAt, t) : "Never"} testid="last-check-in" />
+              {d.checkIn?.lastError && <Row label={t("Last error")} value={<span className="text-danger">{d.checkIn.lastError}</span>} />}
+              <Row label={t("Check-ins")} value={d.checkIn?.enabled ? `Every ${l?.checkInHours ?? 24} hours` : "Off (air-gapped)"} />
+              <Row label={t("Installation id")} value={<code className="font-mono text-[12px]">{d.checkIn?.instanceId}</code>} />
+              <Row label={t("Version")} value={d.version ?? "—"} />
               {d.release && d.release.version !== d.version && (
                 <Row
-                  label="Update available"
+                  label={t("Update available")}
                   value={
                     <span className="flex flex-wrap items-center gap-2">
                       <Badge tone="accent">{d.release.version}</Badge>
                       {d.release.notes && <span className="text-fg-muted">{d.release.notes}</span>}
                       {d.release.url && (
                         <a href={d.release.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-fg underline-offset-2 hover:underline">
-                          Release notes <ArrowUpRight className="size-3" />
+                          {t("Release notes")} <ArrowUpRight className="size-3" />
                         </a>
                       )}
                     </span>
@@ -215,19 +228,19 @@ export default function LicensePage() {
       <Dialog
         open={entering}
         onOpenChange={setEntering}
-        title="Enter a new license key"
-        description="Paste the key you received from Aatmiq. It's verified on this server."
+        title={t("Enter a new license key")}
+        description={t("Paste the key you received from Aatmiq. It's verified on this server.")}
         className="max-w-lg"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setEntering(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setEntering(false)}>{t("Cancel")}</Button>
             <Button variant="primary" disabled={key.trim().length < 20} loading={install.isPending} onClick={() => install.mutate()}>
-              Install key
+              {t("Install key")}
             </Button>
           </>
         }
       >
-        <Field label="License key">
+        <Field label={t("License key")}>
           <Textarea value={key} onChange={(e) => setKey(e.target.value)} className="min-h-32 font-mono text-[11.5px] break-all" data-testid="license-key-input" />
         </Field>
       </Dialog>

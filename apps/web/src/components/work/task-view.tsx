@@ -50,7 +50,7 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from 
 import { Skeleton } from "@/components/ui/spinner";
 import { ApiError, del, formatBytes, get, patch, post, readSse } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { formatTokens, timeAgo, TIER_NAMES } from "@/lib/format";
+import { formatTokens, routingReason, timeAgo, TIER_NAMES } from "@/lib/format";
 import { ACTIVE, describeCall, type TaskStatus, type WorkEvent, type WorkFile, type WorkTaskDetail } from "@/lib/work";
 import { StatusPill, WorkComposer, type WorkComposerHandle } from "./parts";
 import { useT } from "@/i18n";
@@ -355,8 +355,8 @@ export function TaskView({ taskId }: { taskId: string }) {
               <Tooltip
                 content={
                   task.routing.thinking
-                    ? t("Auto picked the {tier} model: {reason}, with thinking on.", { tier: t(TIER_NAMES[task.routing.tier]).toLowerCase(), reason: task.routing.reason })
-                    : t("Auto picked the {tier} model: {reason}.", { tier: t(TIER_NAMES[task.routing.tier]).toLowerCase(), reason: task.routing.reason })
+                    ? t("Auto picked the {tier} model: {reason}, with thinking on.", { tier: t(TIER_NAMES[task.routing.tier]).toLowerCase(), reason: routingReason(task.routing.reason, t) })
+                    : t("Auto picked the {tier} model: {reason}.", { tier: t(TIER_NAMES[task.routing.tier]).toLowerCase(), reason: routingReason(task.routing.reason, t) })
                 }
               >
                 <span className="hidden shrink-0 items-center gap-1 rounded-full bg-surface-2 px-1.5 py-px text-[11px] text-fg-muted sm:inline-flex" data-testid="task-routed">
