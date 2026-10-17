@@ -1253,6 +1253,8 @@ export interface GemSettingsStored {
   coursesPerDay: number;
   /** Lesson generations (including regenerations) per person per day. */
   lessonsPerDay: number;
+  /** Where lesson videos come from: the Data API, yt-dlp, either ("auto") or none. */
+  videoSource?: "auto" | "ytdlp" | "api" | "off";
 }
 
 export interface CourseOutline {

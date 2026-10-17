@@ -71,6 +71,12 @@ export interface Config {
   youtubeApiKey?: string | null;
   /** The YouTube Data API's address (tests point it elsewhere). */
   youtubeApiUrl?: string;
+  /**
+   * yt-dlp for lesson videos without a key (the way Agent-Reach reads YouTube): the program
+   * (YT_DLP_PATH, default "yt-dlp" on PATH), and a cookies file and a proxy for servers YouTube
+   * asks to sign in (YT_DLP_COOKIES, YT_DLP_PROXY).
+   */
+  ytDlp?: { path: string; cookies: string | null; proxy: string | null };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -112,6 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     setupEmbedding: loadSetupEmbedding(env),
     youtubeApiKey: env.YOUTUBE_API_KEY || null,
     youtubeApiUrl: env.YOUTUBE_API_URL || "https://www.googleapis.com/youtube/v3",
+    ytDlp: { path: env.YT_DLP_PATH || "yt-dlp", cookies: env.YT_DLP_COOKIES || null, proxy: env.YT_DLP_PROXY || null },
     setupMaxRunning: env.SETUP_MAX_RUNNING ? Math.max(1, Math.min(500, Math.round(Number(env.SETUP_MAX_RUNNING)) || 8)) : null,
   };
 }

@@ -26,7 +26,8 @@ Org admins always have every module that's switched on. The same settings page h
 - **New courses per person per day** (default 10) and **lessons written per person per day**
   (default 60). Token budgets apply on top: Learning and Knowledge are metered under their own
   sections in Admin → Usage.
-- **YouTube Data API key** for lesson videos (below).
+- **Lesson videos**: where they come from (yt-dlp with no key, a YouTube Data API key, or off),
+  and the optional key (below).
 
 ## Learning
 
@@ -42,20 +43,47 @@ and token allowance, like a chat):
 
 What the model returns must be JSON in the expected shape (`outlineSchema` and `lessonSchema` in
 `packages/shared/src/gem.ts`). If it isn't, the model is asked once to fix it; if that fails too,
-nothing is stored and the person is told plainly. URLs the model writes are removed: links come
-only from the YouTube API.
+nothing is stored and the person is told plainly. URLs the model writes are removed: video links
+are built only from IDs that a YouTube search returned.
 
 Lessons are kept. Opening a course reads them; *Write a new version* adds a version and keeps the
 old one, which can be shown again. Progress, bookmarks and notes are each person's own. A course
 is private to the person who made it. Lessons still being written when the server restarts are
 picked up again.
 
-**Videos.** With a YouTube Data API v3 key (Admin → Settings, stored encrypted; or `YOUTUBE_API_KEY`),
-each lesson gets real search results, checked with `videos.list` (only public, embeddable,
-processed videos). Searches are cached for 7 days (a search costs 100 of the default 10,000 daily quota
-units); when the quota is used up, lessons say so and videos are added the next day. Saved videos
-are re-checked so removed or private ones drop out. Without a key, lessons have no videos and say
-why.
+**Videos.** Each lesson gets up to four real YouTube videos, found by searching for the lesson's
+topics. Admin → Settings → *Lesson videos* chooses where they come from:
+
+- **yt-dlp** (no key): the way [Agent-Reach](https://github.com/Panniantong/Agent-Reach) reads
+  YouTube. [yt-dlp](https://github.com/yt-dlp/yt-dlp) runs a flat search (one results page, no video
+  page is opened), and every result is then confirmed through YouTube's oEmbed endpoint, which
+  answers only for public, embeddable videos and gives the title and channel. Live streams, Shorts
+  (under a minute) and videos over 4 hours are left out. The API image includes yt-dlp; elsewhere,
+  install it (`pip install yt-dlp`) or set `YT_DLP_PATH`. The search words are one argument after
+  `ytsearchN:`, run without a shell, so a topic can never become an option.
+- **YouTube Data API key** (stored encrypted, or `YOUTUBE_API_KEY`): `search.list` with safe search,
+  then `videos.list` keeps only public, embeddable, processed videos. A search costs 100 of the
+  default 10,000 daily quota units; when the quota is used up, lessons say so and videos are added
+  the next day.
+- **Automatic** (the default): the key when there is one, otherwise yt-dlp when it's installed.
+- **Off**: no videos.
+
+Searches are cached for 7 days, whichever source answered. Saved videos are checked again (oEmbed
+or `videos.list`) so removed or private ones drop out; one YouTube didn't answer for stays until
+the next check. A lesson without videos says why: switched off, quota used up, YouTube
+unreachable, or YouTube asking the server to sign in.
+
+YouTube sometimes asks servers to sign in ("confirm you're not a bot"), more often from cloud IP
+addresses. Lessons then say so instead of showing no videos. To fix it, give yt-dlp a cookies file
+from a browser signed in to a spare Google account (`YT_DLP_COOKIES`, Netscape format, e.g. on the
+files volume at `/data/yt-cookies.txt`; each search uses a private copy, so the file can be
+read-only), or a proxy (`YT_DLP_PROXY`), or use an API key. yt-dlp follows changes on YouTube's
+side, so keep it current: bump `YT_DLP_VERSION` in `deploy/Dockerfile.api` when searches stop
+working. The yt-dlp path has no safe-search filter, and using it is subject to YouTube's terms;
+the API key is the supported route when that matters.
+
+The search words go to YouTube (Google) either way, and with yt-dlp the server's IP address does
+too.
 
 ## Calculators
 
@@ -168,13 +196,16 @@ These block a release, and each has tests that run on every push:
 |---|---|---|
 | `YOUTUBE_API_KEY` | none | Lesson videos; Admin → Settings can hold one instead |
 | `YOUTUBE_API_URL` | `https://www.googleapis.com/youtube/v3` | For tests and proxies |
+| `YT_DLP_PATH` | `yt-dlp` | The yt-dlp program lessons search with |
+| `YT_DLP_COOKIES` | none | A cookies file (Netscape format) for yt-dlp, when YouTube asks the server to sign in |
+| `YT_DLP_PROXY` | none | A proxy for yt-dlp, e.g. `http://proxy:3128` or `socks5://…` |
 | `KNOWLEDGE_MAX_DISTANCE` | `0.5` | Cosine distance beyond which a vector match isn't evidence |
 
 ## API
 
 | | |
 |---|---|
-| `GET/PUT /api/admin/gem` | Module switches, beta calculators, limits, YouTube key (org admins) |
+| `GET/PUT /api/admin/gem` | Module switches, beta calculators, limits, video source and YouTube key (org admins) |
 | `GET/POST /api/learning/courses`, `GET/PATCH/DELETE /api/learning/courses/:id` | Courses |
 | `POST /api/learning/courses/:id/retry`, `…/generate-all` | Write the outline again; write every lesson |
 | `GET /api/learning/courses/:id/lessons/:n`, `POST …/generate`, `…/regenerate`, `…/restore`, `PUT …/state` | Lessons, versions, progress, bookmarks and notes |

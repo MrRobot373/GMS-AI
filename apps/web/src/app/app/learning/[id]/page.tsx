@@ -523,8 +523,10 @@ function LessonBody({ l }: { l: LessonDetail }) {
         ) : (
           <p className="text-[13px] text-fg-subtle">
             {l.videosNote === "not_configured"
-              ? t("Video suggestions are off: your admin can add a YouTube Data API key in Admin → Settings.")
-              : l.videosNote === "quota"
+              ? t("Video suggestions are off: your admin can turn them on in Admin → Settings.")
+              : l.videosNote === "blocked"
+                ? t("YouTube asked this server to sign in, so no videos were added. Your admin can give yt-dlp a cookies file or a proxy.")
+                : l.videosNote === "quota"
                 ? t("YouTube's daily quota is used up. Videos are added again tomorrow when you open the lesson.")
                 : l.videosNote === "unavailable"
                   ? t("YouTube couldn't be reached when this lesson was written.")

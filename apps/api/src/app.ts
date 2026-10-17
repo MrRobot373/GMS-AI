@@ -49,6 +49,7 @@ import { gemAdminRoutes } from "./routes/gem-admin";
 import { calculatorRoutes } from "./routes/calculators";
 import { knowledgeRoutes } from "./routes/knowledge";
 import { LearningRunner } from "./services/learning";
+import { ytDlpRunner, type YtDlpRunner } from "./services/youtube";
 import { startEgressProxy, type EgressProxy } from "./services/egress";
 import { getWorkSettings, WorkRunner } from "./services/work";
 import type { HarnessEngine } from "@aatmiq/harness";
@@ -58,7 +59,7 @@ import { chmod, mkdir } from "node:fs/promises";
 export async function buildApp(
   db: DB,
   cfg: Config,
-  opts: { logger?: boolean; storage?: Storage; fetch?: typeof fetch; workEngine?: HarnessEngine; jobs?: (ctx: AppContext) => Jobs } = {},
+  opts: { logger?: boolean; storage?: Storage; fetch?: typeof fetch; workEngine?: HarnessEngine; jobs?: (ctx: AppContext) => Jobs; ytDlp?: YtDlpRunner } = {},
 ): Promise<FastifyInstance> {
   // The IDE proxy (/code/ide) handles its requests before Fastify, so bodies and WebSocket
   // upgrades pass through untouched.
@@ -91,6 +92,7 @@ export async function buildApp(
     storage,
     license: new LicenseService(db, cfg, opts.fetch),
     fetch: opts.fetch,
+    ytDlp: opts.ytDlp ?? ytDlpRunner(cfg.ytDlp?.path ?? "yt-dlp"),
   } as AppContext;
   // The Work AI browser reaches the web only through the egress proxy (started on first use).
   let egress: Promise<EgressProxy> | null = null;

@@ -28,6 +28,7 @@ import type { Config } from "./config";
 import type { SecretBox } from "./crypto";
 import type { LicenseService } from "./services/license";
 import type { Storage } from "./services/storage";
+import type { YtDlpRunner } from "./services/youtube";
 import type { WorkRunner } from "./services/work";
 import type { CodeServers } from "./services/code";
 import type { Connectors } from "./services/connectors";
@@ -55,6 +56,8 @@ export interface AppContext {
   learning: LearningRunner;
   /** Outgoing HTTP (tests pass a fake one). */
   fetch?: typeof fetch;
+  /** yt-dlp, for lesson videos without a YouTube key (tests pass a fake one). */
+  ytDlp: YtDlpRunner;
 }
 
 export interface SessionUser {

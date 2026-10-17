@@ -49,6 +49,7 @@ Debian 12 ("bookworm") with Node.js 22, plus:
 | git, bash, iptables, coreutils and other system tools | GPL-2.0 / GPL-3.0 (and others) | Debian's packages, unmodified, run as separate programs; see the written offer |
 | curl, jq, zip, unzip, openssh-client, libnss-wrapper, file, procps | curl, MIT, Info-ZIP, BSD, BSD-3-Clause, BSD-2-Clause, GPL/LGPL | Debian's packages |
 | Python 3 and pandas, openpyxl, matplotlib, python-docx, python-pptx, reportlab, pypdf, lxml, PyYAML | PSF-2.0; BSD-3-Clause, MIT, Matplotlib (PSF-based), MIT, MIT, BSD-3-Clause, BSD-3-Clause, BSD-3-Clause, MIT | For the agent's helper scripts |
+| yt-dlp (lesson videos without a YouTube key) | Unlicense (public domain) | Installed with pip without its optional extras, run as a separate program; <https://github.com/yt-dlp/yt-dlp>. The way it's used follows Agent-Reach (MIT), whose code isn't included |
 | Docker CLI (container mode) | Apache-2.0 | Static binary from docker.com |
 | DeepSeek Harness (the Work AI agent runtime) | MIT | <https://github.com/deepseek-ai> |
 | OpenVSCode Server / Code-OSS (Aatmiq Code) | MIT | Visual Studio Code is a Microsoft product; Aatmiq Code isn't, and uses the Open VSX registry |

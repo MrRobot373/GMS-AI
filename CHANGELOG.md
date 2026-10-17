@@ -13,7 +13,8 @@ without one.
   organization in Admin → Settings and per person in each workspace's member sections:
   - **Learning**: courses written by your model from a topic and a level, lesson by lesson, saved
     and versioned, with equations that say when they apply, worked examples, progress, bookmarks,
-    notes and real YouTube videos (with a YouTube Data API key).
+    notes and real YouTube videos: found with yt-dlp and no key (the way Agent-Reach reads
+    YouTube), or with a YouTube Data API key, chosen in Admin → Settings → Lesson videos.
   - **Calculators**: 202 engineering formula calculators (20 verified against 101 hand-worked
     reference cases, the rest marked beta), a scientific keypad, unit converter, equation, matrix,
     calculus and statistics tools, programmer, science, finance and date tools, with history and

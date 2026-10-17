@@ -8,6 +8,7 @@ import { DEFAULT_GEM_SETTINGS, isOrgAdmin, type GemSettings, type Module } from 
 import { requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
 import { forbidden, HttpError } from "../errors";
 import { msg } from "../i18n";
+import { resolveVideoSource, ytDlpStatus, type VideoDeps } from "./youtube";
 
 export async function gemStored(db: DB): Promise<Partial<GemSettingsStored>> {
   const [o] = await db.select({ g: organization.gemSettings }).from(organization).limit(1);
@@ -21,6 +22,7 @@ export async function getGemSettings(db: DB): Promise<GemSettings> {
     betaCalculators: g.betaCalculators ?? DEFAULT_GEM_SETTINGS.betaCalculators,
     coursesPerDay: g.coursesPerDay ?? DEFAULT_GEM_SETTINGS.coursesPerDay,
     lessonsPerDay: g.lessonsPerDay ?? DEFAULT_GEM_SETTINGS.lessonsPerDay,
+    videoSource: g.videoSource ?? DEFAULT_GEM_SETTINGS.videoSource,
   };
 }
 
@@ -50,4 +52,17 @@ export async function youtubeKey(ctx: AppContext): Promise<string | null> {
     }
   }
   return ctx.cfg.youtubeApiKey ?? null;
+}
+
+/** How lesson videos are found on this server: the admin's choice, the key, and whether yt-dlp runs. */
+export async function videoDeps(ctx: AppContext): Promise<VideoDeps> {
+  const [settings, key, yt] = await Promise.all([getGemSettings(ctx.db), youtubeKey(ctx), ytDlpStatus(ctx.ytDlp)]);
+  return {
+    db: ctx.db,
+    source: resolveVideoSource(settings.videoSource, !!key, !!yt.version),
+    key,
+    apiUrl: ctx.cfg.youtubeApiUrl ?? "https://www.googleapis.com/youtube/v3",
+    fetch: ctx.fetch,
+    ytDlp: { run: ctx.ytDlp, cookies: ctx.cfg.ytDlp?.cookies ?? null, proxy: ctx.cfg.ytDlp?.proxy ?? null },
+  };
 }

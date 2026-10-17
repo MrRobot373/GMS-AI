@@ -7,11 +7,19 @@ import { z } from "zod";
 export const COURSE_LEVELS = ["basic", "intermediate", "advanced"] as const;
 export type CourseLevel = (typeof COURSE_LEVELS)[number];
 
+/**
+ * Where lesson videos come from. "auto": the YouTube Data API when a key is set, else yt-dlp (the way
+ * Agent-Reach reads YouTube: a search with no key) when it's installed. "off": no videos.
+ */
+export const VIDEO_SOURCES = ["auto", "ytdlp", "api", "off"] as const;
+export type VideoSource = (typeof VIDEO_SOURCES)[number];
+
 export interface GemSettings {
   modules: { learning: boolean; calculators: boolean; knowledge: boolean };
   betaCalculators: boolean;
   coursesPerDay: number;
   lessonsPerDay: number;
+  videoSource: VideoSource;
 }
 
 export const DEFAULT_GEM_SETTINGS: GemSettings = {
@@ -19,6 +27,7 @@ export const DEFAULT_GEM_SETTINGS: GemSettings = {
   betaCalculators: true,
   coursesPerDay: 10,
   lessonsPerDay: 60,
+  videoSource: "auto",
 };
 
 export const gemSettingsSchema = z.object({
@@ -26,6 +35,7 @@ export const gemSettingsSchema = z.object({
   betaCalculators: z.boolean().optional(),
   coursesPerDay: z.number().int().min(0).max(1000).optional(),
   lessonsPerDay: z.number().int().min(0).max(10000).optional(),
+  videoSource: z.enum(VIDEO_SOURCES).optional(),
   /** A new YouTube Data API key; "" removes it, absent leaves it. */
   youtubeApiKey: z.string().trim().max(200).optional(),
 });

@@ -45,6 +45,12 @@ x-app-env: &app-env
   USER_ALLOWED_NETWORKS: ${USER_ALLOWED_NETWORKS:-}
   TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
   HEALTH_CHECK_MINUTES: ${HEALTH_CHECK_MINUTES:-5}
+  # Lesson videos: an optional YouTube Data API key (Admin → Settings can hold one too). Without it,
+  # yt-dlp searches YouTube with no key; if YouTube asks the server to sign in, give it a cookies.txt
+  # (a path inside the container, e.g. on the files volume) or a proxy.
+  YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+  YT_DLP_COOKIES: ${YT_DLP_COOKIES:-}
+  YT_DLP_PROXY: ${YT_DLP_PROXY:-}
   JOB_CONCURRENCY: ${JOB_CONCURRENCY:-2}
 
 services:

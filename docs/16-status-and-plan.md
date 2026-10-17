@@ -138,7 +138,7 @@ These are product calls, not code work. Each one changes what the release blocke
 |---|---|---|---|---|---|
 | 1 | OPS-03, LRN-31, SEC-04, ACC-09 (+CALC-19, KNW-25) | Restore a course, a calculator history row and a document | `run-backup.sh` checks only a project document (Nightly 12/12). It checks no course, lesson progress, calculator row or Knowledge chunks. Files in an S3 bucket are not in the backup. | Extend `tests/e2e/run-backup.sh`: create a course with progress, a calculator run and a Knowledge source; back up, delete, restore, then check all of them, including chunk count and opening a citation. Do one manual restore on staging with the saved `APP_SECRET`. Document that S3 needs its own backup. | M |
 | 2 | LRN-28, ACC-01 | 5 engineering topics give usable lessons | Only 1 real-model topic (buck, 20 lessons). Nobody has reviewed whether the content is correct. | Generate 5 courses on the release models. Review them against a 10-part checklist. Re-check the worked-example numbers with Calculators, and check references and diagram references. Save a dated evidence file. | M |
-| 3 | LRN-30, ACC-03 | 20 sampled videos are real API IDs | A YouTube key has never been set. Only a fake API was tested. | Do LRN-13 first. Set the key in Admin → Settings: the env var is not passed in compose (LEARNING-X2). Spread generation over 2 days because of quota. Write a script that samples 20 IDs and checks each with `videos.list`. | S |
+| 3 | LRN-30, ACC-03 | 20 sampled videos are real IDs | Lessons now find videos with yt-dlp and no key (17 Oct), each confirmed through oEmbed; with a key, through the API. Not yet sampled on the release server, where YouTube may ask for sign-in. | Do LRN-13 first. Generate the acceptance courses on the release server (a key, if used, spreads over 2 days because of quota). Write a script that samples 20 saved IDs and checks each with oEmbed (or `videos.list`). If lessons say "blocked", set `YT_DLP_COOKIES` or `YT_DLP_PROXY`. | S |
 | 4 | KNW-20 | 1,000 pages by about 20 Nov | No corpus and no ingest run. | Collect 1,000 PDF pages of selectable text across 3 or more projects, plus references. Ingest with 0 failures. Spot-check 20 citations for the right page. | M |
 | 5 | KNW-21, ACC-05 | 5,000, then 10,000 searchable pages | No scale run, no throughput or latency figures. The vector column is untyped and has no index. | Ingest 5k, then 10k pages. Record pages per minute, p50/p95 time to first answer, and `EXPLAIN ANALYZE`. Rerun the 30 probes. Type the column and add HNSW if vector search is slow. | L |
 | 6 | KNW-22, ACC-06 | At least 24 of 30 questions have the right evidence in the top 5 | There are 3 example cases. The script checks any of 8 passages, not rank, has no 24/30 threshold, and has never run. | Write 30 questions, including unanswerable and injection cases. Add a rank ≤ 5 check, `--min-pass 24` and a retrieval-only mode. Run with an embedding model. | M |
@@ -245,7 +245,7 @@ The Learning and Calculator code from the spec's first three weeks already exist
 | Week | Focus | Tasks | Gate at end of week |
 |---|---|---|---|
 | 19–23 Oct | Calculator blockers | P0 #8 beta off (your decision), #10 roots and fractions, #11 limits, #9 chat model path | No known wrong number in the shipped calculators. CI green. |
-| 26–30 Oct | Access rules and input reading | P0 #7 admin access (with KNW-16, KNOWLEDGE-X1), INTEGRATION-X1 export, CALC-PLAN-X1 and CALC-09 list fields, LRN-13. Set the YouTube key and start generating the acceptance courses. | Access rule decided and probed. Strict input on every tool screen. |
+| 26–30 Oct | Access rules and input reading | P0 #7 admin access (with KNW-16, KNOWLEDGE-X1), INTEGRATION-X1 export, CALC-PLAN-X1 and CALC-09 list fields, LRN-13. Check lesson videos on the release server (yt-dlp or a key) and start generating the acceptance courses. | Access rule decided and probed. Strict input on every tool screen. |
 | 2–6 Nov | Learning evidence and restore test | P0 #2 five topics reviewed, P0 #3 sample of 20 videos, P0 #1 extend `run-backup.sh`. Before the break, list the corpus sources. | Two of the §15 lines met. Restore test covers GEM data. |
 | 7–15 Nov | Shutdown | Nothing scheduled. | |
 | 16–20 Nov | Ingest and 1,000 pages | Embedding model running locally plus the real embeddings test (DOC-04), retries and keyword-first ingest (DOC-05), KNW-19 ingest script, KNW-04 page fix, P0 #4 1,000 pages | 1,000 pages, 0 failures, 20 citations spot-checked. |
@@ -263,7 +263,7 @@ If something slips, drop P2 items first, then KNW-24 and the extra ranking work.
 |---|---|---|
 | 5 engineering topics produce usable lessons | Partly | One real-model topic (buck converter, 20 lessons, schema-valid). A second smoke topic was deleted after the run. No engineer review yet. Needed: 5 courses plus review notes (P0 #2). |
 | Courses survive logout and login | Met | `learning.test.ts:181-189` "courses survive signing out and in again", passing in CI. |
-| 20 sampled video links are real API video IDs | Not yet | No YouTube key has been set; only a fake API was tested. Needed: the sample script output (P0 #3). |
+| 20 sampled video links are real video IDs | Partly | yt-dlp finds real videos with no key, each confirmed through oEmbed (17 Oct). Needed: the sample script output on the release server (P0 #3). |
 | 100 of 100 calculator tests pass | Met | 101 golden cases in `core.test.ts`. 805 package tests pass locally and in CI on HEAD. |
 | 10,000 permitted text pages are searchable | Not yet | No corpus or scale run. Needed: ingest report and latency figures (P0 #4, #5). |
 | At least 24 of 30 curated questions have the right evidence in the top 5 | Not yet | 3 example cases, and the script does not measure top 5. Needed: 30 questions and a report with the threshold (P0 #6). |
@@ -274,7 +274,7 @@ If something slips, drop P2 items first, then KNW-24 and the extra ranking work.
 ## Later phase (P3 and out of scope)
 
 - **Engine:**
-  - Say in the docs and the YouTube key hint that lesson search terms go to Google (ENG-02).
+  - Say in the YouTube key hint that lesson search terms go to Google (ENG-02; the docs say so since 17 Oct).
   - CSV usage export for workspace admins (ENG-27).
   - Reword spec §5 to mention the chat calculator tool (ENG-28).
   - Typing "@" opens the document picker (ENG-32).
@@ -287,7 +287,6 @@ If something slips, drop P2 items first, then KNW-24 and the extra ranking work.
   - Outline regeneration, or drop the unused version columns (LRN-04).
   - Resuming after a restart (LRN-26).
   - YouTube cache purge and a "test key" button (LRN-33).
-  - Pass the YouTube env var in compose (LEARNING-X2).
   - Personal-data test for courses (LEARNING-X3).
   - Stop queued jobs when the licence is inactive (LEARNING-X4).
 - **Calculators:**
@@ -315,7 +314,7 @@ If something slips, drop P2 items first, then KNW-24 and the extra ranking work.
 - **Chat.** 18 of 21 checks passed. The other 3 were test regex misses on correct answers. Auto sent a greeting to the fast tier and a hard question to the advanced tier with thinking on. Attached documents, vision, project instructions, regenerate, edit-and-branch, and Markdown and Word export all worked. PDF goes through the browser print page.
 - **Calculator tool in chat.** Buck 19.2 V, LED 150 Ω and torque 49.74 N·m, all through the rules path. The model-assisted path was never used, and it is still untested (P0 #9).
 - **Chat maths bug.** Chat did not render LaTeX; only Learning did. It was fixed during the session and committed on 17 Oct (`984c2f3`). A re-check found a side effect: dollar amounts can render as maths (P2).
-- **Learning.** One real course (buck converter, 6 modules, 20 lessons, all ready and schema-valid). Every equation states when it applies. No YouTube key was set, so lessons have no videos ("not_configured").
+- **Learning.** One real course (buck converter, 6 modules, 20 lessons, all ready and schema-valid). Every equation states when it applies. No YouTube key was set, so lessons had no videos ("not_configured"). After lessons switched to yt-dlp with no key (17 Oct), regenerating lessons 1 and 8 added 4 videos each in about 9 s, all relevant (buck steady state; output ripple and ESR). All 8 IDs answered oEmbed 200 when checked separately. YouTube did not ask this server to sign in.
 - **Knowledge.** 4 of 4 checks passed, but **keyword-only**, because Ollama Cloud has no embedding model. The overtemperature question cited only one document. The second relevant file did not share the question's words. The unanswerable and injection-style questions returned "not found" without calling a model.
 - **Work AI.** The first run failed because WORK_DIR sat under 0700 parent folders that the per-task Unix user could not enter. Moving it to `/srv/gem-live/work` (0755) fixed it, and nothing in the product detects this yet (WRK-10). One run "completed" with an empty answer. That bug was fixed on 17 Oct: the model is asked again, then the task fails clearly. Later runs wrote correct files, including a task inside a project.
 - **Code.** The IDE builds and opens. The panel agent wrote and ran `rc.py` (τ = 1 ms, f_c ≈ 159.15 Hz).

@@ -27,7 +27,7 @@ import { HttpError } from "../errors";
 import { msg } from "../i18n";
 import { quotaFor } from "./quota";
 import { chooseModel } from "./router";
-import { getGemSettings, youtubeKey } from "./gem";
+import { getGemSettings, videoDeps } from "./gem";
 import { recheckVideos, videosFor } from "./youtube";
 
 const LEVEL_TEXT = {
@@ -258,7 +258,7 @@ export class LearningRunner {
   }
 
   async ytDeps() {
-    return { db: this.ctx.db, key: await youtubeKey(this.ctx), apiUrl: this.ctx.cfg.youtubeApiUrl ?? "https://www.googleapis.com/youtube/v3", fetch: this.ctx.fetch };
+    return videoDeps(this.ctx);
   }
 
   /** Saved videos older than a week are checked again; removed ones drop out. */

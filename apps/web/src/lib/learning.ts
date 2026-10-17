@@ -86,7 +86,7 @@ export interface LessonDetail {
   error: string | null;
   content: LessonContent | null;
   videos: LessonVideo[] | null;
-  videosNote: "not_configured" | "quota" | "unavailable" | null;
+  videosNote: "not_configured" | "quota" | "unavailable" | "blocked" | null;
   versions: { version: number; status: LessonStatus; current: boolean; createdAt: string }[];
   state: { completedAt: string | null; bookmarkedAt: string | null; note: string | null } | null;
   total: number;

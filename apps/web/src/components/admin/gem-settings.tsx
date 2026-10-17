@@ -16,7 +16,9 @@ interface Gem {
   betaCalculators: boolean;
   coursesPerDay: number;
   lessonsPerDay: number;
+  videoSource: "auto" | "ytdlp" | "api" | "off";
   youtube: "settings" | "environment" | "none";
+  videos: { source: "api" | "ytdlp" | null; ytDlp: { version: string | null; error: string | null; cookies: boolean; proxy: boolean } };
 }
 
 /** Admin → Settings → GEM AI: switch modules on and off without touching chat, work or code. */
@@ -67,11 +69,42 @@ export function GemSettings() {
         <Button onClick={() => save.mutate({ coursesPerDay: Number(l.courses) || 0, lessonsPerDay: Number(l.lessons) || 0 })}>{t("Save limits")}</Button>
       </Card>
       <Card className="space-y-3 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[13.5px] text-fg">{t("Lesson videos")}</div>
+            <div className="text-[12.5px] text-fg-subtle">
+              {g.videos.source === "ytdlp" ? t("Lessons find videos with yt-dlp now.") : g.videos.source === "api" ? t("Lessons find videos with the YouTube Data API now.") : t("Lessons get no videos now.")}
+            </div>
+          </div>
+          <select
+            value={g.videoSource}
+            onChange={(e) => save.mutate({ videoSource: e.target.value })}
+            aria-label={t("Where lesson videos come from")}
+            className="h-9 rounded-lg border border-border bg-surface px-2 text-[13px]"
+          >
+            <option value="auto">{t("Automatic: the API key if set, else yt-dlp")}</option>
+            <option value="ytdlp">{t("yt-dlp (no key)")}</option>
+            <option value="api">{t("YouTube Data API key")}</option>
+            <option value="off">{t("Off")}</option>
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-fg">
+          yt-dlp
+          <Badge tone={g.videos.ytDlp.version ? "success" : "neutral"}>{g.videos.ytDlp.version ? t("Version {v}", { v: g.videos.ytDlp.version }) : t("Not installed")}</Badge>
+          {g.videos.ytDlp.cookies && <Badge>{t("Cookies file")}</Badge>}
+          {g.videos.ytDlp.proxy && <Badge>{t("Proxy")}</Badge>}
+        </div>
+        <p className="text-[12.5px] text-fg-subtle">
+          {t("yt-dlp searches YouTube without a key, the way Agent-Reach does, and each result is confirmed public through YouTube's oEmbed. Only real search results become links, never one a model wrote. If YouTube asks the server to sign in, set YT_DLP_COOKIES (a cookies.txt file) or YT_DLP_PROXY.")}
+        </p>
+        {!g.videos.ytDlp.version && g.videos.ytDlp.error && <p className="font-mono text-[11.5px] text-fg-subtle">{g.videos.ytDlp.error}</p>}
+      </Card>
+      <Card className="space-y-3 p-5">
         <div className="flex items-center gap-2 text-[13.5px] text-fg">
           {t("YouTube Data API key")}
           <Badge tone={g.youtube === "none" ? "neutral" : "success"}>{g.youtube === "settings" ? t("Set here") : g.youtube === "environment" ? t("From YOUTUBE_API_KEY") : t("Not set")}</Badge>
         </div>
-        <p className="text-[12.5px] text-fg-subtle">{t("Lessons link real videos found with this key (search results only, never links a model wrote). Without it, lessons have no videos. The key is stored encrypted.")}</p>
+        <p className="text-[12.5px] text-fg-subtle">{t("Optional. With a key, lessons search through the official API (10,000 quota units a day; a search costs 100). The key is stored encrypted.")}</p>
         <div className="flex flex-wrap gap-2">
           <Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={t("Paste a key")} className="max-w-sm" autoComplete="off" />
           <Button disabled={!key.trim()} onClick={() => { save.mutate({ youtubeApiKey: key.trim() }); setKey(""); }}>{t("Save key")}</Button>
