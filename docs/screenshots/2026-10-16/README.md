@@ -7,7 +7,8 @@ model. The answers, lessons, agent tasks and knowledge answers shown were writte
 
 - `light/` and `dark/` hold the same pages under the same names.
 - Long pages are captured whole. The IDE keeps its own (dark) theme.
-- Not configured on this server, so not shown working: lesson videos (no YouTube Data API key) and meaning
+- Not configured on this server on 16 Oct, so not shown working: lesson videos (no YouTube Data API key;
+  shown working with yt-dlp in [2026-10-17-learning-5-topics](../2026-10-17-learning-5-topics/)) and meaning
   search (Ollama Cloud has no embedding model, so documents are searched by keywords).
 
 ## Signed out

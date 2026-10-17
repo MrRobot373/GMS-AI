@@ -493,7 +493,7 @@ function LessonBody({ l }: { l: LessonDetail }) {
         </ul>
       </Part>
 
-      {/* 8. Videos (YouTube Data API) and references */}
+      {/* 8. Videos (YouTube search: yt-dlp or the Data API) and references */}
       <Part n={8} icon={<PlayCircle />} title={t("Videos and references")}>
         {l.videos && l.videos.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
