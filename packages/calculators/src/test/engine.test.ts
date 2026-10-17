@@ -13,6 +13,24 @@ import { conversion, convert, QUANTITIES } from "../units";
 const near = (a: number, b: number, rel = 1e-9) => expect(Math.abs(a - b) / Math.max(1, Math.abs(b))).toBeLessThanOrEqual(rel);
 
 describe("expressions", () => {
+  it("EXP (ᴇ) is ×10ⁿ, never the variable E", () => {
+    expect(calc("2ᴇ3")).toBe(2000);
+    expect(calc("2ᴇ-3")).toBeCloseTo(0.002, 15);
+    expect(calc("2ᴇ−3")).toBeCloseTo(0.002, 15);
+    expect(calc("2ᴇ(-3)")).toBeCloseTo(0.002, 15);
+    expect(calc("2ᴇ(-3")).toBeCloseTo(0.002, 15); // as 2 EXP (−) 3 leaves it
+    expect(calc("1.5ᴇ6/3")).toBe(500000);
+    expect(calc("ᴇ3")).toBe(1000);
+    // A stored E changes nothing: 2 EXP (−) 3 once gave 2·E·(−3) = −30.
+    expect(calc("2ᴇ(-3)", { vars: { E: 5 } })).toBeCloseTo(0.002, 15);
+    expect(calc("2E", { vars: { E: 5 } })).toBe(10);
+    expect(() => calc("2ᴇ")).toThrow(/power of ten/);
+    // Typos are errors, not products.
+    for (const typo of ["1.2.3", "2.5.5", "2 3", "20 0.5", "2ᴇ3 4"]) expect(() => calc(typo), typo).toThrow(/Two numbers in a row/);
+    expect(calc("(2)3")).toBe(6);
+    expect(calc("2(3)")).toBe(6);
+    expect(() => calc("2ᴇ1.5")).toThrow();
+  });
   const cases: [string, number, object?][] = [
     ["1+2*3", 7],
     ["(1+2)*3", 9],

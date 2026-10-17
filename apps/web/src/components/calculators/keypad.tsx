@@ -81,14 +81,16 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
           return /^[+\-*/^×÷−%!)]/.test(s) ? `Ans${s}` : s;
         }
         const el = inputRef.current;
+        const at = el && document.activeElement === el && el.selectionStart !== null ? el.selectionStart : e.length;
+        // (−) right after EXP is the exponent's sign, as on a Casio: 2 EXP (−) 3 is 2ᴇ-3.
+        const piece = s === "(-" && e.slice(0, at).endsWith("ᴇ") ? "-" : s;
         if (el && document.activeElement === el && el.selectionStart !== null) {
-          const a = el.selectionStart;
-          const b = el.selectionEnd ?? a;
-          const next = e.slice(0, a) + s + e.slice(b);
-          requestAnimationFrame(() => el.setSelectionRange(a + s.length, a + s.length));
+          const b = el.selectionEnd ?? at;
+          const next = e.slice(0, at) + piece + e.slice(b);
+          requestAnimationFrame(() => el.setSelectionRange(at + piece.length, at + piece.length));
           return next;
         }
-        return e + s;
+        return e + piece;
       });
     },
     [justEvaluated],
@@ -294,7 +296,7 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
               <K onClick={() => insert("°")}>°</K>
 
               <K onClick={() => insert(shift ? "Rec(" : "Pol(")}>{shift ? "Rec" : "Pol"}</K>
-              <K onClick={() => insert("E")} label={t("Times ten to the power")}>EXP</K>
+              <K onClick={() => insert("ᴇ")} label={t("Times ten to the power")}>EXP</K>
               <K onClick={() => insert("(-")}>(−)</K>
               <K onClick={() => setStoring((s) => (s === "rcl" ? null : "rcl"))} className={cn(storing === "rcl" && "border-warning text-warning")}>RCL</K>
               <K onClick={() => insert("%")}>%</K>

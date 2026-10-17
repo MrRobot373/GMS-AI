@@ -15,6 +15,20 @@ CHROMIUM_PATH=/path/to/chrome node full.mjs   # BASE_URL defaults to http://loca
 
 Each step reports PASS/FAIL; failures save a screenshot to `results/`.
 
+## Live smoke test with real models
+
+`live-smoke.mjs` checks every AI feature against a running server with its **real** models (no fake
+model): each chat model answers, Auto, an attached document with a citation, a project's instructions
+and sources, the calculator tool in chat (exact numbers), Learning (outline and a validated lesson),
+Knowledge (a cited answer and "not in the documents"), Work AI (writes, runs and saves files) and Code
+(the IDE opens). Use it on staging, on a release candidate and after changing models. It spends
+tokens. Everything it creates is named `[smoke]`; `SMOKE_CLEANUP=1` deletes it afterwards.
+
+```bash
+SMOKE_EMAIL=admin@company.com SMOKE_PASSWORD=… BASE_URL=https://gem.example.com node tests/e2e/live-smoke.mjs
+SMOKE_ONLY=chat,knowledge …   # a subset: chat, learning, knowledge, work, code
+```
+
 ## Work AI
 
 `run-work.sh` starts the fake model (which also plays SearXNG and an MCP server) on :11500, a fresh

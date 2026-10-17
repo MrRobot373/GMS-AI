@@ -141,7 +141,16 @@ export async function knowledgeRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get<{ Params: { id: string } }>("/api/knowledge/queries/:id", async (req) => {
     const u = await requireUser(ctx, req);
     const q = await ownQuery(ctx, u, req.params.id);
-    return { ...q, answer: q.status === "not_found" ? tr(localeOf(req), q.answer) : q.answer };
+    // A stored citation shows its passage only while the person can still open it (a source removed
+    // from the project, or a document they lost access to, is blanked, not shown from history).
+    const citations = await Promise.all(
+      q.citations.map(async (c) =>
+        (await citationReadable(db, { workspaceId: q.workspaceId, userId: u.id, projectId: q.projectId, includeGeneral: q.includeGeneral, chunkId: c.chunkId, documentId: c.documentId }))
+          ? c
+          : { n: c.n, chunkId: "", documentId: "", name: "", version: 0, page: null, excerpt: "", scope: c.scope, unavailable: true as const },
+      ),
+    );
+    return { ...q, citations, answer: q.status === "not_found" ? tr(localeOf(req), q.answer) : q.answer };
   });
 
   app.delete<{ Params: { id: string } }>("/api/knowledge/queries/:id", async (req) => {

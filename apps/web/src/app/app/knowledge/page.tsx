@@ -46,6 +46,8 @@ interface KCitation {
   scope: "project" | "general";
   label?: string | null;
   cited?: boolean;
+  /** No longer open to this person (removed from the project, or access lost): nothing of it is shown. */
+  unavailable?: boolean;
 }
 
 interface Answer {
@@ -342,22 +344,29 @@ function CitationList({ items, onOpen }: { items: KCitation[]; onOpen: (n: numbe
   const t = useT();
   return (
     <ul className="space-y-1">
-      {items.map((c) => (
-        <li key={c.n}>
-          <button onClick={() => onOpen(c.n)} className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-2">
-            <span className="mt-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] border border-border-strong text-[10.5px] text-fg-muted">{c.n}</span>
-            <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-center gap-1.5 text-[13px] text-fg">
-                {c.name}
-                <Badge>v{c.version}</Badge>
-                {c.page && <Badge>{t("p. {page}", { page: c.page })}</Badge>}
-                {c.scope === "general" && <Badge tone="accent">{t("General reference")}</Badge>}
+      {items.map((c) =>
+        c.unavailable ? (
+          <li key={c.n} className="flex items-start gap-2 px-2 py-1.5">
+            <span className="mt-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] border border-border text-[10.5px] text-fg-subtle">{c.n}</span>
+            <span className="text-[12.5px] text-fg-subtle">{t("This source is no longer available to you.")}</span>
+          </li>
+        ) : (
+          <li key={c.n}>
+            <button onClick={() => onOpen(c.n)} className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-2">
+              <span className="mt-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] border border-border-strong text-[10.5px] text-fg-muted">{c.n}</span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-1.5 text-[13px] text-fg">
+                  {c.name}
+                  <Badge>v{c.version}</Badge>
+                  {c.page && <Badge>{t("p. {page}", { page: c.page })}</Badge>}
+                  {c.scope === "general" && <Badge tone="accent">{t("General reference")}</Badge>}
+                </span>
+                <span className="line-clamp-2 text-[12px] text-fg-subtle">{c.excerpt}</span>
               </span>
-              <span className="line-clamp-2 text-[12px] text-fg-subtle">{c.excerpt}</span>
-            </span>
-          </button>
-        </li>
-      ))}
+            </button>
+          </li>
+        ),
+      )}
     </ul>
   );
 }

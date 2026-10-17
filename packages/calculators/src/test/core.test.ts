@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { CORE } from "../defs";
 import { CalcError, checkDefinition } from "../registry";
-import { runCalculator } from "../run";
+import { readNumber, runCalculator } from "../run";
 import { checkRef } from "./refs";
 
 describe("release calculators: definitions", () => {
@@ -62,12 +62,28 @@ describe("release calculators: edge cases", () => {
   it("every calculator refuses NaN, Infinity and strings", () => {
     for (const c of CORE) {
       const first = c.inputs.find((i) => !i.optional && !i.options) ?? c.inputs[0]!;
-      for (const bad of [Infinity, -Infinity, "12" as unknown as number]) {
+      for (const bad of [NaN, Infinity, -Infinity, "12" as unknown as number]) {
         const base = Object.fromEntries(c.refs[0]!.inputs ? Object.entries(c.refs[0]!.inputs).map(([k, v]) => [k, { value: Array.isArray(v) && typeof v[1] === "string" ? (v[0] as number) : (v as number), unit: Array.isArray(v) && typeof v[1] === "string" ? v[1] : c.inputs.find((i) => i.key === k)!.unit }]) : []);
         base[first.key] = { value: (first.list ? [bad] : bad) as number, unit: first.unit };
         expect(() => runCalculator(c.id, base), `${c.id} with ${String(bad)}`).toThrow(CalcError);
       }
     }
+  });
+  it("reads typed numbers strictly: no guessing at commas, hex or words", () => {
+    expect(readNumber("12")).toEqual({ value: 12 });
+    expect(readNumber(" -0.25 ")).toEqual({ value: -0.25 });
+    expect(readNumber("\u22123")).toEqual({ value: -3 });
+    expect(readNumber(".5")).toEqual({ value: 0.5 });
+    expect(readNumber("1.5e-3")).toEqual({ value: 0.0015 });
+    expect(readNumber("2E6")).toEqual({ value: 2e6 });
+    expect(readNumber("")).toBeNull();
+    for (const t of ["1,000", "1,00,000", "2,5", "1,000.5"]) expect(readNumber(t), t).toEqual({ error: "comma" });
+    for (const t of ["abc", "0x10", "0b101", "Infinity", "1e999", "12V", "1 000", "--1", "1.2.3"]) expect(readNumber(t), t).toEqual({ error: "invalid" });
+  });
+  it("an optional input that isn't a number is an error, not skipped", () => {
+    expect(err(() => runCalculator("transformer-ratio", { Np: 100, Ns: 10, Vp: 230, Ip: NaN }))).toMatch(/must be a number/);
+    expect(err(() => runCalculator("buck-ideal", { Vin: 48, D: 0.4, Iout: NaN }))).toMatch(/must be a number/);
+    expect(runCalculator("transformer-ratio", { Np: 100, Ns: 10, Vp: 230 }).outputs.map((o) => o.key)).not.toContain("Is");
   });
   it("refuses a unit from another quantity", () => {
     expect(err(() => runCalculator("ohms-law", { V: { value: 12, unit: "A" }, R: { value: 4, unit: "ohm" } }))).toMatch(/not a unit of voltage/);
@@ -121,6 +137,13 @@ describe("release calculators: edge cases", () => {
     expect(err(() => runCalculator("buck-inductor-ripple", { Vin: 5, Vout: 12, fsw: 100, L: 10 }))).toMatch(/lower than its input/);
     expect(err(() => runCalculator("dc-cable-voltage-drop", { I: 100, L: 100, A: 0.5, rho: 0.01724, V: 12 }))).toMatch(/larger than the supply/);
     expect(err(() => runCalculator("reactance", { f: 50 }))).toMatch(/inductance, a capacitance/);
+    // RMS values can't be negative (a negative apparent power is not an answer).
+    expect(err(() => runCalculator("single-phase-ac-power", { V: -230, I: 10, pf: 0.8 }))).toMatch(/at least 0/);
+    expect(err(() => runCalculator("single-phase-ac-power", { V: 230, I: -10, pf: 0.8 }))).toMatch(/at least 0/);
+    expect(err(() => runCalculator("three-phase-power", { VL: -400, IL: 10, pf: 0.85 }))).toMatch(/at least 0/);
+    expect(err(() => runCalculator("three-phase-power", { VL: 400, IL: -10, pf: 0.85 }))).toMatch(/at least 0/);
+    expect(err(() => runCalculator("transformer-ratio", { Np: 100, Ns: 10, Vp: -230 }))).toMatch(/at least 0/);
+    expect(err(() => runCalculator("transformer-ratio", { Np: 100, Ns: 10, Vp: 230, Ip: -1 }))).toMatch(/at least 0/);
   });
   it("warnings flag results outside the formula's comfort zone", () => {
     expect(runCalculator("dc-cable-voltage-drop", { I: 10, L: 20, A: 2.5, rho: 0.01724, V: 24 }).warnings[0]).toMatch(/3 %/);

@@ -40,7 +40,8 @@ export function runCalculator(id: string, given: Record<string, InputValue | num
   for (const inp of def.inputs) {
     const raw = given[inp.key];
     const iv: InputValue = typeof raw === "number" ? { value: raw } : (raw ?? { value: null });
-    const missing = iv.value === null || iv.value === undefined || (Array.isArray(iv.value) && iv.value.length === 0) || (typeof iv.value === "number" && Number.isNaN(iv.value));
+    // Only nothing is missing; something that isn't a number (NaN, a typo) is an error, even when optional.
+    const missing = iv.value === null || iv.value === undefined || (Array.isArray(iv.value) && iv.value.length === 0);
     if (missing) {
       if (inp.optional) continue;
       throw new CalcError(`${inp.label} is required.`, inp.key);
@@ -144,4 +145,19 @@ export function formatNumber(v: number, digits = 6, mode: "auto" | "sci" | "eng"
   }
   if (a >= 1e-4 && a < 1e12) return String(Number(v.toPrecision(digits)));
   return v.toExponential(digits - 1).replace(/\.?0+e/, "e");
+}
+
+/**
+ * How a number typed on a calculator screen is read: a decimal point, an optional sign (− counts) and
+ * optional e-notation. A comma is refused rather than guessed (1,000 and 2,5 mean different things in
+ * different places), and so are hex, binary and words that JavaScript's Number() would accept.
+ * Empty text is null.
+ */
+export function readNumber(text: string): { value: number } | { error: "comma" | "invalid" } | null {
+  const s = text.trim().replace(/\u2212/g, "-");
+  if (!s) return null;
+  if (s.includes(",")) return { error: "comma" };
+  if (!/^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i.test(s)) return { error: "invalid" };
+  const value = Number(s);
+  return Number.isFinite(value) ? { value } : { error: "invalid" };
 }

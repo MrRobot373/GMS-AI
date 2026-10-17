@@ -56,9 +56,19 @@ export const lessonStateSchema = z.object({
 
 /* ───────────── Learning: what the model must return ───────────── */
 
-/** Web links the model wrote: never trusted, never stored (videos come from the YouTube API). */
-const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
-export const stripUrls = (s: string) => s.replace(URL_RE, "").replace(/\(\s*\)/g, "").replace(/[ \t]{2,}/g, " ").trim();
+/**
+ * Web links the model wrote: never trusted, never stored (videos come from the YouTube API). Markdown
+ * links keep their text; schemes (http, https, ftp, mailto), protocol-relative //host links, www. and
+ * bare domains with a path (ti.com/lit/…) are removed.
+ */
+const URL_RE = /<?\b(?:(?:https?|ftp):\/\/|mailto:|www\.)[^\s<>]*[^\s<>.,;:!?)]>?|(?<![\w:/])\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s)]*|\b(?:[a-z0-9-]+\.)+[a-z]{2,24}\/[^\s)]*/gi;
+export const stripUrls = (s: string) =>
+  s
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(URL_RE, "")
+    .replace(/\(\s*(?:see|see also|at|on|via|from)?\s*\)/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 
 const text = (max: number, min = 1) => z.string().transform(stripUrls).pipe(z.string().min(min).max(max));
 const list = (item: z.ZodType<string>, min: number, max: number) => z.array(item).min(min).max(max);

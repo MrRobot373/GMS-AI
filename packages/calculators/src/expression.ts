@@ -124,6 +124,15 @@ export function tokenize(src: string): Tok[] {
       i++;
       continue;
     }
+    // The EXP key writes ᴇ (×10ⁿ, as on a Casio): 2ᴇ-3, 2ᴇ(-3), or 2ᴇ(-3 as the keypad's (−) leaves it.
+    // A bare ᴇ3 is 1×10³. The letter E stays a variable.
+    const exp = /^(\d+\.?\d*|\.\d+)?ᴇ\s*(?:\(\s*([+-]?\d+)\s*(?:\)|(?![\d.]))|([+-]?\d+)(?![\d.]))/.exec(s.slice(i));
+    if (exp) {
+      out.push({ t: "num", v: Number(`${exp[1] ?? "1"}e${exp[2] ?? exp[3]}`), p: i });
+      i += exp[0].length;
+      continue;
+    }
+    if (ch === "ᴇ") throw new ExprError("EXP needs a whole-number power of ten after it, e.g. 2ᴇ-3", i);
     const num = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(s.slice(i));
     if (num) {
       // "2e" followed by a letter is 2·e, not an exponent.
@@ -196,6 +205,8 @@ export function parse(src: string): Node {
   function startsOperand(): boolean {
     const k = peek();
     if (!k) return false;
+    // A number right after a number is a typo (1.2.3, 2 3), never a product: 1.2.3 was once 1.2 × 0.3.
+    if (k.t === "num" && toks[i - 1]?.t === "num") throw new ExprError("Two numbers in a row: put an operator between them", k.p);
     if (k.t === "num" || k.t === "(") return true;
     if (k.t === "id") return !INFIX_WORDS.has(k.v) || toks[i + 1]?.t === "(";
     if (k.t === "op") return k.v === "√" || k.v === "∛";

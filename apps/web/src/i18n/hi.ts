@@ -1740,6 +1740,8 @@ export const HI: Record<string, string> = {
   "Save key": "कुंजी सहेजें",
   "This module isn't available to you": "यह मॉड्यूल आपके लिए उपलब्ध नहीं है",
   "Your admin can switch it on for you, or for the organization, in the Admin console.": "आपके एडमिन इसे आपके लिए, या पूरे संगठन के लिए, एडमिन कंसोल में चालू कर सकते हैं।",
+  "Use a point for decimals and no thousands separators: 2.5, 1000.": "दशमलव के लिए पॉइंट लिखें और हज़ार के लिए कॉमा न लगाएँ: 2.5, 1000।",
+  "This source is no longer available to you.": "यह स्रोत अब आपके लिए उपलब्ध नहीं है।",
   "Enter a number": "कोई संख्या लिखें",
   "That value can't be converted (division by zero).": "यह मान बदला नहीं जा सकता (शून्य से भाग)।",
   "Category": "श्रेणी",

@@ -219,6 +219,12 @@ d("GEM AI Knowledge", () => {
       expect(note).toBeDefined();
       expect((await h.call(h.alice, "DELETE", `/api/projects/${alpha}/sources/${note.documentId}`)).status).toBe(200);
       expect((await h.call(h.alice, "GET", `/api/knowledge/queries/${r.start.queryId}/citations/${note.n}`)).status).toBe(404);
+      // Nor does the question's history still show the passage or the document.
+      const q = await h.call(h.alice, "GET", `/api/knowledge/queries/${r.start.queryId}`);
+      expect(q.status).toBe(200);
+      const gone = q.json.citations.find((c: { n: number }) => c.n === note.n);
+      expect(gone).toMatchObject({ unavailable: true, excerpt: "", name: "", documentId: "" });
+      expect(JSON.stringify(q.json.citations)).not.toContain(note.excerpt.slice(0, 40));
     });
     probe("the knowledge module switched off", async () => {
       await h.call(h.owner, "PUT", "/api/admin/gem", { modules: { knowledge: false } });

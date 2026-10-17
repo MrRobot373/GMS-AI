@@ -15,5 +15,5 @@ export * as tools from "./tools";
 export { TOOLS, type ToolInfo } from "./tools";
 export { CATEGORIES, CalcError, checkDefinition, type CalculatorDef, type InputDef, type OutputDef, type RefCase } from "./registry";
 export { CALCULATORS, CORE } from "./defs";
-export { formatNumber, getCalculator, runCalculator, type InputValue, type RunResult } from "./run";
+export { formatNumber, getCalculator, readNumber, runCalculator, type InputValue, type RunResult } from "./run";
 export { calculatorCatalog, searchCalculators, type CatalogEntry } from "./catalog";

@@ -150,7 +150,7 @@ const singlePhase = def({
   keywords: ["single phase power", "ac power", "power factor", "kva", "reactive power"],
   formula: ["S = V·I", "P = S·cos φ", "Q = S·sin φ", "cos φ = PF"],
   assumptions: ["Sinusoidal voltage and current (no harmonics)", "RMS values", "Q shown as a magnitude (lagging or leading not distinguished)"],
-  inputs: [inp("V", "Voltage (RMS)", "voltage", "V", { symbol: "V" }), inp("I", "Current (RMS)", "current", "A", { symbol: "I" }), inp("pf", "Power factor", "ratio", "fraction", { symbol: "PF", min: 0, max: 1 })],
+  inputs: [inp("V", "Voltage (RMS)", "voltage", "V", { symbol: "V", min: 0 }), inp("I", "Current (RMS)", "current", "A", { symbol: "I", min: 0 }), inp("pf", "Power factor", "ratio", "fraction", { symbol: "PF", min: 0, max: 1 })],
   outputs: [out("S", "Apparent power", "apparentPower", "VA", { symbol: "S" }), out("P", "Real power", "power", "W", { symbol: "P" }), out("Q", "Reactive power", "reactivePower", "var", { symbol: "Q" }), out("phi", "Phase angle", "angle", "deg", { symbol: "φ" })],
   compute: ({ V, I, pf }) => {
     const S = V! * I!;
@@ -174,7 +174,7 @@ const threePhase = def({
   keywords: ["three phase power", "3 phase", "line voltage", "kw kva", "balanced load"],
   formula: ["S = √3·V_L·I_L", "P = S·PF", "Q = S·√(1 - PF²)", "V_phase (star) = V_L / √3"],
   assumptions: ["Balanced, symmetrical three-phase system", "Sinusoidal waveforms", "V_L is line-to-line, I_L is line current (star or delta)"],
-  inputs: [inp("VL", "Line voltage", "voltage", "V", { symbol: "V_L" }), inp("IL", "Line current", "current", "A", { symbol: "I_L" }), inp("pf", "Power factor", "ratio", "fraction", { symbol: "PF", min: 0, max: 1 })],
+  inputs: [inp("VL", "Line voltage", "voltage", "V", { symbol: "V_L", min: 0 }), inp("IL", "Line current", "current", "A", { symbol: "I_L", min: 0 }), inp("pf", "Power factor", "ratio", "fraction", { symbol: "PF", min: 0, max: 1 })],
   outputs: [
     out("S", "Apparent power", "apparentPower", "kVA", { symbol: "S" }),
     out("P", "Real power", "power", "kW", { symbol: "P" }),
@@ -246,8 +246,8 @@ const transformer = def({
   inputs: [
     inp("Np", "Primary turns", "count", undefined, { symbol: "N_p", ...pos }),
     inp("Ns", "Secondary turns", "count", undefined, { symbol: "N_s", ...pos }),
-    inp("Vp", "Primary voltage", "voltage", "V", { symbol: "V_p" }),
-    inp("Ip", "Primary current", "current", "A", { symbol: "I_p", optional: true }),
+    inp("Vp", "Primary voltage (RMS)", "voltage", "V", { symbol: "V_p", min: 0 }),
+    inp("Ip", "Primary current (RMS)", "current", "A", { symbol: "I_p", optional: true, min: 0 }),
   ],
   outputs: [out("a", "Turns ratio", "dimensionless", undefined, { symbol: "a" }), out("Vs", "Secondary voltage", "voltage", "V", { symbol: "V_s" }), out("Is", "Secondary current", "current", "A", { symbol: "I_s", optional: true })],
   compute: ({ Np, Ns, Vp, Ip }) => {

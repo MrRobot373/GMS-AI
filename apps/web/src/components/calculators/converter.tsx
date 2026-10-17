@@ -1,6 +1,6 @@
 "use client";
 
-import { conversion, QUANTITIES } from "@aatmiq/calculators";
+import { conversion, QUANTITIES, readNumber } from "@aatmiq/calculators";
 import { ArrowLeftRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,12 @@ export function Converter() {
   };
   const fromUnit = q.units.some((u) => u.id === from) ? from : q.units[0]!.id;
   const toUnit = q.units.some((u) => u.id === to) ? to : q.units[1]?.id ?? q.units[0]!.id;
-  const n = Number(value.replace(",", "."));
+  // Read strictly: no guessing at 1,000 or 0x10.
+  const read = useMemo(() => readNumber(value), [value]);
+  const n = read && "value" in read ? read.value : NaN;
   const r = useMemo(() => {
-    if (!value.trim() || !Number.isFinite(n)) return { error: value.trim() ? t("Enter a number") : null, conv: null };
+    if (!read) return { error: null, conv: null };
+    if ("error" in read) return { error: read.error === "comma" ? t("Use a point for decimals and no thousands separators: 2.5, 1000.") : t("Enter a number"), conv: null };
     try {
       const conv = conversion(n, cat, fromUnit, toUnit);
       if (!Number.isFinite(conv.result)) return { error: t("That value can't be converted (division by zero)."), conv: null };
@@ -35,7 +38,7 @@ export function Converter() {
     } catch (e) {
       return { error: (e as Error).message, conv: null };
     }
-  }, [n, value, cat, fromUnit, toUnit, t]);
+  }, [n, read, cat, fromUnit, toUnit, t]);
 
   return (
     <div className="space-y-4">

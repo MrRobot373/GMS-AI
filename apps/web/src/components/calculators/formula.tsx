@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { unitOf, type CatalogEntry, type RunResult } from "@aatmiq/calculators";
+import { readNumber, unitOf, type CatalogEntry, type RunResult } from "@aatmiq/calculators";
 import { AlertTriangle, BadgeCheck, FlaskConical, MessageSquare, Play, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -12,6 +12,16 @@ import { useT } from "@/i18n";
 import { ApiError, post } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { CopyButton, ErrorLine, fmt, Panel, unitsOf } from "./shared";
+
+/** A typed value that can't be read, caught before anything is sent. */
+class FieldError extends Error {
+  constructor(
+    message: string,
+    public field: string,
+  ) {
+    super(message);
+  }
+}
 
 type Value = { text: string; unit: string };
 
@@ -51,8 +61,14 @@ export function FormulaCalculator({ c, prefill }: { c: CatalogEntry; prefill?: R
           inputs[i.key] = { value: null };
           continue;
         }
-        if (i.list) inputs[i.key] = { value: raw.split(/[,;\s]+/).filter(Boolean).map(Number), unit: v.unit || undefined };
-        else inputs[i.key] = { value: Number(raw.replace(",", ".")), unit: i.options ? undefined : v.unit || undefined };
+        // What's typed is read strictly (no guessing at 1,000 or 0x10); anything else stops here, at its field.
+        const read = (text: string) => {
+          const r = readNumber(text);
+          if (r && "value" in r) return r.value;
+          throw new FieldError(r?.error === "comma" ? t("Use a point for decimals and no thousands separators: 2.5, 1000.") : t("Enter a number"), i.key);
+        };
+        if (i.list) inputs[i.key] = { value: raw.split(/[,;\s]+/).filter(Boolean).map(read), unit: v.unit || undefined };
+        else inputs[i.key] = { value: read(raw), unit: i.options ? undefined : v.unit || undefined };
       }
       return post<RunResult & { historyId: string }>("/api/calculators/run", { workspaceId, calculatorId: c.id, inputs, outputUnits: units });
     },
@@ -63,7 +79,7 @@ export function FormulaCalculator({ c, prefill }: { c: CatalogEntry; prefill?: R
     },
     onError: (e: Error) => {
       setResult(null);
-      setError({ message: e.message, field: e instanceof ApiError ? ((e.details as { field?: string } | undefined)?.field ?? null) : null });
+      setError({ message: e.message, field: e instanceof FieldError ? e.field : e instanceof ApiError ? ((e.details as { field?: string } | undefined)?.field ?? null) : null });
     },
   });
 

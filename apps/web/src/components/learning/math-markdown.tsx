@@ -26,7 +26,7 @@ export function normalizeMath(content: string): string {
     .join("");
 }
 
-/** Markdown with $…$ and $$…$$ maths (KaTeX, fonts served by this app). Links open outside. */
+/** Markdown with $…$ and $$…$$ maths (KaTeX, fonts served by this app). Links show as plain text. */
 export const MathMarkdown = memo(function MathMarkdown({ content, className }: { content: string; className?: string }) {
   return (
     <div className={className ?? "prose-chat"}>
@@ -34,11 +34,8 @@ export const MathMarkdown = memo(function MathMarkdown({ content, className }: {
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore" }]]}
         components={{
-          a: ({ children, href }) => (
-            <a href={href} target="_blank" rel="noreferrer noopener">
-              {children}
-            </a>
-          ),
+          // Lessons are model-written: a link that got past the schema is shown as text, never followed.
+          a: ({ children }) => <span>{children}</span>,
         }}
       >
         {normalizeMath(content)}

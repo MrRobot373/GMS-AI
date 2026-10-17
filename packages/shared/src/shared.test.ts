@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   modelUpdateSchema,
+  stripUrls,
   defaultUserQuota,
   evaluateQuota,
   formatTokens,
@@ -86,5 +87,23 @@ describe("update schemas", () => {
   it("partial model updates do not reset other fields", () => {
     expect(modelUpdateSchema.parse({ enabled: false })).toEqual({ enabled: false });
     expect(modelUpdateSchema.parse({ sections: ["chat"] })).toEqual({ sections: ["chat"] });
+  });
+});
+
+describe("lesson text never keeps a link the model wrote", () => {
+  const cases: [string, string][] = [
+    ["See https://youtu.be/abc123 for more.", "See for more."],
+    ["Read www.ti.com/lit/an/slva477b.pdf now", "Read now"],
+    ["Bare ti.com/lit/an/slva477b.pdf and youtube.com/watch?v=dQw4w9WgXcQ too", "Bare and too"],
+    ["Protocol-relative //evil.example/x here", "Protocol-relative here"],
+    ["The [TI app note](https://www.ti.com/lit/an/slva477b.pdf) explains it", "The TI app note explains it"],
+    ["A [datasheet](//evil.example/x) link", "A datasheet link"],
+    ["Write to mailto:someone@example.com today", "Write to today"],
+    ["An autolink <https://example.com/a> here", "An autolink here"],
+    ["(see https://example.com)", ""],
+  ];
+  for (const [input, want] of cases) it(input, () => expect(stripUrls(input)).toBe(want));
+  it("leaves engineering text alone", () => {
+    for (const t of ["dv/dt is 12 V/ns", "Vout = 3.3/5 of Vin", "R in Ω/km", "i.e. the ideal case", "fs = 100 kHz, D = 0.4", "e.g. 1/(2πf)"]) expect(stripUrls(t)).toBe(t);
   });
 });
