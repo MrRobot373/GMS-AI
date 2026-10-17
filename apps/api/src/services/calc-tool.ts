@@ -78,12 +78,22 @@ function unitFor(token: string): [string, string] | null {
   return UNIT_INDEX.exact.get(t) ?? UNIT_INDEX.loose.get(t.toLowerCase()) ?? null;
 }
 
-const NUM = /(?<![\w.])(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*(%|[A-Za-zµΩ°][A-Za-zµΩ°·./²³0-9]*)?/g;
+// A number, with its thousands groups (1,440 and the Indian 1,00,000) read as one number.
+const NUM = /(?<![\w.,])(-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})+,\d{3}|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*(%|[A-Za-zµΩ°][A-Za-zµΩ°·./²³0-9]*)?/g;
+const GROUPED = /(?<![\w.,])-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})+,\d{3})(?![\d,])/g;
+/** The Unicode minus is a minus (one character for one, so positions stay). */
+const normal = (text: string) => text.replace(/\u2212/g, "-");
+/**
+ * A comma between digits that isn't a thousands group (2,5 or 3,3 V, a decimal comma?) can't be read
+ * without guessing, so the tool doesn't run at all.
+ */
+export const ambiguousNumber = (text: string) => /\d,\d/.test(normal(text).replace(GROUPED, "0"));
 
-export function readQuantities(text: string): Quantity[] {
+export function readQuantities(input: string): Quantity[] {
+  const text = normal(input);
   const out: Quantity[] = [];
   for (const m of text.matchAll(NUM)) {
-    const value = Number(m[1]);
+    const value = Number(m[1]!.replace(/,/g, ""));
     if (!Number.isFinite(value)) continue;
     const token = (m[2] ?? "").replace(/[.,;:]+$/, "");
     const i = m.index ?? 0;
@@ -173,8 +183,10 @@ const ASKS = /\b(calculate|compute|what\s+is|what's|whats|find|how\s+(much|many|
 
 /** "/calc buck-ideal Vin=48V D=0.4" */
 function command(text: string, allow: (d: CalculatorDef) => boolean): CalcToolResult | null {
-  const m = /^\/calc\s+([a-z0-9-]+)\s*(.*)$/is.exec(text.trim());
+  const m = /^\/calc\s+([a-z0-9-]+)\s*(.*)$/is.exec(normal(text).trim());
   if (!m) return null;
+  // Vin=1,000V would otherwise run with 1: a comma inside a value stops the command.
+  if (/=\s*-?[\d.]+,\d/.test(m[2]!)) return null;
   let def: CalculatorDef;
   try {
     def = getCalculator(m[1]!);
@@ -229,7 +241,7 @@ export async function findCalculation(o: CalcToolOptions): Promise<CalcToolResul
     if (calculatorCatalog().some((c) => c.id === rest.split(/\s/)[0]?.toLowerCase())) return null;
     text = rest;
   } else if (!ASKS.test(text)) return null;
-  if (!/\d/.test(text)) return null;
+  if (!/\d/.test(text) || ambiguousNumber(text)) return null;
   const qs = readQuantities(text);
   if (!qs.length) return null;
   const formulas = calculatorCatalog().filter((c) => c.kind === "formula");
@@ -276,14 +288,7 @@ async function viaModel(o: CalcToolOptions, text: string, candidates: Calculator
     const json = extractJson(r.text) as { calculatorId?: string | null; inputs?: Record<string, { value: unknown; unit?: unknown }> } | null;
     const def = candidates.find((d) => d.id === json?.calculatorId);
     if (!def || !json?.inputs) return null;
-    // Only numbers that appear in the question are accepted.
-    const written = new Set(readQuantities(text).map((q) => q.value));
-    const given: Record<string, InputValue> = {};
-    for (const [k, v] of Object.entries(json.inputs)) {
-      const inp = def.inputs.find((i) => i.key === k);
-      if (!inp || typeof v?.value !== "number" || !written.has(v.value)) continue;
-      given[k] = { value: v.value, unit: typeof v.unit === "string" ? v.unit : inp.unit };
-    }
+    const given = acceptModelInputs(def, text, json.inputs);
     const assumed: string[] = [];
     for (const i of def.inputs) if (!(i.key in given) && !i.optional && i.default !== undefined) {
       given[i.key] = { value: i.default, unit: i.unit };
@@ -293,6 +298,29 @@ async function viaModel(o: CalcToolOptions, text: string, candidates: Calculator
   } catch {
     return null;
   }
+}
+
+/**
+ * What the model proposed, kept only where it matches what the person wrote: the same number, used
+ * once, in the unit that was written (48 V never runs as 48 kV). A bare number is taken in the input's
+ * own unit, and only when the model didn't claim another one.
+ */
+export function acceptModelInputs(def: CalculatorDef, text: string, proposed: Record<string, { value: unknown; unit?: unknown }>): Record<string, InputValue> {
+  const written = readQuantities(text);
+  const used = new Set<number>();
+  const given: Record<string, InputValue> = {};
+  for (const [k, v] of Object.entries(proposed)) {
+    const inp = def.inputs.find((i) => i.key === k);
+    if (!inp || inp.list || typeof v?.value !== "number") continue;
+    const same = written.filter((q) => q.value === v.value && !used.has(q.index));
+    const withUnit = same.find((q) => q.unit && q.q === inp.quantity);
+    const bare = same.find((q) => !q.unit && (v.unit === undefined || v.unit === null || v.unit === inp.unit));
+    const hit = withUnit ?? bare;
+    if (!hit) continue;
+    used.add(hit.index);
+    given[k] = { value: v.value, unit: hit.unit ?? inp.unit };
+  }
+  return given;
 }
 
 const fmt = (v: number) => (Math.abs(v) >= 1e-4 && Math.abs(v) < 1e12) || v === 0 ? String(Number(v.toPrecision(6))) : v.toExponential(5);
