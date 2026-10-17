@@ -628,7 +628,11 @@ const expansion = def({
   outputs: [out("dL", "Change in length", "length", "mm", { symbol: "ΔL" }), out("L", "New length", "length", "m", { symbol: "L" })],
   compute: ({ alpha, L0, dT }) => {
     const dL = alpha! * L0! * dT!;
-    return { values: { dL, L: L0! + dL } };
+    // A part can't shrink to nothing or less: that's an α or ΔT nobody meant.
+    if (L0! + dL <= 0) fail("The length after the change would be zero or less: check α and ΔT.", "alpha");
+    // Solids and liquids sit well inside ±500 ppm/K.
+    const warnings = Math.abs(alpha!) > 5e-4 ? ["α is far outside common materials (they stay within ±500 ppm/K): check its unit."] : [];
+    return { values: { dL, L: L0! + dL }, warnings };
   },
   status: "verified",
   refs: [

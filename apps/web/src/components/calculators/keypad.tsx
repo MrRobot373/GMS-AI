@@ -71,7 +71,7 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
   const vars = { ...mem.vars, Ans: mem.ans };
 
   const insert = useCallback(
-    (s: string) => {
+    (s: string, opts: { symbol?: boolean } = {}) => {
       setError(null);
       setShift(false);
       setExpr((e) => {
@@ -83,7 +83,9 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
         const el = inputRef.current;
         const at = el && document.activeElement === el && el.selectionStart !== null ? el.selectionStart : e.length;
         // (−) right after EXP is the exponent's sign, as on a Casio: 2 EXP (−) 3 is 2ᴇ-3.
-        const piece = s === "(-" && e.slice(0, at).endsWith("ᴇ") ? "-" : s;
+        // The e key or a variable right after a digit multiplies: 2 e − 3 is 2×e−3, never 2e-3 = 0.002.
+        const before = e.slice(0, at);
+        const piece = s === "(-" && before.endsWith("ᴇ") ? "-" : opts.symbol && /[\d.]$/.test(before) ? `×${s}` : s;
         if (el && document.activeElement === el && el.selectionStart !== null) {
           const b = el.selectionEnd ?? at;
           const next = e.slice(0, at) + piece + e.slice(b);
@@ -157,7 +159,7 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
       return;
     }
     setStoring(null);
-    insert(k);
+    insert(k, { symbol: true });
   };
 
   // Keyboard: digits, letters (sqrt, sin, variables) and operators type, Enter evaluates, Escape clears.
@@ -289,7 +291,7 @@ export function Keypad({ mode }: { mode: "basic" | "scientific" }) {
               <K onClick={() => insert("!")}>x!</K>
 
               <K onClick={() => insert("π")}>π</K>
-              <K onClick={() => insert("e")}>e</K>
+              <K onClick={() => insert("e", { symbol: true })}>e</K>
               <K onClick={() => insert("abs(")}>|x|</K>
               <K onClick={() => insert(" mod ")}>mod</K>
               <K onClick={() => insert(shift ? "randint(" : "rand()")}>{shift ? "RanInt" : "Ran#"}</K>

@@ -137,6 +137,9 @@ describe("release calculators: edge cases", () => {
     expect(err(() => runCalculator("buck-inductor-ripple", { Vin: 5, Vout: 12, fsw: 100, L: 10 }))).toMatch(/lower than its input/);
     expect(err(() => runCalculator("dc-cable-voltage-drop", { I: 100, L: 100, A: 0.5, rho: 0.01724, V: 12 }))).toMatch(/larger than the supply/);
     expect(err(() => runCalculator("reactance", { f: 50 }))).toMatch(/inductance, a capacitance/);
+    // A length can't go to zero or below (α in 1/K by mistake: 12 /K for 12 ppm/K).
+    expect(err(() => runCalculator("thermal-expansion", { alpha: { value: 12, unit: "1/K" }, L0: 1, dT: -1 }))).toMatch(/zero or less/);
+    expect(runCalculator("thermal-expansion", { alpha: { value: 0.001, unit: "1/K" }, L0: 1, dT: 10 }).warnings[0]).toMatch(/far outside/);
     // RMS values can't be negative (a negative apparent power is not an answer).
     expect(err(() => runCalculator("single-phase-ac-power", { V: -230, I: 10, pf: 0.8 }))).toMatch(/at least 0/);
     expect(err(() => runCalculator("single-phase-ac-power", { V: 230, I: -10, pf: 0.8 }))).toMatch(/at least 0/);
