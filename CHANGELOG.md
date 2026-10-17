@@ -23,6 +23,11 @@ without one.
     version, page and passage, and saying so when the documents don't contain the answer.
     Document versions, a general engineering reference library, and `scripts/knowledge-eval.mjs`
     to check retrieval against your own questions.
+  - `tests/e2e/live-smoke.mjs` checks every AI feature against a running server with its real models.
+- Chat renders maths (KaTeX), whichever way the model writes it ($…$, \(…\), \[…\]).
+- **Fixed:** a Work AI task whose model sent back nothing (or only its thinking) showed as done; the
+  model is now asked again, and a task that still gets nothing says so and fails.
+- **Fixed:** the chat composer and the custom-instructions hint use your organization's product name.
 - Single sign-on with any SAML 2.0 identity provider (Okta, Entra ID, Google Workspace, ADFS…):
   import its metadata in Admin → Authentication; the provider's app tile works too.
 - Directory sync (Enterprise), in Admin → Authentication → Directory:

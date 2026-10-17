@@ -94,8 +94,13 @@ The calculation is found, in order:
 2. **Rules**: numbers with units are read from the message and matched to a calculator's inputs by
    quantity and the words next to each number. Every number with a unit must find a place.
 3. **With a real model** (not the demo one): the model may pick one of a short list of calculators
-   and its inputs, as JSON. Only numbers that appear in the message are accepted, and the code runs
-   it.
+   and its inputs, as JSON. Only numbers that appear in the message are accepted, each once and in
+   the unit that was written (48 V never runs as 48 kV), and the code runs it.
+
+Numbers are read as written: thousands groups are one number (1,440 rpm, 1,00,000 W) and − is a
+minus. A comma between digits that isn't a thousands group (7,5 kW, 3,3 V) could be a decimal
+comma, so the tool doesn't run rather than guess. On the calculator screens, a comma in a number is
+refused with a message (write 2.5 and 1000).
 
 Ordinary messages are left alone, and people without the Calculators module don't get the tool.
 
