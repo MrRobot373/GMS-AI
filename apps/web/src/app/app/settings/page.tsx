@@ -101,7 +101,7 @@ function Profile() {
       <Field label={t("Job title")}>
         <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder={t("e.g. Finance lead")} />
       </Field>
-      <Field label={t("Custom instructions")} hint={t("Aatmiq considers these in every chat, e.g. your role, preferred tone or formatting.")}>
+      <Field label={t("Custom instructions")} hint={t("{productName} considers these in every chat, e.g. your role, preferred tone or formatting.", { productName: me.org.productName })}>
         <Textarea rows={4} value={ci} onChange={(e) => setCi(e.target.value)} maxLength={4000} placeholder={t("I'm a backend engineer. Prefer concise answers with TypeScript examples.")} />
       </Field>
       <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>

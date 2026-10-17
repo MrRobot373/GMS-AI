@@ -7,6 +7,25 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
+/**
+ * Models write maths as \(…\) and \[…\] as often as $…$ and $$…$$; remark-math reads only the
+ * dollar forms, so the others are rewritten, outside code. In a table row, a | inside a formula
+ * (|G(jω)|) would end the cell, so it becomes \vert.
+ */
+export function normalizeMath(content: string): string {
+  return content
+    .split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/)
+    .map((part, i) =>
+      i % 2
+        ? part
+        : part
+            .replace(/\\\[([\s\S]+?)\\\]/g, (_, m: string) => `\n$$\n${m.trim()}\n$$\n`)
+            .replace(/\\\(([\s\S]+?)\\\)/g, (_, m: string) => `$${m.trim()}$`)
+            .replace(/^[ \t]*\|.*$/gm, (row) => row.replace(/\$[^$\n]+\$/g, (f) => f.replace(/\\\|/g, "\\Vert{}").replace(/\|/g, "\\vert{}"))),
+    )
+    .join("");
+}
+
 /** Markdown with $…$ and $$…$$ maths (KaTeX, fonts served by this app). Links open outside. */
 export const MathMarkdown = memo(function MathMarkdown({ content, className }: { content: string; className?: string }) {
   return (
@@ -22,7 +41,7 @@ export const MathMarkdown = memo(function MathMarkdown({ content, className }: {
           ),
         }}
       >
-        {content}
+        {normalizeMath(content)}
       </ReactMarkdown>
     </div>
   );

@@ -40,6 +40,7 @@ import { randomBytes } from "node:crypto";
 import { chmod, chown, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { notify, type AppContext } from "../context";
+import { msg } from "../i18n";
 import { resolveModel } from "./models";
 import { PROJECT_FOLDER, projectFor, projectInstructions, writeProjectFiles } from "./project-work";
 
@@ -64,6 +65,8 @@ interface Live {
   /** Set by the model proxy when it refused a call (quota, model offline), reported at turn end. */
   lastError: string | null;
   lastAnswer: string;
+  /** This turn produced something (text or a tool call); a turn that ends without is reported, not "completed". */
+  turnOutput?: boolean;
   /** This turn's plan as the agent last wrote it. */
   plan: PlanItem[] | null;
   /** Where the agent works and as whom (the browser uses the same). */
@@ -374,6 +377,7 @@ export class WorkRunner {
     l.pending = undefined;
     l.busy = true;
     l.lastError = null;
+    l.turnOutput = false;
     l.plan = null;
     await this.setStatus(l.taskId, "running", { error: null });
     await this.sendTo(l, prompt);
@@ -517,10 +521,12 @@ export class WorkRunner {
     switch (e.type) {
       case "assistant":
         if (!e.text && e.toolCalls.length === 0) return;
+        l.turnOutput = true;
         if (e.text) l.lastAnswer = e.text;
         await this.record(taskId, "assistant", { text: e.text, toolCalls: e.toolCalls });
         return;
       case "tool_call":
+        l.turnOutput = true;
         await this.record(taskId, "tool_call", { callId: e.callId, name: e.name, args: e.args as Record<string, unknown> });
         return;
       case "tool_result":
@@ -541,7 +547,16 @@ export class WorkRunner {
         l.idleSince = Date.now();
         // completed, blocked (a person said no) and max-tokens all end with an answer to show.
         const ok = e.reason === "completed" || e.reason === "blocked" || e.reason === "max-tokens";
-        const error = l.lastError ?? (ok ? null : (e.error ?? `The agent stopped (${e.reason}).`));
+        // The model sent back nothing (even after the proxy asked again): the runtime either calls that
+        // an error in its own words or ends the turn as if done. Neither is a finished task.
+        const empty = !l.turnOutput && (ok ? e.reason === "completed" : /no content|empty (response|reply)/i.test(e.error ?? ""));
+        const error =
+          l.lastError ??
+          (empty
+            ? msg("The model sent back an empty answer, so nothing was done. Send the task again, or pick another model.")
+            : ok
+              ? null
+              : (e.error ?? `The agent stopped (${e.reason}).`));
         // Models often finish the work without ticking the last steps off; a turn that ended
         // normally is done, so its plan is too.
         if (!error && e.reason === "completed" && l.plan?.some((i) => i.status !== "completed")) {

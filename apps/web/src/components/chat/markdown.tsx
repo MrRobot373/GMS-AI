@@ -3,8 +3,12 @@
 import { Check, Copy } from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
+import "katex/dist/katex.min.css";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import { normalizeMath } from "@/components/learning/math-markdown";
 import type { Citation } from "@/lib/types";
 import { CitationChip, linkCitations } from "./citations";
 import { useT } from "@/i18n";
@@ -55,8 +59,8 @@ export const Markdown = memo(function Markdown({
   return (
     <div className="prose-chat">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: true }]]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore" }], [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={{
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children, ...props }) => {
@@ -80,7 +84,7 @@ export const Markdown = memo(function Markdown({
           },
         }}
       >
-        {linkCitations(content, citations)}
+        {linkCitations(normalizeMath(content), citations)}
       </ReactMarkdown>
     </div>
   );

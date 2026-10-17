@@ -172,6 +172,7 @@ export const HI: Record<string, string> = {
   "Work AI isn't included in your organization's license.": "Work AI आपके संगठन के लाइसेंस में शामिल नहीं है।",
   "Use five fields: minute hour day month weekday": "पाँच फ़ील्ड इस्तेमाल करें: मिनट घंटा दिन महीना हफ़्ते का दिन",
   "Work AI is not enabled for you. Ask your admin.": "आपके लिए Work AI चालू नहीं है। अपने एडमिन से पूछें।",
+  "The model sent back an empty answer, so nothing was done. Send the task again, or pick another model.": "मॉडल ने खाली जवाब भेजा, इसलिए कुछ नहीं हुआ। टास्क फिर से भेजें, या कोई दूसरा मॉडल चुनें।",
   "Pick a file": "एक फ़ाइल चुनें",
   "File not found": "फ़ाइल नहीं मिली",
   "Only tasks in a project can be shared to it.": "सिर्फ़ प्रोजेक्ट के टास्क ही उसमें शेयर किए जा सकते हैं।",

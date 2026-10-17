@@ -491,7 +491,7 @@ export function ChatView({
           ? t("You've reached your token allowance")
           : size === "home"
             ? t("Example: Summarize this contract and list every renewal date…")
-            : t("Reply to Aatmiq…")
+            : t("Reply to {productName}…", { productName: me.org.productName })
       }
       models={models.data}
       model={model}

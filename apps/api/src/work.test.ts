@@ -31,6 +31,7 @@ const mcpCalls: { name: string; arguments?: Record<string, unknown>; auth?: stri
 const oauth = { registered: [] as Record<string, unknown>[], authorize: [] as Record<string, string>[], grants: [] as string[], challenge: "" };
 let lastTools: string[] = [];
 let busyRefused = false;
+let emptySent = 0;
 
 /* ───────────── Fake model + SearXNG ───────────── */
 
@@ -57,6 +58,16 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
     busyRefused = true;
     res.writeHead(503, { "content-type": "application/json" });
     return res.end(JSON.stringify({ error: { message: "model is temporarily overloaded, please retry shortly" } }));
+  }
+  // A model that sends back nothing at all: once (the proxy asks again), or every time.
+  if (asked.includes("empty-always") || (asked.includes("empty-once") && emptySent === 0)) {
+    emptySent++;
+    return sse(res, [{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, usage]);
+  }
+  // A thinking model that only thinks, and never answers.
+  if (asked.includes("thinks-only")) {
+    emptySent++;
+    return sse(res, [{ choices: [{ index: 0, delta: { reasoning: "Let me think about this…" } }] }, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, usage]);
   }
   let call: [string, unknown] | null = null;
   let m: RegExpExecArray | null;
@@ -350,6 +361,29 @@ d("Work AI", () => {
     expect(t.task).toMatchObject({ status: "completed", error: null });
     expect(t.task.result).toContain("busy-server");
   }, 60_000);
+
+  it("asks again when the model sends back an empty answer, and never calls nothing \"completed\"", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "empty-once: say hi" });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    expect(emptySent).toBe(1);
+    expect(t.task).toMatchObject({ status: "completed", error: null });
+    expect(t.task.result).toContain("empty-once");
+
+    const before = emptySent;
+    const r2 = await call("POST", "/api/work/tasks", { workspaceId, prompt: "empty-always: say hi" });
+    const t2 = await waitStatus(r2.json.id, "completed", "failed");
+    // The first request and two more from the proxy, all empty.
+    expect(emptySent - before).toBeGreaterThanOrEqual(3);
+    expect(t2.task.status).toBe("failed");
+    expect(t2.task.error).toMatch(/empty answer/);
+
+    const before3 = emptySent;
+    const r3 = await call("POST", "/api/work/tasks", { workspaceId, prompt: "thinks-only: say hi" });
+    const t3 = await waitStatus(r3.json.id, "completed", "failed");
+    expect(emptySent - before3).toBeGreaterThanOrEqual(3);
+    expect(t3.task.status).toBe("failed");
+    expect(t3.task.error).toMatch(/empty answer/);
+  }, 120_000);
 
   it("streams the timeline over SSE", async () => {
     const res = await fetch(`${apiUrl}/api/work/tasks/${taskId}/stream?after=2`, { headers: { cookie: owner.cookie } });

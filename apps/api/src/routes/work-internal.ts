@@ -36,6 +36,8 @@ const RETRY_DELAYS_MS = [1500, 4000, 8000];
 /** How long a model server may take to start answering, and to go quiet mid-answer. */
 const FIRST_BYTE_MS = 150_000;
 const STALL_MS = 150_000;
+/** A reply with no text and no tool call (nothing, or only thinking) is asked for again this many times. */
+const EMPTY_RETRIES = 2;
 const internal = { config: { rateLimit: false } } as const;
 /** documents_read gives a document in parts this long (about 3,000 tokens). */
 const READ_CHARS = 12_000;
@@ -59,7 +61,7 @@ function llmError(reply: FastifyReply, status: number, message: string, type = "
 }
 
 type OpenAiChunk = {
-  choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[];
+  choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: unknown[] }; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 };
 
@@ -143,47 +145,71 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     }
 
     const abort = new AbortController();
-    let upstream: Response | null = null;
-    let lastNetworkError = "";
-    // Busy or briefly failing model servers ("temporarily overloaded") get a few calm retries here,
-    // before the runtime ever sees an error.
-    for (let attempt = 0; attempt < RETRY_DELAYS_MS.length + 1; attempt++) {
-      try {
-        // fetchWithKeys moves to the provider's next API key when one hits its limit.
-        // A server that hasn't started answering after a while is stuck in a queue: try again.
-        const attemptAbort = new AbortController();
-        const slow = setTimeout(() => attemptAbort.abort(new Error("no answer in time")), FIRST_BYTE_MS);
+    /** One request to the model server, with calm retries while it's busy or briefly failing. */
+    const connect = async (): Promise<{ upstream: Response | null; networkError: string }> => {
+      let upstream: Response | null = null;
+      let networkError = "";
+      // Busy or briefly failing model servers ("temporarily overloaded") get a few calm retries here,
+      // before the runtime ever sees an error.
+      for (let attempt = 0; attempt < RETRY_DELAYS_MS.length + 1; attempt++) {
         try {
-          upstream = await fetchWithKeys(provider, `${openAiBase(provider)}/chat/completions`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ ...body, model: m.modelKey, ...(body.stream ? { stream_options: { include_usage: true } } : {}), ...thinking }),
-            signal: AbortSignal.any([abort.signal, attemptAbort.signal]),
-          });
-        } finally {
-          clearTimeout(slow);
+          // fetchWithKeys moves to the provider's next API key when one hits its limit.
+          // A server that hasn't started answering after a while is stuck in a queue: try again.
+          const attemptAbort = new AbortController();
+          const slow = setTimeout(() => attemptAbort.abort(new Error("no answer in time")), FIRST_BYTE_MS);
+          try {
+            upstream = await fetchWithKeys(provider, `${openAiBase(provider)}/chat/completions`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ ...body, model: m.modelKey, ...(body.stream ? { stream_options: { include_usage: true } } : {}), ...thinking }),
+              signal: AbortSignal.any([abort.signal, attemptAbort.signal]),
+            });
+          } finally {
+            clearTimeout(slow);
+          }
+          if (!TRANSIENT.has(upstream.status) || attempt === RETRY_DELAYS_MS.length) break;
+          const after = Number(upstream.headers.get("retry-after"));
+          await upstream.body?.cancel().catch(() => undefined);
+          await new Promise((r) => setTimeout(r, Number.isFinite(after) && after > 0 && after <= 10 ? after * 1000 : RETRY_DELAYS_MS[attempt]));
+        } catch (e) {
+          networkError = e instanceof Error ? e.message : "network error";
+          upstream = null;
+          if (abort.signal.aborted || attempt === RETRY_DELAYS_MS.length) break;
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
         }
-        if (!TRANSIENT.has(upstream.status) || attempt === RETRY_DELAYS_MS.length) break;
-        const after = Number(upstream.headers.get("retry-after"));
-        await upstream.body?.cancel().catch(() => undefined);
-        await new Promise((r) => setTimeout(r, Number.isFinite(after) && after > 0 && after <= 10 ? after * 1000 : RETRY_DELAYS_MS[attempt]));
-      } catch (e) {
-        lastNetworkError = e instanceof Error ? e.message : "network error";
-        upstream = null;
-        if (abort.signal.aborted || attempt === RETRY_DELAYS_MS.length) break;
-        await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
       }
-    }
-    if (!upstream) return refuse(502, `The model server couldn't be reached (${lastNetworkError}).`);
+      return { upstream, networkError };
+    };
+    const first = await connect();
+    let upstream = first.upstream;
+    if (!upstream) return refuse(502, `The model server couldn't be reached (${first.networkError}).`);
     if (!upstream.ok || !upstream.body) {
       const detail = (await upstream.text().catch(() => "")).slice(0, 300);
       await meter({ inputTokens: 0, outputTokens: 0, estimated: true }, "error");
       return refuse(upstream.status >= 400 ? upstream.status : 502, `The model server answered ${upstream.status}${detail ? `: ${detail}` : ""}`);
     }
+    /** Another request after an empty reply; null when that one can't be used (the empty reply then stands). */
+    const again = async () => {
+      const next = await connect();
+      if (next.upstream?.ok && next.upstream.body) return next.upstream;
+      await next.upstream?.body?.cancel().catch(() => undefined);
+      return null;
+    };
 
     work.clearError(t.taskId);
     if (!body.stream) {
-      const json = (await upstream.json()) as { choices?: { message?: { content?: string } }[]; usage?: OpenAiChunk["usage"] };
+      type Completion = { choices?: { message?: { content?: string | null; tool_calls?: unknown[] } }[]; usage?: OpenAiChunk["usage"] };
+      let json = (await upstream.json()) as Completion;
+      // Models sometimes send back nothing at all (no text, no tool call); ask again before the runtime
+      // takes that as a finished turn.
+      for (let empty = 0; empty < EMPTY_RETRIES; empty++) {
+        const msg0 = json.choices?.[0]?.message;
+        if (msg0?.content?.trim() || msg0?.tool_calls?.length) break;
+        await meter(json.usage?.prompt_tokens != null ? { inputTokens: json.usage.prompt_tokens, outputTokens: json.usage.completion_tokens ?? 0, estimated: false } : { inputTokens: inputGuess, outputTokens: 0, estimated: true }, "ok");
+        const next = await again();
+        if (!next) break;
+        json = (await next.json()) as Completion;
+      }
       const text = json.choices?.[0]?.message?.content ?? "";
       if (text) work.pulse(t.taskId, "delta", { text });
       await meter(
@@ -195,60 +221,93 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       return reply.send(json);
     }
 
-    // Stream through unchanged; read along for the text (shown live) and usage (metered).
+    // Stream through unchanged; read along for the text (shown live) and usage (metered). The stream
+    // is held back until a real answer starts (text or a tool call; thinking is still shown live): a
+    // reply that ends with nothing is asked for again instead of reaching the runtime as a finished turn.
     reply.hijack();
     const res = reply.raw;
-    res.writeHead(200, { "content-type": upstream.headers.get("content-type") ?? "text/event-stream", "cache-control": "no-cache" });
     let finished = false;
     res.on("close", () => {
       if (!finished) abort.abort();
     });
-    const decoder = new TextDecoder();
-    let buf = "";
+    let headWritten = false;
+    const writeHead = (from: Response) => {
+      if (headWritten) return;
+      headWritten = true;
+      res.writeHead(200, { "content-type": from.headers.get("content-type") ?? "text/event-stream", "cache-control": "no-cache" });
+    };
     let output = "";
     let usage: { inputTokens: number; outputTokens: number; estimated: boolean } | null = null;
-    const readLine = (line: string) => {
-      if (!line.startsWith("data:")) return;
-      const data = line.slice(5).trim();
-      if (!data || data === "[DONE]") return;
-      try {
-        const json = JSON.parse(data) as OpenAiChunk;
-        const delta = json.choices?.[0]?.delta;
-        const text = delta?.content;
-        if (text) {
-          output += text;
-          work.pulse(t.taskId, "delta", { text });
-        }
-        // Reasoning models (gpt-oss, deepseek, qwen3…) think before answering; show that live too.
-        const thinking = delta?.reasoning ?? delta?.reasoning_content;
-        if (thinking) work.pulse(t.taskId, "reasoning", { text: thinking });
-        if (json.usage && typeof json.usage.prompt_tokens === "number") {
-          usage = { inputTokens: json.usage.prompt_tokens, outputTokens: json.usage.completion_tokens ?? 0, estimated: false };
-        }
-      } catch {
-        /* not JSON: passed through anyway */
-      }
-    };
     let status: "ok" | "error" | "aborted" = "ok";
-    // A stream that goes quiet for too long is cut, so the runtime retries instead of waiting forever.
-    let stall = setTimeout(() => abort.abort(), STALL_MS);
-    try {
-      for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
-        clearTimeout(stall);
-        stall = setTimeout(() => abort.abort(), STALL_MS);
-        res.write(chunk);
-        buf += decoder.decode(chunk, { stream: true });
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) >= 0) {
-          readLine(buf.slice(0, nl).trim());
-          buf = buf.slice(nl + 1);
+    for (let empty = 0; ; empty++) {
+      const decoder = new TextDecoder();
+      let buf = "";
+      let something = false;
+      let held: Uint8Array[] = [];
+      output = "";
+      usage = null;
+      const readLine = (line: string) => {
+        if (!line.startsWith("data:")) return;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") return;
+        try {
+          const json = JSON.parse(data) as OpenAiChunk;
+          const delta = json.choices?.[0]?.delta;
+          const text = delta?.content;
+          if (text) {
+            output += text;
+            if (text.trim()) something = true;
+            work.pulse(t.taskId, "delta", { text });
+          }
+          // Reasoning models (gpt-oss, deepseek, qwen3…) think before answering; show that live too.
+          // Thinking alone isn't an answer: a reply that only thinks is asked for again.
+          const thinking = delta?.reasoning ?? delta?.reasoning_content;
+          if (thinking) work.pulse(t.taskId, "reasoning", { text: thinking });
+          if (delta?.tool_calls?.length) something = true;
+          if (json.usage && typeof json.usage.prompt_tokens === "number") {
+            usage = { inputTokens: json.usage.prompt_tokens, outputTokens: json.usage.completion_tokens ?? 0, estimated: false };
+          }
+        } catch {
+          /* not JSON: passed through anyway */
+        }
+      };
+      const flush = () => {
+        writeHead(upstream!);
+        for (const h of held) res.write(h);
+        held = [];
+      };
+      // A stream that goes quiet for too long is cut, so the runtime retries instead of waiting forever.
+      let stall = setTimeout(() => abort.abort(), STALL_MS);
+      try {
+        for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
+          clearTimeout(stall);
+          stall = setTimeout(() => abort.abort(), STALL_MS);
+          if (something) res.write(chunk);
+          else held.push(chunk);
+          buf += decoder.decode(chunk, { stream: true });
+          let nl: number;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            readLine(buf.slice(0, nl).trim());
+            buf = buf.slice(nl + 1);
+          }
+          if (something && held.length) flush();
+        }
+        readLine(buf.trim());
+      } catch {
+        status = abort.signal.aborted ? "aborted" : "error";
+      }
+      clearTimeout(stall);
+      if (!something && status === "ok" && empty < EMPTY_RETRIES) {
+        const next = await again();
+        if (next) {
+          await meter(usage ?? { inputTokens: inputGuess, outputTokens: 0, estimated: true }, "ok");
+          upstream = next;
+          continue;
         }
       }
-      readLine(buf.trim());
-    } catch {
-      status = abort.signal.aborted ? "aborted" : "error";
+      if (held.length || !headWritten) flush();
+      break;
     }
-    clearTimeout(stall);
     finished = true;
     res.end();
     await meter(usage ?? { inputTokens: inputGuess, outputTokens: estimateTokens(output), estimated: true }, status);
