@@ -51,6 +51,11 @@ x-app-env: &app-env
   YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
   YT_DLP_COOKIES: ${YT_DLP_COOKIES:-}
   YT_DLP_PROXY: ${YT_DLP_PROXY:-}
+  # Web search for chat and lessons (Admin → Settings → Web search can set it instead): searxng with
+  # WEB_SEARCH_URL (empty: Work AI's SearXNG), or ollama, brave, tavily or serper with WEB_SEARCH_KEY.
+  WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-}
+  WEB_SEARCH_URL: ${WEB_SEARCH_URL:-}
+  WEB_SEARCH_KEY: ${WEB_SEARCH_KEY:-}
   JOB_CONCURRENCY: ${JOB_CONCURRENCY:-2}
 
 services:

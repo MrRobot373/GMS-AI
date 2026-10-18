@@ -36,12 +36,16 @@ export interface RuleInput {
   text: string;
   /** Documents or project sources are in play: answers have to read and cite them. */
   hasSources?: boolean;
+  /** The answer reads and cites web search results. */
+  webSearch?: boolean;
   /** Difficulty of the previous answer in this conversation (short follow-ups keep it). */
   follows?: Difficulty | null;
 }
 
 const SOCIAL =
   /^(hi+|hello+|hey+|namaste|namaskar|good (morning|afternoon|evening|night)|thanks?( you)?|thank you|thx|ty|ok(ay)?|k|cool|great|nice|bye|see you|yes|no|yep|nope|sure|got it|perfect|awesome|done|👍|🙏|😊)( (there|all|everyone|team|guys|sir|madam|ma'am|bro|buddy|so much|very much|a lot))?[\s!.,?🙂😊👍🙏]*$/i;
+/** A greeting or a thank-you: nothing to look up (chat skips web search for these). */
+export const isSmallTalk = (text: string) => SOCIAL.test(text.trim());
 const QUICK_ASK =
   /^(please\s+|can you\s+|could you\s+|kindly\s+)?(translate|rephrase|reword|rewrite|paraphrase|correct|proofread|fix (the |my |this )?(grammar|spelling|typos?)|spell-?check|shorten|make (it|this|the|my)( \w+){0,3}? (sound )?(more |less )?(shorter|longer|formal|polite|friendly|casual|clearer|simpler|professional|positive)|convert|define|what does .{1,40} mean|what is the (capital|meaning|full form|abbreviation|plural|opposite|synonym)|who (is|was)|when (is|was|did)|where is|how do (you|i) (say|spell|pronounce)|give me (a |some )?synonyms?)\b/i;
 /** "Summarize: <the text>". Without the text it's a question in disguise ("summarize what makes a good…"). */
@@ -139,6 +143,10 @@ export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null;
   // Answers from documents have to read and cite them; small models skip the details.
   if (input.hasSources && found.difficulty !== null && RANK[found.difficulty] < RANK.medium) {
     found = { difficulty: "medium", reason: "an answer from your documents" };
+  }
+  // The same for web search results: several pages to read, weigh and cite by number.
+  if (input.webSearch && found.difficulty !== null && RANK[found.difficulty] < RANK.medium) {
+    found = { difficulty: "medium", reason: "an answer from web sources" };
   }
   // Small models are weakest outside English.
   if (otherScript && found.difficulty === "easy") found = { difficulty: "medium", reason: "a request in another language" };
@@ -265,11 +273,19 @@ export interface ChooseInput {
   /** Tokens the model will read besides the request (history, sources). */
   contextTokens?: number;
   hasSources?: boolean;
+  /** Web search results will be in the prompt. */
+  webSearch?: boolean;
   follows?: Difficulty | null;
   /** Images to look at: prefer models that read images. */
   needsVision?: boolean;
   /** "auto" came from what was saved (a chat on Auto), not from the request: without Auto, use the default. */
   savedAuto?: boolean;
+  /**
+   * Pick for this difficulty directly: no rules, no judge, and `requested` is ignored (the lesson
+   * check asks for "hard"). The person's tiered models are used even when Auto isn't the default,
+   * in the usual order (hard: advanced, then standard, then fast); with none, their default model.
+   */
+  difficulty?: Difficulty;
 }
 
 export interface Chosen {
@@ -285,6 +301,16 @@ export interface Chosen {
 export async function chooseModel(db: DB, box: SecretBox, input: ChooseInput): Promise<Chosen> {
   const settings = await routingSettings(db);
   const models = await availableModels(db, input.workspaceId, input.section, input.userId);
+  if (input.difficulty) {
+    const picked = pickModel(models, input.difficulty, estimateTokens(input.text) + (input.contextTokens ?? 0));
+    if (!picked) {
+      const r = await resolveModel(db, box, input.workspaceId, input.section, null, input.userId);
+      return { ...r, routing: null, thinking: r.model.thinkingSwitch ? input.difficulty === "hard" && settings.thinkOnHard : undefined };
+    }
+    const thinking = picked.thinkingSwitch ? input.difficulty === "hard" && settings.thinkOnHard : undefined;
+    const routing: Routing = { difficulty: input.difficulty, tier: picked.tier as ModelTier, thinking: thinking === true, by: "rules", reason: "asked for directly" };
+    return { model: picked, provider: await providerConfig(db, box, picked.id), routing, thinking };
+  }
   const auto =
     input.requested === AUTO_MODEL_ID || (!input.requested && settings.default)
       ? autoAvailable(models, settings)
@@ -296,7 +322,7 @@ export async function chooseModel(db: DB, box: SecretBox, input: ChooseInput): P
     return { ...r, routing: null, thinking: r.model.thinkingSwitch ? false : undefined };
   }
 
-  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, follows: input.follows });
+  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, webSearch: input.webSearch, follows: input.follows });
   let by: Routing["by"] = "rules";
   if (difficulty === null && settings.judge === "model") {
     const judge = await judgeModel(db, box, models, settings);

@@ -470,6 +470,8 @@ export const message = pgTable(
     routing: jsonb("routing").$type<Routing>(),
     /** A tested GEM AI calculator ran for this answer: its inputs and results (the model only explained them). */
     calculation: jsonb("calculation").$type<Record<string, unknown>>(),
+    /** The person switched on web search for this answer: what was searched, and why it failed if it did. */
+    web: jsonb("web").$type<MessageWeb>(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -586,15 +588,30 @@ export const auditLog = pgTable(
 
 export interface Citation {
   n: number;
-  /** "document" sources come from files/notes; "chat" and "task" ones are earlier chats and Work AI tasks in the same project. */
-  kind?: "document" | "chat" | "task";
+  /**
+   * "document" sources come from files/notes; "chat" and "task" ones are earlier chats and Work AI
+   * tasks in the same project; "web" ones are web search results (their link came from the provider).
+   */
+  kind?: "document" | "chat" | "task" | "web";
   documentId: string | null;
   chatId?: string;
   taskId?: string;
+  /** A web source's page, as the search provider returned it. */
+  url?: string;
   name: string;
   page: number | null;
   snippet: string;
   label?: "confirmed" | "assumption" | "tbd" | null;
+}
+
+/** Web search for one chat answer (the sources themselves are its citations). */
+export interface MessageWeb {
+  /** What was searched for. */
+  queries: string[];
+  /** The provider that searched; null when none was set up. */
+  provider: "searxng" | "ollama" | "brave" | "tavily" | "serper" | null;
+  /** Why there are no web sources (a failed search, nothing found), in English; translated when shown. */
+  note: string | null;
 }
 
 export const document = pgTable(
@@ -1134,6 +1151,10 @@ export const courseLesson = pgTable(
     videosCheckedAt: timestamp("videos_checked_at", { withTimezone: true }),
     /** Why videos are missing, when they are ("not configured", "quota"...). */
     videosNote: text("videos_note"),
+    /** How the lesson was researched and checked before it was saved (null: written without a check). */
+    verification: jsonb("verification").$type<LessonVerification>(),
+    /** What's happening while it's written: researching → writing → checking → videos; null when done. */
+    stage: text("stage").$type<LessonStage>(),
     error: text("error"),
     modelId: text("model_id").references(() => model.id, { onDelete: "set null" }),
     inputTokens: integer("input_tokens"),
@@ -1169,6 +1190,41 @@ export const youtubeCache = pgTable("youtube_cache", {
   query: text("query").notNull(),
   results: jsonb("results").$type<LessonVideo[]>().notNull(),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * A person's rating of a lesson video, one per person and video (it holds across lessons). The
+ * organization's ratings steer later picks: a video with at least two Not helpful and more Not
+ * helpful than Helpful isn't offered again (docs/15-gem-ai.md#rated-videos).
+ */
+export const videoFeedback = pgTable(
+  "video_feedback",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** The lesson version it was rated in (the video's title is read from there). */
+    lessonId: text("lesson_id").references(() => courseLesson.id, { onDelete: "set null" }),
+    videoId: text("video_id").notNull(),
+    rating: text("rating").$type<"up" | "ok" | "down">().notNull(),
+    /** Why it wasn't helpful (only with "down"). */
+    reason: text("reason").$type<"off_topic" | "poor_quality" | "wrong_language" | "too_long" | "too_short" | "broken" | "other">(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("video_feedback_user_video_idx").on(t.userId, t.videoId), index("video_feedback_video_idx").on(t.videoId)],
+);
+
+/** Videos an admin blocked: never offered to a lesson again, and dropped from lessons at their next check. */
+export const videoBlock = pgTable("video_block", {
+  videoId: text("video_id").primaryKey(),
+  blockedBy: text("blocked_by").references(() => user.id, { onDelete: "set null" }),
+  reason: text("reason"),
+  /** As shown when it was blocked, so the list can name it after lessons have dropped it. */
+  title: text("title"),
+  channel: text("channel"),
+  createdAt: createdAt(),
 });
 
 /* ───────────── GEM AI: Calculators ───────────── */
@@ -1255,6 +1311,18 @@ export interface GemSettingsStored {
   lessonsPerDay: number;
   /** Where lesson videos come from: the Data API, yt-dlp, either ("auto") or none. */
   videoSource?: "auto" | "ytdlp" | "api" | "off";
+  /** Web search for chat and lessons. Unset: WEB_SEARCH_PROVIDER; "off" is the admin's choice and wins. */
+  webProvider?: "off" | "searxng" | "ollama" | "brave" | "tavily" | "serper";
+  /** The SearXNG server (null: WEB_SEARCH_URL, then Work AI's SearXNG). */
+  webUrl?: string | null;
+  /** The paid provider's API key, encrypted (WEB_SEARCH_KEY in the environment also works). */
+  webKeyEnc?: string | null;
+  /** Which provider that key is for, so it's never sent to another one after a switch. */
+  webKeyProvider?: "ollama" | "brave" | "tavily" | "serper" | null;
+  /** People may switch web search on in chat (default on). */
+  chatWebSearch?: boolean;
+  /** Lessons are researched and checked before they're saved (default on). */
+  lessonCheck?: boolean;
 }
 
 export interface CourseOutline {
@@ -1292,6 +1360,43 @@ export interface LessonContent {
   takeaways: string[];
 }
 
+export type LessonStage = "researching" | "writing" | "checking" | "videos";
+
+/** One thing the checker corrected (or, with `open`, an arithmetic error still in the lesson). */
+export interface LessonIssue {
+  part: "objectives" | "theory" | "explanation" | "equation" | "workedExample" | "diagram" | "mistake" | "reference" | "takeaway" | "other";
+  problem: string;
+  fix: string;
+  severity: "high" | "medium" | "low";
+  /** Numbers of the sources (verification.sources) that show it. */
+  sources: number[];
+  /** Still wrong after the check (a calculation that doesn't come out as the lesson says). */
+  open?: boolean;
+}
+
+/** How a lesson was researched and checked (docs/15-gem-ai.md#checked-lessons). */
+export interface LessonVerification {
+  /** "checked": nothing to correct; "corrected": the checker changed it; "not_checked": the check failed. */
+  status: "checked" | "corrected" | "not_checked";
+  /** Why it wasn't checked (English; translated when shown). */
+  reason?: string | null;
+  /** The checker's model (display name, kept if the model goes) and its id. */
+  model: string | null;
+  modelId?: string | null;
+  checkedAt: string;
+  /** The web search provider the sources came from; null when none was used. */
+  provider: "searxng" | "ollama" | "brave" | "tavily" | "serper" | null;
+  /** What was searched for. */
+  queries?: string[];
+  /** Why there are no sources (the search failed), in English; translated when shown. */
+  researchNote?: string | null;
+  /** The pages the writer and the checker read, numbered as the issues cite them. Links come only from the provider. */
+  sources: { n: number; title: string; url: string }[];
+  issues: LessonIssue[];
+  /** The lesson's calculations, worked out by the calculators' engine (computed null: it couldn't be read). */
+  calc: { label: string; expression: string; claimed: number; computed: number | null; ok: boolean | null }[];
+}
+
 export interface LessonVideo {
   videoId: string;
   title: string;
@@ -1300,6 +1405,8 @@ export interface LessonVideo {
   durationSeconds?: number | null;
   thumbnail?: string;
   query?: string;
+  /** Why the picker chose it, in a line (absent when videos were kept in search order). */
+  why?: string;
 }
 
 export interface KnowledgeCitation {

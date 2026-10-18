@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, AtSign, Check, ChevronDown, Loader2, Mic, Plus, Search, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, Check, ChevronDown, Globe, Loader2, Mic, Plus, Search, Sparkles, Square, X } from "lucide-react";
 import { Popover } from "radix-ui";
 import { ACCEPT, FileIcon } from "@/components/documents/use-documents";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -40,6 +40,8 @@ interface Props {
   onAttachDocument: (doc: DocumentRow) => void;
   onRemoveAttachment: (key: string) => void;
   library?: DocumentRow[];
+  /** "Search the web", when the organization offers it: on for every message until switched off. */
+  webSearch?: { on: boolean; onToggle: () => void };
 }
 
 /** Bordered prompt box: text on top, tools and send on the bottom row. */
@@ -61,6 +63,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     onAttachDocument,
     onRemoveAttachment,
     library,
+    webSearch,
   },
   ref,
 ) {
@@ -159,6 +162,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           onPick={onAttachDocument}
           disabled={disabled}
         />
+        {webSearch && <WebToggle on={webSearch.on} onToggle={webSearch.onToggle} disabled={disabled} />}
         <span className="mx-1.5 h-4 w-px bg-border max-sm:hidden" />
         <span className="max-sm:hidden">
           <ToolButton label={t("Skills · coming with Work AI")} disabled wide>
@@ -225,6 +229,32 @@ function ToolButton({
           )}
         >
           {children}
+        </button>
+      </span>
+    </Tooltip>
+  );
+}
+
+/** The globe: off, an icon like the others; on, a highlighted "Web search" until it's switched off. */
+function WebToggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
+  const t = useT();
+  return (
+    <Tooltip content={on ? t("Turn off web search") : t("Search the web")}>
+      <span>
+        <button
+          type="button"
+          aria-label={t("Search the web")}
+          aria-pressed={on}
+          disabled={disabled}
+          onClick={onToggle}
+          data-testid="web-toggle"
+          className={cn(
+            "flex h-7 items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors disabled:pointer-events-none disabled:text-fg-subtle [&_svg]:size-4",
+            on ? "bg-accent-soft px-2 text-accent-text hover:bg-accent-soft/70" : "w-7 text-fg-muted hover:bg-surface-2 hover:text-fg",
+          )}
+        >
+          <Globe />
+          {on && <span className="max-sm:hidden">{t("Web search")}</span>}
         </button>
       </span>
     </Tooltip>

@@ -14,13 +14,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "./app";
 import type { Config } from "./config";
 import type { AvailableModel } from "./services/models";
-import { judgeByRules, pickModel } from "./services/router";
+import { createSecretBox } from "./crypto";
+import { chooseModel, judgeByRules, pickModel } from "./services/router";
 
 const url = process.env.TEST_DATABASE_URL;
 const APP_URL = "http://localhost:3000";
 
 describe("rules", () => {
-  const level = (text: string, extra: { hasSources?: boolean; follows?: "easy" | "medium" | "hard" } = {}) => judgeByRules({ text, ...extra }).difficulty;
+  const level = (text: string, extra: { hasSources?: boolean; webSearch?: boolean; follows?: "easy" | "medium" | "hard" } = {}) => judgeByRules({ text, ...extra }).difficulty;
 
   it("easy: greetings, thanks, quick rewrites and short questions", () => {
     for (const t of ["hi", "hi there", "Thanks a lot!", "thank you so much 🙏", "ok 👍", "Good morning", "Translate 'good morning' into Hindi", "Fix the grammar: me and him goes to office", "What is the capital of Australia?", "Who is the CEO of Infosys?", "summarize: The meeting moved to Friday at 3 pm in room 4."])
@@ -58,6 +59,9 @@ describe("rules", () => {
     expect(level("How much is 18% GST on 45,000 rupees?")).toBe("medium");
     expect(level("hello", { hasSources: true })).toBe("easy"); // still just a greeting
     expect(level("What is the leave policy?", { hasSources: true })).toBe("medium");
+    // Web search results are sources too: several pages to weigh and cite.
+    expect(level("Who is the CEO of Infosys?", { webSearch: true })).toBe("medium");
+    expect(judgeByRules({ text: "Who is the CEO of Infosys?", webSearch: true }).reason).toBe("an answer from web sources");
     expect(level("मुझे छुट्टी के लिए आवेदन लिखना है")).toBe("medium");
   });
 
@@ -297,6 +301,23 @@ describe("rules", () => {
     expect(hard.json).toMatchObject({ modelId: ids["super-120b"], routing: { difficulty: "hard", tier: "advanced", thinking: true } });
     const [t] = await db.select().from(workTask).where(eq(workTask.id, hard.json.id));
     expect(t!.routing?.thinking).toBe(true);
+  });
+
+  it("a caller can ask for a difficulty directly (the lesson check): no rules, no judge, Auto default or not", async () => {
+    const box = createSecretBox("test-secret-test-secret-test-secret-1234");
+    const userId = (await call("GET", "/api/me")).json.user.id as string;
+    const judged = seen.filter((s) => s.judge).length;
+    // The text alone would be easy (and asks the judge nothing); "hard" goes to the advanced tier.
+    const hard = await chooseModel(db, box, { workspaceId, section: "chat", userId, requested: null, text: "Check a lesson", difficulty: "hard" });
+    expect(hard.model.id).toBe(ids["super-120b"]);
+    expect(hard.routing).toMatchObject({ difficulty: "hard", tier: "advanced", thinking: true });
+    expect(hard.thinking).toBe(true);
+    expect(seen.filter((s) => s.judge).length).toBe(judged);
+    // A model asked for by hand doesn't change it, and nor does Auto not being the default.
+    await call("PUT", "/api/admin/routing", { default: false });
+    const again = await chooseModel(db, box, { workspaceId, section: "chat", userId, requested: ids["nano-4b"], text: "hi", difficulty: "hard" });
+    expect(again.model.id).toBe(ids["super-120b"]);
+    await call("PUT", "/api/admin/routing", { default: true });
   });
 
   it("settings: Auto can be turned off or made optional; the admin can try a message", async () => {

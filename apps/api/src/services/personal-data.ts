@@ -34,6 +34,7 @@ import {
   user,
   userGroup,
   userGroupMember,
+  videoFeedback,
   workEvent,
   workSchedule,
   workspace,
@@ -173,7 +174,7 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
         title: c.title,
         createdAt: c.createdAt,
         temporary: c.temporary,
-        messages: msgs.map((m) => ({ id: m.id, parentId: m.parentId, role: m.role, content: m.content, error: m.error, citations: m.citations, attachments: m.attachments, createdAt: m.createdAt })),
+        messages: msgs.map((m) => ({ id: m.id, parentId: m.parentId, role: m.role, content: m.content, error: m.error, citations: m.citations, web: m.web, attachments: m.attachments, createdAt: m.createdAt })),
       });
       const shown: ExportMessage[] = msgs
         .filter((m) => m.role !== "system")
@@ -259,10 +260,20 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
         tags: c.tags,
         outline: c.outline,
         createdAt: c.createdAt,
-        lessons: lessons.map((l) => ({ ordinal: l.ordinal, version: l.version, current: l.current, title: l.title, status: l.status, content: l.content, videos: l.videos, createdAt: l.createdAt })),
+        lessons: lessons.map((l) => ({ ordinal: l.ordinal, version: l.version, current: l.current, title: l.title, status: l.status, content: l.content, verification: l.verification, videos: l.videos, createdAt: l.createdAt })),
         progress,
       });
     }
+    // Lesson video ratings, with the lesson each was given in (when it still exists).
+    await zip.json(
+      "learning/video-ratings.json",
+      await db
+        .select({ videoId: videoFeedback.videoId, rating: videoFeedback.rating, reason: videoFeedback.reason, lesson: courseLesson.title, createdAt: videoFeedback.createdAt, updatedAt: videoFeedback.updatedAt })
+        .from(videoFeedback)
+        .leftJoin(courseLesson, eq(courseLesson.id, videoFeedback.lessonId))
+        .where(eq(videoFeedback.userId, userId))
+        .orderBy(asc(videoFeedback.createdAt)),
+    );
     await zip.json("calculators/history.json", await db.select().from(calculatorHistory).where(eq(calculatorHistory.userId, userId)).orderBy(asc(calculatorHistory.createdAt)));
     await zip.json("calculators/favorites.json", await db.select().from(calculatorFavorite).where(eq(calculatorFavorite.userId, userId)));
     await zip.json(
@@ -292,6 +303,7 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
         "documents/           the files you uploaded; documents.json lists them",
         "projects.json         projects you own and the ones you're a member of",
         "work/                Work AI tasks: the timeline of each and the files it made",
+        "learning/            your courses with every lesson version, and your ratings of lesson videos",
         "skills.json, schedules.json, connected-apps.json, code-workspaces.json",
         "token-requests.json, notifications.json",
         "usage.csv             each model call: when, which section, tokens",

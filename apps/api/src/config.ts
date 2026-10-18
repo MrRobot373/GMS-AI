@@ -1,3 +1,4 @@
+import { WEB_PROVIDERS, type WebProvider } from "@aatmiq/shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { S3Config } from "./services/storage";
@@ -77,6 +78,11 @@ export interface Config {
    * asks to sign in (YT_DLP_COOKIES, YT_DLP_PROXY).
    */
   ytDlp?: { path: string; cookies: string | null; proxy: string | null };
+  /**
+   * Web search for chat and lessons from the environment (WEB_SEARCH_PROVIDER, WEB_SEARCH_URL for
+   * SearXNG, WEB_SEARCH_KEY for the paid ones). Each fills in what Admin → Settings leaves unset.
+   */
+  webSearch?: { provider: WebProvider | null; url: string | null; key: string | null };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -119,8 +125,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     youtubeApiKey: env.YOUTUBE_API_KEY || null,
     youtubeApiUrl: env.YOUTUBE_API_URL || "https://www.googleapis.com/youtube/v3",
     ytDlp: { path: env.YT_DLP_PATH || "yt-dlp", cookies: env.YT_DLP_COOKIES || null, proxy: env.YT_DLP_PROXY || null },
+    webSearch: loadWebSearch(env),
     setupMaxRunning: env.SETUP_MAX_RUNNING ? Math.max(1, Math.min(500, Math.round(Number(env.SETUP_MAX_RUNNING)) || 8)) : null,
   };
+}
+
+/** WEB_SEARCH_PROVIDER (searxng | ollama | brave | tavily | serper | off), WEB_SEARCH_URL, WEB_SEARCH_KEY. */
+export function loadWebSearch(env: NodeJS.ProcessEnv): Config["webSearch"] {
+  const p = env.WEB_SEARCH_PROVIDER || "";
+  if (p && p !== "off" && !(WEB_PROVIDERS as readonly string[]).includes(p)) throw new Error(`WEB_SEARCH_PROVIDER: use ${WEB_PROVIDERS.join(", ")} or off`);
+  const provider = p && p !== "off" ? (p as WebProvider) : null;
+  const url = env.WEB_SEARCH_URL || null;
+  if (url && !/^https?:\/\//.test(url)) throw new Error("WEB_SEARCH_URL must start with http:// or https://");
+  const key = env.WEB_SEARCH_KEY || null;
+  // A key without its provider could end up at a different one: say which it's for.
+  if (key && (!provider || provider === "searxng")) throw new Error("WEB_SEARCH_KEY needs WEB_SEARCH_PROVIDER: ollama, brave, tavily or serper");
+  return { provider, url: url?.replace(/\/+$/, "") ?? null, key };
 }
 
 /** SETUP_EMBEDDING_URL, SETUP_EMBEDDING_MODEL, _DISPLAY_NAME, _PROVIDER (ollama | openai_compatible), _API_KEY. */

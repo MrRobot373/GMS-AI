@@ -4,7 +4,8 @@
  *  - yt-dlp, the way Agent-Reach reads YouTube (no key): a flat `ytsearch`, then each result
  *    confirmed public and embeddable through YouTube's oEmbed endpoint.
  * Every link is built from a video ID the source returned. Searches are cached for a week, and
- * saved videos are re-checked so removed or private ones drop out.
+ * saved videos are re-checked so removed or private ones drop out. Which of the results a lesson
+ * shows is decided in services/lesson-videos.ts.
  */
 import { eq, sql, youtubeCache, type DB, type LessonVideo } from "@aatmiq/db";
 import type { VideoSource } from "@aatmiq/shared";
@@ -15,6 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const CACHE_DAYS = 7;
+/** Results asked of each search (the API's maxResults, yt-dlp's ytsearchN), before they're confirmed. */
+export const SEARCH_RESULTS = 10;
 
 export type VideoNote = "not_configured" | "quota" | "unavailable" | "blocked";
 export type VideoOutcome = { videos: LessonVideo[]; note: VideoNote | null };
@@ -225,10 +228,11 @@ async function details(deps: VideoDeps, ids: string[]): Promise<Map<string, Less
 
 /* ───────────── Both ───────────── */
 
-const hashQuery = (q: string) => createHash("sha256").update(q.trim().toLowerCase()).digest("hex");
+// The result count is part of the key: searches cached when fewer results were asked for aren't reused.
+const hashQuery = (q: string) => createHash("sha256").update(`${SEARCH_RESULTS}:${q.trim().toLowerCase()}`).digest("hex");
 
 /** Search (cached), then confirm each result: videos.list for the API, oEmbed for yt-dlp. */
-export async function searchVideos(deps: VideoDeps, query: string, max = 3): Promise<LessonVideo[]> {
+export async function searchVideos(deps: VideoDeps, query: string, max = SEARCH_RESULTS): Promise<LessonVideo[]> {
   const q = query.replace(/\s+/g, " ").trim().slice(0, 120);
   if (!q || !deps.source) return [];
   const h = hashQuery(q);
@@ -236,12 +240,12 @@ export async function searchVideos(deps: VideoDeps, query: string, max = 3): Pro
   if (hit && Date.now() - hit.fetchedAt.getTime() < CACHE_DAYS * 86_400_000) return hit.results.slice(0, max);
   let videos: LessonVideo[];
   if (deps.source === "api") {
-    const r = await call(deps, "search", { part: "id", type: "video", q, maxResults: String(Math.min(10, max + 2)), safeSearch: "strict", relevanceLanguage: "en", videoEmbeddable: "true" });
+    const r = await call(deps, "search", { part: "id", type: "video", q, maxResults: String(SEARCH_RESULTS), safeSearch: "strict", relevanceLanguage: "en", videoEmbeddable: "true" });
     const ids: string[] = (r.items ?? []).map((it: any) => it?.id?.videoId).filter(isVideoId);
     const found = await details(deps, ids);
     videos = ids.map((id) => found.get(id)).filter((v): v is LessonVideo => !!v);
   } else {
-    const candidates = await ytDlpSearch(deps, q, Math.min(10, max + 3));
+    const candidates = await ytDlpSearch(deps, q, SEARCH_RESULTS);
     // Only confirmed videos are offered; one YouTube couldn't be asked about isn't.
     const { live } = await oembedCheck(deps, candidates);
     videos = candidates.map((v) => live.get(v.videoId)).filter((v): v is LessonVideo => !!v);
@@ -256,16 +260,19 @@ export async function searchVideos(deps: VideoDeps, query: string, max = 3): Pro
 
 const noteFor = (e: unknown): VideoNote => (e instanceof YouTubeQuotaError ? "quota" : e instanceof YouTubeBlockedError ? "blocked" : "unavailable");
 
-/** Videos for a lesson from its search phrases, at most `max`, no duplicates. */
-export async function videosFor(deps: VideoDeps, queries: string[], max = 4): Promise<VideoOutcome> {
+/**
+ * The candidates for a lesson: every confirmed result of up to 3 of its search phrases, in search
+ * order, each video once. Picking among them is services/lesson-videos.ts's job. When a search
+ * fails, what the earlier ones found is kept, with the note.
+ */
+export async function videoCandidates(deps: VideoDeps, queries: string[]): Promise<VideoOutcome> {
   if (!deps.source) return { videos: [], note: "not_configured" };
   const out: LessonVideo[] = [];
   try {
     for (const q of queries.slice(0, 3)) {
-      for (const v of await searchVideos(deps, q, 3)) if (!out.some((o) => o.videoId === v.videoId)) out.push(v);
-      if (out.length >= max) break;
+      for (const v of await searchVideos(deps, q)) if (!out.some((o) => o.videoId === v.videoId)) out.push(v);
     }
-    return { videos: out.slice(0, max), note: null };
+    return { videos: out, note: null };
   } catch (e) {
     return { videos: out, note: noteFor(e) };
   }

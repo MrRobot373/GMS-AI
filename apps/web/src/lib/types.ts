@@ -24,8 +24,8 @@ export interface Me {
   isWorkspaceAdmin: boolean;
   org: { name: string; productName: string; accentColor: string; promptLogging: boolean; logoUrl: string | null; defaultLocale: "en" | "hi"; illustrations: boolean };
   workspaces: { id: string; name: string; icon: string | null; role: WorkspaceRole; sections: MemberSection[] }[];
-  /** GEM AI modules the organization has switched on. */
-  gem?: { modules: { learning: boolean; calculators: boolean; knowledge: boolean }; betaCalculators: boolean };
+  /** GEM AI modules the organization has switched on; webSearch: chat offers "Search the web". */
+  gem?: { modules: { learning: boolean; calculators: boolean; knowledge: boolean }; betaCalculators: boolean; webSearch?: boolean };
   unreadNotifications: number;
   license?: {
     state: string;
@@ -177,7 +177,17 @@ export interface ChatMessageRow {
   routing?: Routing | null;
   /** A tested GEM AI calculator ran for this answer (apps/api/src/services/calc-tool.ts). */
   calculation?: import("@/components/chat/calculation-card").ChatCalculation | null;
+  /** The answer searched the web (its sources are among the citations). */
+  web?: MessageWeb | null;
   createdAt: string;
+}
+
+/** Web search for one chat answer (apps/api/src/services/chat-web.ts). */
+export interface MessageWeb {
+  queries: string[];
+  provider: string | null;
+  /** Why there are no web sources (a failed search, nothing found, switched off). */
+  note: string | null;
 }
 
 export interface NotificationRow {
@@ -239,10 +249,12 @@ export interface DocumentRow {
 
 export interface Citation {
   n: number;
-  kind?: "document" | "chat" | "task";
+  kind?: "document" | "chat" | "task" | "web";
   documentId: string | null;
   chatId?: string;
   taskId?: string;
+  /** A web source's page, as the search provider returned it. */
+  url?: string;
   name: string;
   page: number | null;
   snippet: string;

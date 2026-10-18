@@ -27,7 +27,89 @@ Org admins always have every module that's switched on. The same settings page h
   (default 60). Token budgets apply on top: Learning and Knowledge are metered under their own
   sections in Admin → Usage.
 - **Lesson videos**: where they come from (yt-dlp with no key, a YouTube Data API key, or off),
-  and the optional key (below).
+  the optional key (below), and how people rated them: totals, the most disliked (each with
+  *Block*), the most liked, and the blocked videos (each with *Unblock*). See
+  [Rated videos](#rated-videos).
+- **Web search**: the provider chat and lessons search with, its server or key, a *Test* button,
+  and two switches: *Let people search the web in chat* and *Check lessons before they're saved*
+  (both on by default). See [Web search](#web-search).
+
+## Web search
+
+Chat and lessons can search the web through one provider, chosen in Admin → Settings → *Web
+search* (`services/web-search.ts`):
+
+| Provider | Needs | Where the search words go |
+|---|---|---|
+| **SearXNG** (self-hosted) | Its address. Empty: the one in Admin → Work AI | Your own server, which asks the search engines it's set up with |
+| **Ollama web search** | An API key from ollama.com | Ollama; results come with each page's text |
+| **Brave Search** | An API key (Brave Search API) | Brave |
+| **Tavily** | An API key | Tavily; results come with an extract of each page |
+| **Serper** | An API key | Serper (Google results) |
+
+- **Off** is the default. Each part comes from Admin → Settings when it's set there, otherwise from
+  `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_URL` and `WEB_SEARCH_KEY`; choosing *Off* in Admin → Settings
+  switches it off even when the environment sets a provider. A SearXNG address set nowhere falls
+  back to Work AI's.
+- **Keys** are stored encrypted, never sent back to the browser and never written in the audit log
+  or in error messages. A key belongs to the provider it was saved for: after switching to another
+  provider it isn't sent there, and switching back uses it again. `WEB_SEARCH_KEY` is used only
+  with the provider in `WEB_SEARCH_PROVIDER`.
+- **Test** runs one search ("Ohm's law") with what's typed or what's saved and shows how many
+  results came back, how long it took and the first few, or what went wrong: the key refused, the
+  plan's limit used up, or the provider unreachable.
+- **Results**: only `http` and `https` links, each once, titles up to 300 characters and snippets up
+  to 600. Searches are cached in memory for 10 minutes per provider and query. A link always comes
+  from a search result, never from what a model wrote.
+- **Reading pages**: when a result has no page text (SearXNG, Brave, Serper), the server reads the
+  page itself: HTML and plain text only, up to 1.5 MB, 8 seconds, scripts, styles, navigation and
+  footers dropped. Only public addresses: every address a name resolves to must be public, the
+  connection is made to the address that was checked, and each of at most 3 redirects is checked
+  again, so a result can't point the server at `localhost`, the cloud metadata service or the
+  organization's network. A SearXNG server on this machine or the local network is fine for the
+  search itself (the admin set it up), never for reading pages.
+
+The search words go to the chosen provider. With SearXNG they stay on your own server, which
+forwards them to the engines in its `settings.yml`; the paid providers see them, and with Ollama
+and Tavily they also send back page text.
+
+### Web search in chat
+
+When a provider is set up and *Let people search the web in chat* is on, the chat box has a
+**Search the web** button (the globe). It's per message: once switched on it stays on for that
+chat's messages until it's switched off, and a chat whose last answer searched the web opens with
+it on. People without the Chat section never see it, and Work AI keeps its own web search
+(Admin → Work AI). The server checks the organization's switch and the provider on every message;
+what the browser sends can't turn it on (`services/chat-web.ts`):
+
+1. **Queries**: one small model call (the person's fast-tier model when they have one with budget
+   left, else the model answering) reads the last few turns and writes 1 to 3 search queries as
+   JSON. If it fails or writes no JSON, the message itself is searched. Its tokens are metered
+   under Chat. Greetings and thank-yous search nothing.
+2. **Search**: each query gets up to 5 results; one per link, the best 6 are kept (each query's
+   first result, then each one's second…), and up to 4 pages without text are read (3,000
+   characters each, public addresses only, as above).
+3. **Answer**: the model gets the pages as numbered extracts, after any document sources (with two
+   document passages, the web sources are [3] to [8]). It's told to cite them by number, to say
+   plainly when they don't answer the question, to prefer them over what it remembers for current
+   facts, never to write URLs, and to treat the pages as data, not instructions. Auto treats a
+   message with web sources like one with documents: at least a standard model.
+4. **Citations**: a number that matches no source is taken out of the saved answer (code is left
+   alone). The sources are saved with the answer as citations of kind `web` with the title, the
+   link from the provider and a snippet; `message.web` (migration `0024_chat_web.sql`) keeps the
+   queries, the provider and, when there are no sources, why.
+
+While it works, the answer shows *Searching the web…* with the queries, then *Searched the web*
+with the sources as chips while the answer is written. Under the answer, *Sources* lists each page
+(title and site) and opens it in a new tab; the inline [n] markers open the same page. Links in
+the answer itself that the model wrote show as plain text: links come only from search results.
+Downloads (Word, Markdown, PDF) list each web source with its link.
+
+A provider that fails doesn't fail the message: the answer is written without web sources, the
+model says it couldn't check the web, and a note under *Searched the web* says why ("Web search
+failed: The search provider refused the key."). The note is also shown when the organization has
+switched web search off for chat or no provider is set up. Web sources and queries are part of the
+person's chats in their data export, and go with their chats.
 
 ## Learning
 
@@ -39,7 +121,8 @@ and token allowance, like a chat):
    unit *and when the formula applies*, a worked example with given values and the answer, diagrams
    to look up (named published figures and where to find them, never drawings made up by the
    model), common mistakes, references and takeaways. Written when the lesson is first opened, or
-   all at once with *Write the remaining lessons*.
+   all at once with *Write the remaining lessons*. With lesson checks on, each one is written from
+   web sources and checked before it's saved: see [Checked lessons](#checked-lessons).
 
 What the model returns must be JSON in the expected shape (`outlineSchema` and `lessonSchema` in
 `packages/shared/src/gem.ts`). If it isn't, the model is asked once to fix it; if that fails too,
@@ -51,8 +134,61 @@ old one, which can be shown again. Progress, bookmarks and notes are each person
 is private to the person who made it. Lessons still being written when the server restarts are
 picked up again.
 
-**Videos.** Each lesson gets up to four real YouTube videos, found by searching for the lesson's
-topics. Admin → Settings → *Lesson videos* chooses where they come from:
+### Checked lessons
+
+With *Check lessons before they're saved* on (the default), each lesson is written from web
+sources and checked by a second, stronger model before it's saved (`services/learning-check.ts`):
+
+1. **Sources** (when web search is set up): 2 or 3 searches built from the course topic, the
+   lesson's title and its summary in the outline, without a model call (the title with the topic,
+   the topic with the summary, the title with "worked example"). Each gets up to 4 results; one per
+   link, the best 6 are kept, and pages without text are read (2,500 characters each, public
+   addresses only, as in [Web search](#web-search)). A search that fails doesn't stop the lesson:
+   it's written and checked without sources, and the check says why.
+2. **Writing**: as before, by the model Auto picks, with the sources as numbered extracts. The
+   writer is told to use them to get facts, formulas, constants and references right, not to copy
+   their text, and to name only books and standards it's sure exist, preferably ones the sources
+   mention.
+3. **The check**: one call on the person's Advanced-tier model. The router is asked for a hard
+   pick directly, without its rules or the judge; the person's model access and token allowance
+   apply, and without an Advanced model the usual order follows (standard, then fast, then their
+   default model). First, each reference the lesson cites (up to 5) is searched for by its title
+   and author (3 results), so the checker can see whether it exists. The checker gets the lesson
+   as JSON, the numbered sources and those lookups, and returns JSON (`lessonCheckSchema` in
+   `packages/shared/src/gem.ts`): what it corrected (the part, the problem, the fix, how much it
+   matters and the sources that show it), the whole corrected lesson, and each calculation in the
+   lesson as a plain-number expression with the value the lesson gives. References it can't
+   confirm are removed or replaced with real ones. A reply in the wrong shape gets one retry.
+4. **Arithmetic**: each expression is worked out by the calculators' engine
+   (`packages/calculators`), never by a model. A result more than 0.5 % away from the lesson's
+   (or 1e-9 near zero) goes back to the checker once, with the list, for a final lesson; what's
+   still wrong is kept as an open issue (*Not corrected: check this value before you rely on it*).
+
+The corrected lesson is what's saved, with `course_lesson.verification` (migration
+`0025_lesson_checks.sql`): the outcome (`checked`, `corrected`, or `not_checked` and why), the
+checker's model and the date, the provider, the sources (title and the provider's link), the
+corrections and the arithmetic. While a lesson is being made, `course_lesson.stage` says what's
+happening, and the lesson shows it: *Finding sources…*, *Writing…*, *Checking…*, *Finding videos…*.
+
+A check that fails (the model errors, its reply misses the shape twice, the token allowance is used
+up) never fails the lesson: it's saved as written, marked *Not checked*, with the reason. URLs are
+removed from the checker's lesson as from the writer's; the only links are the provider's search
+results. The checker's tokens are metered under Learning, like the writer's.
+
+In the lesson, a badge by the title says *Checked*, *Checked · 3 corrections* or *Not checked*, and
+*How this lesson was checked*, at the end, lists the model and date, each correction (part,
+problem → fix, severity and its sources), the arithmetic checks (the expression, what the lesson
+says, what it comes to, ✓ or ✗) and the sources with their sites. *Check this lesson*, next to
+*Write a new version*, researches and checks the current lesson again and saves the result as a
+new version, keeping its videos; it counts against the day's lessons like a new version. With the
+switch off, lessons are written as before: no searches, no check, and *Check this lesson* isn't
+offered.
+
+### Lesson videos
+
+Each lesson gets up to seven real YouTube videos. The lesson names one to three search phrases;
+each search asks for 10 results, every result is confirmed (below), and each video is kept once.
+Admin → Settings → *Lesson videos* chooses where they come from:
 
 - **yt-dlp** (no key): the way [Agent-Reach](https://github.com/Panniantong/Agent-Reach) reads
   YouTube. [yt-dlp](https://github.com/yt-dlp/yt-dlp) runs a flat search (one results page, no video
@@ -84,6 +220,42 @@ the API key is the supported route when that matters.
 
 The search words go to YouTube (Google) either way, and with yt-dlp the server's IP address does
 too.
+
+### Rated videos
+
+Which seven a lesson shows (`services/lesson-videos.ts`):
+
+1. **Left out first**: videos an admin blocked, videos the lesson's owner marked *Not helpful*,
+   and videos the organization found unhelpful: at least two *Not helpful* ratings and more of
+   them than *Helpful*.
+2. **The pick**: one small model call (the person's fast-tier model first, then standard; their
+   model access and token allowance apply, metered under Learning) gets the lesson's title, level
+   and objectives and the numbered candidates, each with its channel, length and the
+   organization's ratings so far. It returns `{ "picks": [{ "index": n, "why": "…" }] }`
+   (`videoPicksSchema` in `packages/shared/src/gem.ts`), best first, up to seven, leaving out
+   off-topic videos, other languages, adverts, trailers and course promotions, clips under two
+   minutes that only define a term, and near-duplicates, and preferring full explanations and
+   lectures from universities, NPTEL, manufacturers and established educators. Only numbers of
+   real candidates count, each once. The `why` is kept with the video and shown on its card.
+3. **When the pick fails** (the model errors, the reply isn't the JSON asked for, no number matches a
+   candidate, the token allowance is used up), the candidates stay in search order. There's no
+   retry: search order is the fallback.
+
+Under each video, the lesson's owner can say *Helpful*, *Okay* or *Not helpful*; each button shows
+how many people in the organization chose it. After *Not helpful* the card folds away to *You marked
+this not helpful · Undo*, with optional reasons (off topic, poor quality, wrong language, too long,
+other). A person has one rating per video, whichever lesson they rated it in, and can change it or
+take it back. Ratings are stored in `video_feedback` (migration `0026_video_feedback.sql`); a
+lesson keeps the videos it already has, so a video the owner marked stays there, folded, for *Undo*.
+The ratings are in the person's data export (`learning/video-ratings.json`) and are deleted with
+them.
+
+Admin → Settings → *Lesson videos* lists the totals, the ten most disliked (their counts, top
+reasons, and whether new lessons already leave them out) and the ten most liked. *Block* adds a
+video to `video_block`: it's never offered to a lesson again, it's hidden from lessons that have it
+at once, and those lessons drop it from what's saved the next time they're opened (their videos are
+checked again then). *Unblock* lets new lessons offer it again; lessons that dropped it don't get it
+back. Blocking and unblocking are in the activity log (`video.blocked`, `video.unblocked`).
 
 ## Calculators
 
@@ -189,6 +361,10 @@ These block a release, and each has tests that run on every push:
 | No wrong calculator numbers | `packages/calculators/test/`: every reference case of every calculator, the 20 verified ones with 101 hand-worked cases, plus the expression, symbolic, matrix, statistics and finance engines; `apps/api/src/calculators.test.ts` for the API and chat |
 | Citations only point at sources the person can open and passages that were retrieved | `knowledge.test.ts` (citation opening, dropped invented citations) |
 | Learning output is validated before it's stored | `apps/api/src/learning.test.ts` (malformed output, URLs, limits, versions, owner-only access) |
+| Web search reads pages only at public addresses, and its keys never leave the server | `apps/api/src/web-search.test.ts` (private addresses by IP, by name, mixed answers and after redirects; the key not in errors, responses or the audit log; a key never sent to another provider) |
+| Chat's web sources are real search results and every citation matches one | `apps/api/src/chat-web.test.ts` (sources saved and cited after the documents', invented numbers removed, nothing searched with the switch off, a failing provider leaves an answer and a note, private pages never read) |
+| Lesson videos are picked only from real results, and ratings and blocks keep bad ones out | `apps/api/src/learning-videos.test.ts` (seven picked from three searches of ten, invented numbers ignored, search order when the pick fails, ratings owner-only and only for the lesson's videos, the organization's dislikes and an admin's block keeping a video out of new lessons, ratings in the export and gone with the person) |
+| A checked lesson keeps only real sources, and a failed check never loses a lesson | `apps/api/src/learning-check.test.ts` (corrections saved with their issues and sources on the Advanced tier, a wrong calculation sent back once, a failing checker or search leaves the lesson ready, links only from the provider, *Check this lesson* as a new version and owner-only, the switch off) |
 
 ## Configuration
 
@@ -199,16 +375,25 @@ These block a release, and each has tests that run on every push:
 | `YT_DLP_PATH` | `yt-dlp` | The yt-dlp program lessons search with |
 | `YT_DLP_COOKIES` | none | A cookies file (Netscape format) for yt-dlp, when YouTube asks the server to sign in |
 | `YT_DLP_PROXY` | none | A proxy for yt-dlp, e.g. `http://proxy:3128` or `socks5://…` |
+| `WEB_SEARCH_PROVIDER` | none (off) | `searxng`, `ollama`, `brave`, `tavily`, `serper` or `off`, used until a provider is chosen in Admin → Settings |
+| `WEB_SEARCH_URL` | none | The SearXNG server for chat and lessons, when Admin → Settings doesn't set one (then Work AI's) |
+| `WEB_SEARCH_KEY` | none | The API key for `WEB_SEARCH_PROVIDER` (not SearXNG); Admin → Settings can hold one instead |
 | `KNOWLEDGE_MAX_DISTANCE` | `0.5` | Cosine distance beyond which a vector match isn't evidence |
 
 ## API
 
 | | |
 |---|---|
-| `GET/PUT /api/admin/gem` | Module switches, beta calculators, limits, video source and YouTube key (org admins) |
+| `GET/PUT /api/admin/gem` | Module switches, beta calculators, limits, video source and YouTube key, web search provider, server, key and switches (org admins; the keys are never returned) |
+| `POST /api/admin/gem/test-web` | One test search with the given or saved provider, server and key: `{ ok, results, ms, sample, error }` (org admins) |
+| `POST /api/chats/:id/messages` with `webSearch: true` | Search the web for this answer. Extra server-sent events: `searching {queries}`, then `search {queries, provider, sources: [{n, title, domain}], citations, note}` before the answer; `done` carries `content` when a citation number was taken out. `GET /api/me` says whether chat offers it (`gem.webSearch`) |
 | `GET/POST /api/learning/courses`, `GET/PATCH/DELETE /api/learning/courses/:id` | Courses |
 | `POST /api/learning/courses/:id/retry`, `…/generate-all` | Write the outline again; write every lesson |
-| `GET /api/learning/courses/:id/lessons/:n`, `POST …/generate`, `…/regenerate`, `…/restore`, `PUT …/state` | Lessons, versions, progress, bookmarks and notes |
+| `GET /api/learning/courses/:id/lessons/:n`, `POST …/generate`, `…/regenerate`, `…/restore`, `PUT …/state` | Lessons, versions, progress, bookmarks and notes. A lesson has `stage` while it's made, `verification` (how it was checked, or null) and `canCheck` (the organization checks lessons) |
+| `PUT /api/learning/courses/:id/lessons/:n/videos/:videoId/feedback` | Rate a video of that lesson: `{ rating: "up" \| "ok" \| "down" \| null, reason? }` (null takes it back; a reason only with `down`: `off_topic`, `poor_quality`, `wrong_language`, `too_long`, `too_short`, `broken`, `other`). The course's owner; 404 for a video the lesson doesn't have. Answers `{ myRating, myReason, counts }`. The lesson's `videos` carry `why`, `myRating`, `myReason` and `counts: { up, ok, down }` |
+| `GET /api/admin/gem/videos/feedback` | Video ratings: `totals`, `mostDisliked` (with `reasons` and `leftOut`), `mostLiked`, `blocked` (org admins) |
+| `PUT /api/admin/gem/videos/:videoId/block` | `{ blocked, reason? }`: block a video for everyone, or unblock it (org admins) |
+| `POST /api/learning/courses/:id/lessons/:n/check` | Research and check the current lesson, saved as a new version with its videos (the course's owner; counts against the day's lessons; 403 when lesson checks are off) |
 | `GET /api/learning/tags`, `GET /api/learning/bookmarks` | |
 | `GET /api/calculators`, `POST /api/calculators/run` | The catalog; run a formula calculator |
 | `GET/POST/DELETE /api/calculators/history`, `PUT /api/calculators/favorites/:id` | History and favorites |
@@ -217,5 +402,5 @@ These block a release, and each has tests that run on every push:
 | `GET /api/knowledge/projects/:id`, `POST …/reindex` | A project's documents and their state |
 | `GET /api/knowledge/references`, `PUT /api/knowledge/references/:id` | The workspace's general references |
 
-Personal data export (Settings → Your data) includes courses, lessons and their state, calculator
-history and favorites, and Knowledge questions.
+Personal data export (Settings → Your data) includes courses, lessons (with how each version was
+checked) and their state, calculator history and favorites, and Knowledge questions.

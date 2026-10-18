@@ -60,7 +60,9 @@ they're told). **Admin → Usage** shows who used what, by model and section, wi
 
 **Admin → Settings → GEM AI modules** switches Learning, Calculators and Knowledge on or off for
 everyone, shows or hides beta calculators, sets how many courses and lessons each person can have
-written per day, and holds the YouTube Data API key for lesson videos. Each person's access is in
+written per day, and holds the YouTube Data API key for lesson videos. Its *Lesson videos* card
+shows how people rated the videos, with *Block* for the most disliked and the blocked list (see
+[Rated videos](../15-gem-ai.md#rated-videos)). Each person's access is in
 **Admin → Workspaces → *a workspace* → Members** (their sections). Knowledge's general references
 are documents a workspace admin adds from the library. Tuning retrieval for your documents:
 [15-gem-ai.md](../15-gem-ai.md#evaluating-and-tuning-retrieval).

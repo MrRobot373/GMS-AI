@@ -22,6 +22,7 @@ Type a question and press Enter (Shift+Enter for a new line).
 |---|---|
 | Choose the model | The model menu under the message box. **Auto** (the default) picks one for each message: quick questions get a fast answer, hard ones a stronger model that thinks first. The chip next to an answer says what Auto picked and why |
 | Ask about a document | **+** to upload one, or **@** to pick from your library. Answers cite their sources with numbers: click **[1]** to see the passage |
+| Look something up on the web | The globe (**Search the web**) in the message box, if your admin has set up web search. It stays on for the chat until you switch it off. Answers cite the pages they used: **[1]** and the *Sources* under the answer open them |
 | Change your question | Hover it, **Edit**. The old version stays: **‹ 1/2 ›** switches between versions |
 | Get another answer | **↻** under the answer |
 | Stop a long answer | The square button while it writes |
@@ -78,7 +79,12 @@ If your admin has switched them on, three more items sit in the sidebar
 - **Learning**: **New course**, type a topic and pick a level. The model writes an outline, then
   each lesson when you open it. Lessons are saved, so coming back costs nothing. Mark lessons
   complete, bookmark them and keep notes (only you see them). *Write a new version* keeps the old
-  one.
+  one. If your admin checks lessons, a badge by the title says *Checked* (and how many corrections
+  a second model made) or *Not checked*; *How this lesson was checked*, at the end, lists the
+  corrections, the arithmetic and the web sources. *Check this lesson* checks one written earlier.
+  Each lesson has up to seven videos; rate them *Helpful*, *Okay* or *Not helpful* to help pick
+  better ones for everyone in your organization (a video you mark Not helpful folds away, with
+  *Undo*).
 - **Calculators**: engineering formulas, keypads, a unit converter and tools. Every number comes
   from tested code, not the model. *Verified* calculators are checked against at least five
   hand-worked cases; *beta* ones against fewer, so double-check those. In chat, ask "what is the

@@ -56,6 +56,8 @@ export interface AppContext {
   learning: LearningRunner;
   /** Outgoing HTTP (tests pass a fake one). */
   fetch?: typeof fetch;
+  /** Name lookups before reading a web page (tests pass a fake one). */
+  resolve?: (host: string) => Promise<string[]>;
   /** yt-dlp, for lesson videos without a YouTube key (tests pass a fake one). */
   ytDlp: YtDlpRunner;
 }

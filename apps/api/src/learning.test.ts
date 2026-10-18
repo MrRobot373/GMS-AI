@@ -46,6 +46,8 @@ d("GEM AI Learning", () => {
 
   beforeAll(async () => {
     h = await startHarness({ youtubeApiKey: "test-key", youtubeApiUrl: "http://yt.test/youtube/v3" }, { fetch: yt.fetchFn });
+    // Lessons as written, without the check (learning-check.test.ts covers it).
+    expect((await h.call(h.owner, "PUT", "/api/admin/gem", { lessonCheck: false })).status).toBe(200);
   });
   afterAll(async () => {
     await h?.close();
@@ -71,9 +73,9 @@ d("GEM AI Learning", () => {
     expect(c.json.lessons).toHaveLength(6);
     expect(c.json.lessons[0].status).toBe("ready");
     expect(c.json.lessons.slice(1).every((l: { status: string }) => l.status === "pending")).toBe(true);
-    // Metered under "learning", against the person's budget.
+    // Metered under "learning", against the person's budget: the outline, the lesson and its video pick.
     const usage = await h.db.select().from(usageEvent).where(eq(usageEvent.section, "learning"));
-    expect(usage.length).toBe(2);
+    expect(usage.length).toBe(3);
     expect(usage.every((u) => u.userId === h.ids.alice)).toBe(true);
   });
 

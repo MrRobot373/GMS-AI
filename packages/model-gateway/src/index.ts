@@ -268,6 +268,10 @@ function mockReply(messages: ChatMessage[]): string {
   const sys = messages.find((m) => m.role === "system")?.content ?? "";
   // GEM AI Learning asks for JSON (a course outline or a lesson): the demo model writes a valid one.
   if (sys.includes("<<GEM:OUTLINE>>") || sys.includes("<<GEM:LESSON>>")) return mockLearning(sys, messages.filter((m) => m.role === "user").map((m) => m.content).join("\n"));
+  // The lesson check: the demo model finds nothing to correct and hands the lesson back.
+  if (sys.includes("<<GEM:CHECK>>")) return mockCheck(messages.find((m) => m.role === "user")?.content ?? "");
+  // Lesson videos: the demo model keeps the candidates in search order.
+  if (sys.includes("<<GEM:VIDEOS>>")) return mockVideoPicks(messages.find((m) => m.role === "user")?.content ?? "");
   const proj = /This chat is in the project "([^"]+)"(\. Follow the project's instructions)?/.exec(sys);
   const note = proj ? [`_Project **${proj[1]}**${proj[2] ? ", following its instructions" : ""}._`, ""] : [];
   // A GEM AI calculator ran: the demo model repeats its results (a real model explains them).
@@ -375,6 +379,19 @@ function mockLearning(sys: string, user: string): string {
     ),
     "```",
   ].join("\n");
+}
+
+/** A lesson check with nothing to correct, in the shape GEM AI validates. Demo only. */
+function mockCheck(user: string): string {
+  const lesson = /<lesson>\n([\s\S]*?)\n<\/lesson>/.exec(user)?.[1];
+  if (!lesson) return "There was no lesson to check.";
+  return ["```json", `{"issues": [], "lesson": ${lesson}, "calcChecks": []}`, "```"].join("\n");
+}
+
+/** Video picks in search order, up to seven, in the shape GEM AI validates. Demo only. */
+function mockVideoPicks(user: string): string {
+  const n = [...user.matchAll(/^\[(\d+)\] /gm)].map((m) => Number(m[1])).slice(0, 7);
+  return JSON.stringify({ picks: n.map((index) => ({ index, why: "Picked by the demo model, in search order." })) });
 }
 
 async function* streamMock(

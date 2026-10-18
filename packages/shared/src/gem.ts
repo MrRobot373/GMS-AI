@@ -14,12 +14,32 @@ export type CourseLevel = (typeof COURSE_LEVELS)[number];
 export const VIDEO_SOURCES = ["auto", "ytdlp", "api", "off"] as const;
 export type VideoSource = (typeof VIDEO_SOURCES)[number];
 
+/**
+ * Web search for chat and lessons. SearXNG is the organization's own server (searches stay there);
+ * the others are paid services that need a key and see the search words.
+ */
+export const WEB_PROVIDERS = ["searxng", "ollama", "brave", "tavily", "serper"] as const;
+export type WebProvider = (typeof WEB_PROVIDERS)[number];
+/** Providers that need an API key (SearXNG doesn't). */
+export const KEYED_WEB_PROVIDERS = ["ollama", "brave", "tavily", "serper"] as const satisfies readonly WebProvider[];
+
 export interface GemSettings {
   modules: { learning: boolean; calculators: boolean; knowledge: boolean };
   betaCalculators: boolean;
   coursesPerDay: number;
   lessonsPerDay: number;
   videoSource: VideoSource;
+  /**
+   * The admin's choice of web search provider, as stored ("off" when never chosen). What's in use
+   * can come from WEB_SEARCH_PROVIDER too: ask webSearchDeps() in the API, not this field.
+   */
+  webProvider: "off" | WebProvider;
+  /** The SearXNG server; null: WEB_SEARCH_URL, then Work AI's SearXNG. */
+  webUrl: string | null;
+  /** People may switch web search on for a chat message (when a provider is set). */
+  chatWebSearch: boolean;
+  /** Lessons are researched and checked by a second model before they're saved. */
+  lessonCheck: boolean;
 }
 
 export const DEFAULT_GEM_SETTINGS: GemSettings = {
@@ -28,7 +48,13 @@ export const DEFAULT_GEM_SETTINGS: GemSettings = {
   coursesPerDay: 10,
   lessonsPerDay: 60,
   videoSource: "auto",
+  webProvider: "off",
+  webUrl: null,
+  chatWebSearch: true,
+  lessonCheck: true,
 };
+
+const webUrl = z.url({ protocol: /^https?$/, error: "Use an http:// or https:// address" });
 
 export const gemSettingsSchema = z.object({
   modules: z.object({ learning: z.boolean(), calculators: z.boolean(), knowledge: z.boolean() }).partial().optional(),
@@ -38,6 +64,20 @@ export const gemSettingsSchema = z.object({
   videoSource: z.enum(VIDEO_SOURCES).optional(),
   /** A new YouTube Data API key; "" removes it, absent leaves it. */
   youtubeApiKey: z.string().trim().max(200).optional(),
+  webProvider: z.enum(["off", ...WEB_PROVIDERS]).optional(),
+  /** The SearXNG server; "" or null goes back to WEB_SEARCH_URL / Work AI's. */
+  webUrl: webUrl.max(500).nullable().optional().or(z.literal("").transform(() => null)),
+  /** A new key for the paid provider; "" removes it, absent leaves it. */
+  webKey: z.string().trim().max(500).optional(),
+  chatWebSearch: z.boolean().optional(),
+  lessonCheck: z.boolean().optional(),
+});
+
+/** Admin → Settings → Web search → Test: what's given is tried, the rest comes from what's saved. */
+export const webSearchTestSchema = z.object({
+  provider: z.enum(WEB_PROVIDERS).optional(),
+  url: webUrl.max(500).optional().or(z.literal("").transform(() => undefined)),
+  key: z.string().trim().max(500).optional(),
 });
 
 /* ───────────── Learning: requests ───────────── */
@@ -62,6 +102,25 @@ export const lessonStateSchema = z.object({
   completed: z.boolean().optional(),
   bookmarked: z.boolean().optional(),
   note: z.string().max(4000).nullable().optional(),
+});
+
+/** How a lesson video helped: Helpful, Okay, Not helpful. */
+export const VIDEO_RATINGS = ["up", "ok", "down"] as const;
+export type VideoRating = (typeof VIDEO_RATINGS)[number];
+/** Why a video wasn't helpful (optional, after Not helpful). */
+export const VIDEO_REASONS = ["off_topic", "poor_quality", "wrong_language", "too_long", "too_short", "broken", "other"] as const;
+export type VideoReason = (typeof VIDEO_REASONS)[number];
+
+/** A person's rating of one lesson video; null takes it back. A reason goes only with "down". */
+export const videoFeedbackSchema = z.object({
+  rating: z.enum(VIDEO_RATINGS).nullable(),
+  reason: z.enum(VIDEO_REASONS).nullable().optional(),
+});
+
+/** Admin → Settings → Lesson videos: block a video for the whole organization, or unblock it. */
+export const videoBlockSchema = z.object({
+  blocked: z.boolean(),
+  reason: z.string().trim().max(300).optional(),
 });
 
 /* ───────────── Learning: what the model must return ───────────── */
@@ -134,6 +193,78 @@ export const lessonSchema = z.object({
   takeaways: list(text(600), 1, 12),
 });
 export type LessonOutput = z.infer<typeof lessonSchema>;
+
+/** The parts of a lesson a check can correct. */
+export const LESSON_PARTS = ["objectives", "theory", "explanation", "equation", "workedExample", "diagram", "mistake", "reference", "takeaway", "other"] as const;
+export type LessonPart = (typeof LESSON_PARTS)[number];
+export const LESSON_ISSUE_SEVERITIES = ["high", "medium", "low"] as const;
+export type LessonIssueSeverity = (typeof LESSON_ISSUE_SEVERITIES)[number];
+
+/** "equations", "Worked example", "commonMistakes": the part a model meant; anything else is "other". */
+const lessonPart = (v: string): LessonPart => {
+  const k = v.toLowerCase().replace(/[^a-z]/g, "");
+  if (k.startsWith("objective")) return "objectives";
+  if (k.startsWith("prerequisite") || k.startsWith("theor")) return "theory";
+  if (k.startsWith("explanation")) return "explanation";
+  if (k.startsWith("equation") || k.startsWith("formula") || k === "symbols") return "equation";
+  if (k.startsWith("worked") || k === "example") return "workedExample";
+  if (k.startsWith("diagram") || k.startsWith("figure")) return "diagram";
+  if (k.includes("mistake")) return "mistake";
+  if (k.startsWith("reference")) return "reference";
+  if (k.startsWith("takeaway")) return "takeaway";
+  return "other";
+};
+const severity = (v: string): LessonIssueSeverity => {
+  const k = v.toLowerCase().trim();
+  return k === "high" || k === "critical" || k === "major" ? "high" : k === "low" || k === "minor" ? "low" : "medium";
+};
+/** At most `max` items: a long list is cut, not refused (a check's lists are extras, the lesson is what counts). */
+const upTo = <T extends z.ZodType>(item: T, max: number) => z.array(item).default([]).transform((a) => a.slice(0, max));
+
+/**
+ * What the lesson checker (an Advanced-tier model) returns: what it corrected, the whole corrected
+ * lesson, and the lesson's calculations as plain-number expressions, which the server works out
+ * with the calculators' engine. URLs are stripped from all of it.
+ */
+export const lessonCheckSchema = z.object({
+  issues: upTo(
+    z.object({
+      part: z.string().max(60).transform(lessonPart),
+      problem: text(2000),
+      fix: text(2000),
+      severity: z.string().max(20).default("medium").transform(severity),
+      /** The numbers of the sources that show it. */
+      sources: upTo(z.number().int(), 10),
+    }),
+    40,
+  ),
+  lesson: lessonSchema,
+  calcChecks: upTo(
+    z.object({
+      label: text(200),
+      expression: z.string().trim().min(1).max(500),
+      claimed: z.union([z.number(), z.string().trim().regex(/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i).transform(Number)]).pipe(z.number().finite()),
+    }),
+    20,
+  ),
+});
+export type LessonCheckOutput = z.infer<typeof lessonCheckSchema>;
+
+/**
+ * The video picker's choice among numbered search results, best first. An index that isn't a
+ * whole number becomes NaN and is ignored with the ones that match no candidate (the server keeps
+ * only real ones); `why` is one short line, links stripped.
+ */
+export const videoPicksSchema = z.object({
+  picks: upTo(
+    z.object({
+      index: z.unknown().optional().transform((v) => (typeof v === "number" ? v : typeof v === "string" && /^\s*\d+\s*$/.test(v) ? Number(v) : Number.NaN)),
+      why: z.unknown().optional().transform((v) => (typeof v === "string" ? stripUrls(v.slice(0, 2000)).replace(/\s+/g, " ").slice(0, 200).trim() : "")),
+    }),
+    30,
+  ),
+});
+export type VideoPicksOutput = z.infer<typeof videoPicksSchema>;
 
 /**
  * The JSON object in a model's reply: a fenced block or the outermost braces. Returns null when

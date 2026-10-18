@@ -169,6 +169,8 @@ export const sendMessageSchema = z
     parentId: z.string().nullable().optional(),
     /** Answer this user message again, as a new branch next to the earlier answer. */
     regenerateOf: z.string().optional(),
+    /** Search the web for this answer (when the organization has web search set up and allows it in chat). */
+    webSearch: z.boolean().optional(),
   })
   .refine((b) => b.content || b.regenerateOf, { message: "Write a message first" });
 

@@ -1,4 +1,4 @@
-import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type DB } from "@aatmiq/db";
+import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
 import { streamChat, type ChatMessage } from "@aatmiq/model-gateway";
 import { AUTO_MODEL_ID, chatCreateSchema, chatUpdateSchema, estimateTokens, isOrgAdmin, PRODUCT_NAME, sendMessageSchema, type Routing } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
@@ -7,11 +7,13 @@ import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, buildContext, recallProjectChats, retrieve } from "../services/documents";
 import { chatToDocx, chatToMarkdown, fileNameFor, type ExportMessage } from "../services/export";
 import { getProjectAccess } from "../services/projects";
-import { chooseModel } from "../services/router";
+import { chooseModel, isSmallTalk } from "../services/router";
 import { quotaFor } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
 import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
-import { getGemSettings } from "../services/gem";
+import { getGemSettings, webSearchDeps } from "../services/gem";
+import { chatWebSearch, domainOf, dropUnknownCitations, queryModel } from "../services/chat-web";
+import { webSearchReady, type WebSearchDeps } from "../services/web-search";
 
 const MAX_HISTORY = 40;
 
@@ -160,7 +162,11 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const locale = localeOf(req);
     return {
       ...c,
-      messages: messages.map((m) => (m.error ? { ...m, error: tr(locale, m.error) } : m)),
+      messages: messages.map((m) => ({
+        ...m,
+        ...(m.error ? { error: tr(locale, m.error) } : {}),
+        ...(m.web?.note ? { web: { ...m.web, note: tr(locale, m.web.note) } } : {}),
+      })),
       documents,
       readOnly,
       project: proj ?? null,
@@ -240,9 +246,11 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
 
   /**
    * Send a message and stream the reply as server-sent events:
-   *   event: start  {userMessageId, model, citations}
+   *   event: start  {userMessageId, model, citations, webSearch}
+   *   event: searching {queries}  (web search only: what's being looked up)
+   *   event: search {queries, provider, sources: [{n, title, domain}], citations, note}  (web search only)
    *   event: delta  {text}
-   *   event: done   {messageId, usage, quota}
+   *   event: done   {messageId, usage, quota, content?}  (content: the answer as saved, when it differs)
    *   event: error  {message}
    */
   app.post<{ Params: { id: string } }>("/api/chats/:id/messages", async (req, reply) => {
@@ -293,6 +301,20 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       ? (await db.select({ id: projectSource.documentId }).from(projectSource).where(eq(projectSource.projectId, proj.id))).map((r) => r.id)
       : [];
 
+    // Web search, when the person switched it on: only if the organization allows it in chat and a
+    // provider is set up. A greeting has nothing to look up.
+    const gem = await getGemSettings(db);
+    let webDeps: WebSearchDeps | null = null;
+    let webOff: string | null = null;
+    if (body.webSearch && !isSmallTalk(content)) {
+      if (!gem.chatWebSearch) webOff = msg("Web search is turned off for your organization.");
+      else {
+        const deps = await webSearchDeps(ctx);
+        if (webSearchReady(deps)) webDeps = deps;
+        else webOff = msg("Web search isn't set up. An admin can choose a provider in Admin → Settings → GEM AI.");
+      }
+    }
+
     // The model: the one chosen, or Auto's pick for this message.
     const { model: m, provider, routing, thinking } = await chooseModel(db, box, {
       workspaceId: c.workspaceId,
@@ -301,9 +323,11 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       requested: body.modelId ?? (c.auto ? AUTO_MODEL_ID : c.modelId),
       savedAuto: !body.modelId && c.auto,
       text: content,
-      // Sources take up to a few thousand tokens; the branch is read in full.
-      contextTokens: history.reduce((n, h) => n + estimateTokens(h.content), 0) + (chatDocIds.length || projectDocIds.length || body.documentIds?.length ? 3000 : 0),
+      // Sources take up to a few thousand tokens (web pages about 5,000); the branch is read in full.
+      contextTokens:
+        history.reduce((n, h) => n + estimateTokens(h.content), 0) + (chatDocIds.length || projectDocIds.length || body.documentIds?.length ? 3000 : 0) + (webDeps ? 5000 : 0),
       hasSources: Boolean(chatDocIds.length || projectDocIds.length || body.documentIds?.length),
+      webSearch: !!webDeps,
       follows: history.find((h) => h.role === "assistant")?.routing?.difficulty ?? null,
     });
     // The workspace pays for its own models; a group pays for a model only it gives.
@@ -367,7 +391,6 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const docContext = buildContext(retrieval.chunks, recollections);
 
     // A numeric engineering question runs the tested GEM AI calculator; the model only explains it.
-    const gem = await getGemSettings(db);
     const calculation =
       gem.modules.calculators && (!membership || membership.sections.includes("calculators") || isOrgAdmin(u.orgRole))
         ? await findCalculation({
@@ -429,8 +452,42 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       routing,
       citations: docContext.citations,
       calculation,
+      webSearch: !!webDeps,
       ...titleUpdate,
     });
+
+    // Web search runs while the person sees "Searching the web…"; its sources follow the documents'.
+    const locale = localeOf(req);
+    let web: MessageWeb | null = webOff ? { queries: [], provider: null, note: webOff } : null;
+    let webCitations: Citation[] = [];
+    if (webDeps) {
+      const qm = await queryModel(db, box, c.workspaceId, u.id, { model: m, provider, groupId });
+      const found = await chatWebSearch({
+        deps: webDeps,
+        model: qm,
+        turns: messages.slice(1, -1),
+        content,
+        first: docContext.citations.length + 1,
+        signal: abort.signal,
+        onUsage: async (us) => {
+          await db.insert(usageEvent).values({ workspaceId: c.workspaceId, userId: u.id, modelId: qm.model.id, groupId: qm.groupId, section: "chat", inputTokens: us.inputTokens, outputTokens: us.outputTokens, estimated: us.estimated, status: "ok" });
+        },
+        onQueries: (queries) => send("searching", { queries }),
+      });
+      web = found.web;
+      webCitations = found.citations;
+      messages[0]!.content += `\n\n${found.prompt}`;
+      send("search", {
+        queries: web.queries,
+        provider: web.provider,
+        note: web.note ? tr(locale, web.note) : null,
+        sources: webCitations.map((x) => ({ n: x.n, title: x.name, domain: domainOf(x.url!) })),
+        citations: webCitations,
+      });
+    } else if (web) {
+      send("search", { queries: [], provider: null, note: tr(locale, web.note!), sources: [], citations: [] });
+    }
+    const citations = [...docContext.citations, ...webCitations];
 
     const started = Date.now();
     let text = "";
@@ -456,6 +513,9 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     if (abort.signal.aborted && usage.outputTokens === 0) {
       usage = { inputTokens: messages.reduce((n, x) => n + Math.ceil(x.content.length / 4), 0), outputTokens: Math.ceil(text.length / 4), estimated: true };
     }
+    // With web search, a number that matches no source is taken out of what's saved (and shown).
+    const streamed = text;
+    if (web) text = dropUnknownCitations(text, citations.length);
 
     const [assistant] = await db
       .insert(message)
@@ -468,9 +528,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         error,
-        citations: docContext.citations.length ? docContext.citations : null,
+        citations: citations.length ? citations : null,
         routing,
         calculation: calculation as unknown as Record<string, unknown> | null,
+        web,
       })
       .returning({ id: message.id });
     await db.update(chat).set({ leafMessageId: assistant!.id }).where(eq(chat.id, c.id));
@@ -488,8 +549,9 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     });
 
     if (!res.writableEnded && !res.destroyed) {
-      if (error) send("error", { message: tr(localeOf(req), error), messageId: assistant!.id });
-      else send("done", { messageId: assistant!.id, usage, quota: (await quotaFor(db, c.workspaceId, u.id, m)).status });
+      const changed = text !== streamed ? { content: text } : {};
+      if (error) send("error", { message: tr(locale, error), messageId: assistant!.id, ...changed });
+      else send("done", { messageId: assistant!.id, usage, quota: (await quotaFor(db, c.workspaceId, u.id, m)).status, ...changed });
       res.end();
     }
   });

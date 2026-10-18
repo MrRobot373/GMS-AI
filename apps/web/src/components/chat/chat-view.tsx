@@ -54,8 +54,8 @@ import { cn } from "@/lib/cn";
 import { chatTitle, greeting, routingReason, timeAgo, TIER_NAMES } from "@/lib/format";
 import type { ChatCalculation } from "./calculation-card";
 import type { Routing } from "@aatmiq/shared";
-import type { AvailableModel, ChatDetail, Citation, DocumentRow, QuotaStatus } from "@/lib/types";
-import { SourcesRow, useSourceDialog } from "./citations";
+import type { AvailableModel, ChatDetail, Citation, DocumentRow, MessageWeb, QuotaStatus } from "@/lib/types";
+import { SourcesRow, useSourceDialog, WebSearchLine } from "./citations";
 import { CalculationCard } from "./calculation-card";
 import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import { Markdown } from "./markdown";
@@ -76,6 +76,8 @@ interface UiMessage {
   routing?: Routing | null;
   /** A tested GEM AI calculator ran for this answer. */
   calculation?: ChatCalculation | null;
+  /** The answer searches (or searched) the web; `searching` until the sources are in. */
+  web?: (MessageWeb & { searching?: boolean }) | null;
 }
 
 const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
@@ -136,6 +138,11 @@ export function ChatView({
   const library = useDocuments(workspaceId);
   const searchParams = useSearchParams();
   const { openSource, sourceDialog } = useSourceDialog();
+  // "Search the web": offered when the organization has it set up for chat; once on, it stays on
+  // for the chat's messages until switched off (a chat that searched last time opens with it on).
+  const webAvailable = !!me.gem?.webSearch;
+  const [webOn, setWebOn] = useState(false);
+  const webFromChat = useRef(false);
 
   const models = useQuery({
     queryKey: ["models", workspaceId, "chat"],
@@ -187,8 +194,15 @@ export function ChatView({
           citations: m.citations,
           routing: m.routing,
           calculation: m.calculation ?? null,
+          web: m.web ?? null,
         })),
     );
+    if (!webFromChat.current) {
+      webFromChat.current = true;
+      const leaf = existing.data.leafMessageId ?? rows.at(-1)?.id ?? null;
+      const last = pathTo(rows.map((m) => ({ ...m, parentId: m.parentId ?? null })), leaf).findLast((m) => m.role === "assistant");
+      setWebOn(!!last?.web?.queries.length);
+    }
     setChatDocs(existing.data.documents ?? []);
     if (existing.data.auto) setModelId("auto");
     else if (existing.data.modelId) setModelId(existing.data.modelId);
@@ -276,6 +290,7 @@ export function ChatView({
     async (text: string, opts: { parentId?: string | null; regenerateOf?: string } = {}) => {
       const content = text.trim();
       if ((!content && !opts.regenerateOf) || streaming || !workspaceId) return;
+      const webSearch = webAvailable && webOn ? true : undefined;
       const sending = opts.regenerateOf ? [] : (attachments.filter((a) => a.id && a.status !== "failed") as (Attachment & { id: string })[]);
       if (!opts.regenerateOf && opts.parentId === undefined) {
         setInput("");
@@ -334,8 +349,8 @@ export function ChatView({
           headers: { "content-type": "application/json" },
           body: JSON.stringify(
             opts.regenerateOf
-              ? { regenerateOf: opts.regenerateOf, modelId: model?.id }
-              : { content, parentId, modelId: model?.id, documentIds: sending.length ? sending.map((a) => a.id) : undefined },
+              ? { regenerateOf: opts.regenerateOf, modelId: model?.id, webSearch }
+              : { content, parentId, modelId: model?.id, documentIds: sending.length ? sending.map((a) => a.id) : undefined, webSearch },
           ),
           signal: ctrl.signal,
         });
@@ -350,15 +365,31 @@ export function ChatView({
               setLiveTitle(ev.data.title);
               qc.invalidateQueries({ queryKey: ["chats", workspaceId] });
             }
-            patchAsst((m) => ({ ...m, model: ev.data.model?.id ?? m.model, routing: ev.data.routing ?? null, citations: ev.data.citations?.length ? ev.data.citations : null, calculation: ev.data.calculation ?? null }));
+            patchAsst((m) => ({
+              ...m,
+              model: ev.data.model?.id ?? m.model,
+              routing: ev.data.routing ?? null,
+              citations: ev.data.citations?.length ? ev.data.citations : null,
+              calculation: ev.data.calculation ?? null,
+              web: ev.data.webSearch ? { queries: [], provider: null, note: null, searching: true } : null,
+            }));
+          } else if (ev.event === "searching") {
+            patchAsst((m) => ({ ...m, web: { queries: ev.data.queries ?? [], provider: null, note: null, searching: true } }));
+          } else if (ev.event === "search") {
+            // Web sources are numbered after the documents', so they go after them.
+            patchAsst((m) => {
+              const cites = [...(m.citations ?? []), ...((ev.data.citations ?? []) as Citation[])];
+              return { ...m, web: { queries: ev.data.queries ?? [], provider: ev.data.provider ?? null, note: ev.data.note ?? null }, citations: cites.length ? cites : null };
+            });
           } else if (ev.event === "delta") patchAsst((m) => ({ ...m, content: m.content + ev.data.text }));
           else if (ev.event === "done") {
-            patchAsst((m) => ({ ...m, streaming: false }));
+            // `content`: the answer as saved, when a citation number that matched no source was taken out.
+            patchAsst((m) => ({ ...m, streaming: false, content: ev.data.content ?? m.content }));
             renameNode(asstId, ev.data.messageId);
             asstId = ev.data.messageId;
             if (ev.data.quota) qc.setQueryData(quotaKey, ev.data.quota);
           } else if (ev.event === "error") {
-            patchAsst((m) => ({ ...m, streaming: false, error: ev.data.message }));
+            patchAsst((m) => ({ ...m, streaming: false, error: ev.data.message, content: ev.data.content ?? m.content }));
             if (ev.data.messageId) {
               renameNode(asstId, ev.data.messageId);
               asstId = ev.data.messageId;
@@ -388,7 +419,7 @@ export function ChatView({
         }
       }
     },
-    [attachments, chatId, leafId, model?.id, onCreated, project, qc, renameNode, streaming, temporary, workspaceId],
+    [attachments, chatId, leafId, model?.id, onCreated, project, qc, renameNode, streaming, temporary, webAvailable, webOn, workspaceId],
   );
 
   /** Show another version of a message (and the newest branch under it). */
@@ -501,6 +532,7 @@ export function ChatView({
       onAttachDocument={attachDocument}
       onRemoveAttachment={(key) => setAttachments((l) => l.filter((a) => a.key !== key))}
       library={library.data}
+      webSearch={webAvailable ? { on: webOn, onToggle: () => setWebOn((v) => !v) } : undefined}
     />
   );
 
@@ -902,15 +934,16 @@ function MessageBlock({
             </span>
           </Tooltip>
         )}
-        {m.streaming && (
+        {m.streaming && !m.web?.searching && (
           <span className="bg-[linear-gradient(90deg,var(--fg-subtle)_0%,var(--fg)_50%,var(--fg-subtle)_100%)] bg-[length:200%_100%] bg-clip-text text-transparent animate-shimmer">
             {m.content ? t("Writing…") : m.routing?.thinking ? t("Thinking it through…") : t("Thinking…")}
           </span>
         )}
       </div>
       <div className="pl-6">
+        {m.web && <WebSearchLine web={m.web} citations={m.citations} streaming={m.streaming} />}
         {m.calculation && <CalculationCard c={m.calculation} />}
-        {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} /> : null}
+        {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} plainLinks={!!m.web} /> : null}
         {m.streaming && m.content && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] animate-caret bg-fg" />}
         {!m.streaming && m.citations && m.citations.length > 0 && <SourcesRow citations={m.citations} onOpen={onCite} />}
         {m.error && (

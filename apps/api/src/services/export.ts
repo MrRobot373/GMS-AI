@@ -172,6 +172,12 @@ export function markdownToDocxBlocks(md: string) {
   return blocks(marked.lexer(md));
 }
 
+/** "[2] Name, page 4 (Assumption)"; a web source with its link, which came from the search provider. */
+function sourceLine(c: Citation): string {
+  if (c.kind === "web") return `[${c.n}] ${c.name}${c.url ? ` (${c.url})` : ""}`;
+  return `[${c.n}] ${c.kind === "chat" ? `Earlier chat: ${c.name}` : c.name}${c.page ? `, page ${c.page}` : ""}${c.label ? ` (${LABEL[c.label]})` : ""}`;
+}
+
 function sourcesBlock(citations: Citation[]): Paragraph[] {
   return [
     new Paragraph({ children: [new TextRun({ text: "Sources", bold: true, size: 18, color: "666666" })], spacing: { before: 120, after: 40 } }),
@@ -181,7 +187,7 @@ function sourcesBlock(citations: Citation[]): Paragraph[] {
           spacing: { after: 20 },
           children: [
             new TextRun({
-              text: `[${c.n}] ${c.kind === "chat" ? `Earlier chat: ${c.name}` : c.name}${c.page ? `, page ${c.page}` : ""}${c.label ? ` (${LABEL[c.label]})` : ""}`,
+              text: sourceLine(c),
               size: 18,
               color: "666666",
             }),
@@ -243,7 +249,7 @@ export function chatToMarkdown(opts: { title: string; subtitle: string; messages
       parts.push(
         "Sources:\n" +
           m.citations
-            .map((c) => `- [${c.n}] ${c.kind === "chat" ? `Earlier chat: ${c.name}` : c.name}${c.page ? `, page ${c.page}` : ""}${c.label ? ` (${LABEL[c.label]})` : ""}`)
+            .map((c) => `- ${sourceLine(c)}`)
             .join("\n"),
       );
   }

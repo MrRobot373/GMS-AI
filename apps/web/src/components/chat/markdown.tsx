@@ -51,10 +51,13 @@ export const Markdown = memo(function Markdown({
   content,
   citations,
   onCite,
+  plainLinks,
 }: {
   content: string;
   citations?: Citation[] | null;
   onCite?: (c: Citation) => void;
+  /** Links the model wrote show as text (a web search answer: its links come only from the sources). */
+  plainLinks?: boolean;
 }) {
   return (
     <div className="prose-chat">
@@ -76,6 +79,7 @@ export const Markdown = memo(function Markdown({
             const n = href?.startsWith("#cite-") ? Number(href.slice(6)) : null;
             const c = n ? citations?.find((x) => x.n === n) : undefined;
             if (c) return <CitationChip citation={c} onOpen={(x) => onCite?.(x)} />;
+            if (plainLinks) return <span>{children}</span>;
             return (
               <a href={href} target="_blank" rel="noreferrer noopener">
                 {children}

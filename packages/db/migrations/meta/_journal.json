@@ -169,6 +169,27 @@
       "when": 1792172762230,
       "tag": "0023_gem_chat_calculator",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792268273223,
+      "tag": "0024_chat_web",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792298506659,
+      "tag": "0025_lesson_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792317453181,
+      "tag": "0026_video_feedback",
+      "breakpoints": true
     }
   ]
 }

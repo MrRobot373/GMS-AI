@@ -2,15 +2,17 @@
  * GEM AI Learning (docs/15-gem-ai.md). Courses are their owner's alone: every route loads the
  * course for the signed-in person and answers "not found" for anyone else's.
  */
-import { and, asc, course, courseLesson, courseLessonState, desc, eq, isNotNull, isNull, sql, type DB } from "@aatmiq/db";
-import { courseCreateSchema, courseUpdateSchema, lessonStateSchema } from "@aatmiq/shared";
+import { and, asc, course, courseLesson, courseLessonState, desc, eq, inArray, isNotNull, isNull, sql, videoFeedback, type DB, type LessonVerification, type LessonVideo } from "@aatmiq/db";
+import { courseCreateSchema, courseUpdateSchema, lessonStateSchema, videoFeedbackSchema } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { audit, parse, requireUser, type AppContext, type SessionUser } from "../context";
-import { badRequest, notFound } from "../errors";
-import { localeOf, tr } from "../i18n";
-import { requireModule } from "../services/gem";
+import { badRequest, forbidden, notFound } from "../errors";
+import { localeOf, tr, type Locale } from "../i18n";
+import { getGemSettings, requireModule } from "../services/gem";
 import { checkLearningLimits, flatLessons } from "../services/learning";
+import { blockedAmong, NO_COUNTS, videoCounts } from "../services/lesson-videos";
+import { isVideoId } from "../services/youtube";
 
 const VIDEO_RECHECK_MS = 7 * 86_400_000;
 
@@ -43,6 +45,35 @@ async function lessonList(db: DB, courseId: string, userId: string) {
     .leftJoin(courseLessonState, and(eq(courseLessonState.courseId, courseLesson.courseId), eq(courseLessonState.ordinal, courseLesson.ordinal), eq(courseLessonState.userId, userId)))
     .where(and(eq(courseLesson.courseId, courseId), eq(courseLesson.current, true)))
     .orderBy(asc(courseLesson.ordinal));
+}
+
+/** A check's own texts (why it didn't happen, a failed search, a value still wrong) in the person's language. */
+const verificationIn = (locale: Locale, v: LessonVerification | null) =>
+  v && {
+    ...v,
+    reason: v.reason ? tr(locale, v.reason) : (v.reason ?? null),
+    researchNote: v.researchNote ? tr(locale, v.researchNote) : (v.researchNote ?? null),
+    issues: v.issues.map((i) => (i.open ? { ...i, problem: tr(locale, i.problem), fix: tr(locale, i.fix) } : i)),
+  };
+
+/**
+ * A lesson's videos as this person sees them: without the ones an admin blocked (until the next
+ * check drops them), each with their own rating and the organization's counts.
+ */
+async function videosShown(db: DB, userId: string, videos: LessonVideo[] | null) {
+  if (!videos?.length) return videos;
+  const ids = videos.map((v) => v.videoId);
+  const [blocked, counts, mine] = await Promise.all([
+    blockedAmong(db, ids),
+    videoCounts(db, ids),
+    db.select({ videoId: videoFeedback.videoId, rating: videoFeedback.rating, reason: videoFeedback.reason }).from(videoFeedback).where(and(eq(videoFeedback.userId, userId), inArray(videoFeedback.videoId, ids))),
+  ]);
+  return videos
+    .filter((v) => !blocked.has(v.videoId))
+    .map((v) => {
+      const m = mine.find((x) => x.videoId === v.videoId);
+      return { ...v, myRating: m?.rating ?? null, myReason: m?.reason ?? null, counts: counts.get(v.videoId) ?? NO_COUNTS };
+    });
 }
 
 export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -193,7 +224,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
       .where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), version ? eq(courseLesson.version, version) : eq(courseLesson.current, true)));
     if (!l) throw notFound("Lesson not found");
     const versions = await db
-      .select({ version: courseLesson.version, status: courseLesson.status, current: courseLesson.current, createdAt: courseLesson.createdAt })
+      .select({ version: courseLesson.version, status: courseLesson.status, current: courseLesson.current, stage: courseLesson.stage, createdAt: courseLesson.createdAt })
       .from(courseLesson)
       .where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal)))
       .orderBy(asc(courseLesson.version));
@@ -202,7 +233,47 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     if (l.status === "ready" && l.videos?.length && (!l.videosCheckedAt || Date.now() - l.videosCheckedAt.getTime() > VIDEO_RECHECK_MS)) void ctx.learning.refreshVideos(l.id);
     const total = (await lessonList(db, c.id, u.id)).length;
     const locale = localeOf(req);
-    return { ...l, error: l.error && tr(locale, l.error), versions, state: state ?? null, total, courseTitle: c.title };
+    // The organization's lesson check: "Check this lesson" is offered only when it's on.
+    const canCheck = (await getGemSettings(db)).lessonCheck;
+    return {
+      ...l,
+      error: l.error && tr(locale, l.error),
+      verification: verificationIn(locale, l.verification),
+      videos: await videosShown(db, u.id, l.videos),
+      versions,
+      state: state ?? null,
+      total,
+      courseTitle: c.title,
+      canCheck,
+    };
+  });
+
+  /**
+   * Rate one of a lesson's videos (Helpful, Okay, Not helpful, with an optional reason for Not
+   * helpful), or take the rating back with null. One rating per person and video; the course's
+   * owner only, and the video must be one this lesson (any of its versions) offers.
+   */
+  app.put<{ Params: { id: string; ordinal: string; videoId: string } }>("/api/learning/courses/:id/lessons/:ordinal/videos/:videoId/feedback", async (req) => {
+    const u = await requireUser(ctx, req);
+    const c = await ownCourse(ctx, u, req.params.id);
+    const ordinal = ordinalParam(req.params.ordinal);
+    const body = parse(videoFeedbackSchema, req.body);
+    const videoId = req.params.videoId;
+    const versions = isVideoId(videoId)
+      ? await db.select({ id: courseLesson.id, current: courseLesson.current, videos: courseLesson.videos }).from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal)))
+      : [];
+    // The version shown first, when more than one has it.
+    const holder = versions.filter((v) => v.videos?.some((x) => x.videoId === videoId)).sort((a, b) => Number(b.current) - Number(a.current))[0];
+    if (!holder) throw notFound("That video isn't in this lesson.");
+    const reason = body.rating === "down" ? (body.reason ?? null) : null;
+    if (body.rating === null) await db.delete(videoFeedback).where(and(eq(videoFeedback.userId, u.id), eq(videoFeedback.videoId, videoId)));
+    else
+      await db
+        .insert(videoFeedback)
+        .values({ userId: u.id, lessonId: holder.id, videoId, rating: body.rating, reason })
+        .onConflictDoUpdate({ target: [videoFeedback.userId, videoFeedback.videoId], set: { rating: body.rating, reason, lessonId: holder.id, updatedAt: new Date() } });
+    const counts = (await videoCounts(db, [videoId])).get(videoId) ?? NO_COUNTS;
+    return { myRating: body.rating, myReason: reason, counts };
   });
 
   /** Write a lesson that's waiting (or failed). */
@@ -231,6 +302,26 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     await checkLearningLimits(ctx, u.id, "lesson");
     void ctx.learning.lesson(c.id, ordinal, true);
     await audit(ctx, { actor: u, action: "lesson.regenerated", workspaceId: c.workspaceId, targetType: "course", targetId: c.id, meta: { ordinal } });
+    return { ok: true, status: "generating" };
+  });
+
+  /**
+   * Research and check the lesson shown, as a new version (its videos kept); counts against the
+   * day's lessons like a new version. The current one stays until the checked one is ready.
+   */
+  app.post<{ Params: { id: string; ordinal: string } }>("/api/learning/courses/:id/lessons/:ordinal/check", async (req) => {
+    const u = await requireUser(ctx, req);
+    const c = await ownCourse(ctx, u, req.params.id);
+    const ordinal = ordinalParam(req.params.ordinal);
+    if (!(await getGemSettings(db)).lessonCheck) throw forbidden("Lesson checks are turned off for your organization.");
+    const [l] = await db.select().from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.current, true)));
+    if (!l) throw notFound("Lesson not found");
+    const [busy] = await db.select({ id: courseLesson.id }).from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.status, "generating")));
+    if (busy) return { ok: true, status: "generating" };
+    if (l.status !== "ready" || !l.content) throw badRequest("Only a lesson that's been written can be checked.");
+    await checkLearningLimits(ctx, u.id, "lesson");
+    void ctx.learning.check(c.id, ordinal);
+    await audit(ctx, { actor: u, action: "lesson.checked", workspaceId: c.workspaceId, targetType: "course", targetId: c.id, meta: { ordinal } });
     return { ok: true, status: "generating" };
   });
 

@@ -75,7 +75,7 @@ function PrintView() {
             {m.role === "user" ? (
               <div className="rounded-lg bg-[#f4f4f4] px-4 py-3 text-[14px] leading-relaxed whitespace-pre-wrap">{m.content}</div>
             ) : (
-              <Markdown content={m.content} citations={m.citations} onCite={() => {}} />
+              <Markdown content={m.content} citations={m.citations} onCite={() => {}} plainLinks={!!m.web} />
             )}
             {m.citations && m.citations.length > 0 && (
               <ol className="mt-3 space-y-0.5 text-[11.5px] text-[#666]">
@@ -84,6 +84,7 @@ function PrintView() {
                     [{c.n}] {c.kind === "chat" ? `Earlier chat: ${c.name}` : c.name}
                     {c.page ? `, page ${c.page}` : ""}
                     {c.label ? ` (${LABEL[c.label]})` : ""}
+                    {c.kind === "web" && c.url ? ` (${c.url})` : ""}
                   </li>
                 ))}
               </ol>
