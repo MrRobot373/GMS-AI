@@ -1,17 +1,19 @@
 /** Admin → Settings → GEM AI: the module switches, beta calculators, daily limits, lesson videos and their ratings, web search. */
-import { eq, organization, sql, videoBlock } from "@aatmiq/db";
-import { gemSettingsSchema, videoBlockSchema, webSearchTestSchema } from "@aatmiq/shared";
+import { eq, organization, sql, videoBlock, type GemSettingsStored } from "@aatmiq/db";
+import { gemSettingsSchema, videoBlockSchema, webSearchTestSchema, type WebProvider } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
 import { audit, getOrg, parse, requireOrgCap, requireUser, type AppContext } from "../context";
 import { badRequest } from "../errors";
 import { localeOf, msg, tr } from "../i18n";
-import { gemStored, getGemSettings, videoDeps, webSearchSetup } from "../services/gem";
+import { gemStored, getGemSettings, storedWebKeys, videoDeps, webSearchSetup } from "../services/gem";
 import { videoFeedbackReport, videoInfo } from "../services/lesson-videos";
 import { webSearch, WebSearchError, webSearchReady, type WebSearchDeps } from "../services/web-search";
 import { isVideoId, ytDlpStatus } from "../services/youtube";
 
 /** What the Test button searches for: short, harmless, and every provider has results for it. */
 const TEST_QUERY = "Ohm's law";
+
+const PROVIDER_NAMES: Record<WebProvider, string> = { searxng: "SearXNG", ollama: "Ollama web search", brave: "Brave Search", tavily: "Tavily", serper: "Serper" };
 
 export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db } = ctx;
@@ -48,13 +50,17 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!org) return { ok: false };
     const prev = await gemStored(db);
     const cur = await getGemSettings(db);
-    // A key belongs to one provider: the one chosen in the same save, else the one in use.
-    let webKey: { webKeyEnc: string | null; webKeyProvider: "ollama" | "brave" | "tavily" | "serper" | null } | null = null;
+    // A key belongs to one provider (the one chosen in the same save, else the one in use), and each
+    // provider keeps its own: saving Tavily's leaves Brave's, and "" removes only this provider's.
+    let webKey: Pick<GemSettingsStored, "webKeysEnc" | "webKeyEnc" | "webKeyProvider"> | null = null;
     if (body.webKey !== undefined) {
       const p = body.webProvider ?? (await webSearchSetup(ctx)).provider;
-      if (!body.webKey) webKey = { webKeyEnc: null, webKeyProvider: null };
-      else if (!p || p === "off" || p === "searxng") throw badRequest("Choose Ollama, Brave, Tavily or Serper before adding a key.");
-      else webKey = { webKeyEnc: ctx.box.encrypt(body.webKey), webKeyProvider: p };
+      const paid = p && p !== "off" && p !== "searxng" ? p : null;
+      if (body.webKey && !paid) throw badRequest("Choose Ollama, Brave, Tavily or Serper before adding a key.");
+      const keys = storedWebKeys(prev);
+      if (paid && body.webKey) keys[paid] = ctx.box.encrypt(body.webKey);
+      else if (paid) delete keys[paid];
+      webKey = { webKeysEnc: keys, webKeyEnc: null, webKeyProvider: null };
     }
     const next = {
       ...prev,
@@ -105,13 +111,24 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
       key: provider && provider !== "searxng" ? b.key || saved.key : null,
       fetch: ctx.fetch,
     };
+    const locale = localeOf(req);
+    const failed = (error: string, kind: string, ms = 0) => ({ ok: false, results: 0, ms, sample: [], error: tr(locale, error), kind });
+    // What's missing, said here rather than chat's "an admin can choose a provider".
+    if (!webSearchReady(deps)) {
+      const name = provider ? PROVIDER_NAMES[provider] : "";
+      return failed(!provider ? msg("Choose a provider first.") : provider === "searxng" ? msg("Add your SearXNG server's address first, then test it.") : msg(`Add the API key for ${name} first, then test it.`), "not_configured");
+    }
     const started = Date.now();
     try {
       const results = await webSearch(deps, TEST_QUERY, { max: 5, cache: false });
+      // An answer with nothing in it isn't working: a SearXNG whose engines are all blocked answers 200 with no results.
+      if (!results.length) {
+        const empty = provider === "searxng" ? msg("SearXNG answered, but found nothing for a test search: its search engines may be blocked or not responding. Check them in its settings.") : msg("The provider answered, but found nothing for a test search. Try again, or check your plan.");
+        return failed(empty, "empty", Date.now() - started);
+      }
       return { ok: true, results: results.length, ms: Date.now() - started, sample: results.slice(0, 3).map((r) => ({ title: r.title, url: r.url })), error: null };
     } catch (e) {
-      const error = e instanceof WebSearchError ? e.message : msg("The search provider couldn't be reached.");
-      return { ok: false, results: 0, ms: Date.now() - started, sample: [], error: tr(localeOf(req), error), kind: e instanceof WebSearchError ? e.kind : "unavailable" };
+      return failed(e instanceof WebSearchError ? e.message : msg("The search provider couldn't be reached."), e instanceof WebSearchError ? e.kind : "unavailable", Date.now() - started);
     }
   });
 

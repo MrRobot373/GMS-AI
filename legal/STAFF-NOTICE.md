@@ -25,6 +25,10 @@ The AI models run there too. What you type, upload or create stays on those serv
 to an AI company, and it isn't used to train AI models.
 [If you connect an external model service: "Some models are provided by [SERVICE]; when you choose
 one of them, your messages are sent to [SERVICE] under its terms."]
+[If web search for chat and lessons uses a paid provider (Admin → Settings → GEM AI → Web search):
+"When you switch on *Search the web* in chat, or a lesson is researched, the search words are sent
+to [PROVIDER: Ollama / Brave / Tavily / Serper], without your identity, under its terms." With our
+own search service (SearXNG), delete this: the search words stay on our servers.]
 
 [ORGANIZATION] is responsible for this data (the "data fiduciary" or "controller"). The company
 that makes Aatmiq doesn't receive it.
@@ -64,6 +68,11 @@ that makes Aatmiq doesn't receive it.
   searches the web, it does so through our own search service, without your identity. When it uses
   an app you connected, it acts with your access; you can disconnect at any time (Work AI →
   Connections).
+- **Chat and Learning** can search the web: chat only for messages where you switch on *Search the
+  web*, and lessons [are / aren't] researched on the web before they're written. An AI model writes
+  the search words from your message (or the lesson's topic); they go to [our own search service /
+  PROVIDER], without your identity, and our server reads the pages found. Answers cite those pages,
+  and their links come only from the search results.
 - Your custom instructions and a project's instructions are given to the AI with your messages.
 
 ## How long it's kept

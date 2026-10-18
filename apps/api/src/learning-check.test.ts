@@ -6,7 +6,7 @@
  * sent back once; a checker or a search that fails never fails the lesson; "Check this lesson" as
  * a new version, the owner's alone; links only from the provider; the check switched off.
  */
-import { courseLesson, eq, usageEvent } from "@aatmiq/db";
+import { courseLesson, eq, sql, usageEvent, workspace } from "@aatmiq/db";
 import { lessonCheckSchema, parseModelJson } from "@aatmiq/shared";
 import { strFromU8, unzipSync } from "fflate";
 import { createServer, type Server } from "node:http";
@@ -176,6 +176,11 @@ d("checked lessons", () => {
   const seen: { model: string; kind: "judge" | "outline" | "lesson" | "check" | "other"; system: string; user: string; messages: { role: string; content: string }[]; stage: string | null }[] = [];
   const ids: Record<string, string> = {};
   let courseId = "";
+  /** Every check answers in prose (the check fails), or never answers. */
+  let failChecks = false;
+  let hangChecks = false;
+  /** The writer of "Power in resistors" waits for this (another of the course's lessons is busy). */
+  let hold: Promise<void> | null = null;
 
   beforeAll(async () => {
     server = createServer((req, res) => {
@@ -190,6 +195,7 @@ d("checked lessons", () => {
         const field = (name: string) => new RegExp(`^${name}: (.+)$`, "m").exec(user)?.[1]?.trim() ?? "";
         const kind = system.startsWith("You rate how hard") ? "judge" : system.includes("<<GEM:OUTLINE>>") ? "outline" : system.includes("<<GEM:LESSON>>") ? "lesson" : system.includes("<<GEM:CHECK>>") ? "check" : "other";
         seen.push({ model: body.model, kind, system, user, messages, stage: kind === "lesson" || kind === "check" ? await stageNow() : null });
+        if (kind === "check" && hangChecks) return;
         let answer = "";
         if (kind === "judge") answer = "medium";
         else if (kind === "outline") {
@@ -209,7 +215,10 @@ d("checked lessons", () => {
               },
             ],
           });
-        } else if (kind === "lesson") answer = JSON.stringify(WRITTEN(field("Lesson")));
+        } else if (kind === "lesson") {
+          if (hold && field("Lesson") === "Power in resistors") await hold;
+          answer = JSON.stringify(WRITTEN(field("Lesson")));
+        } else if (kind === "check" && failChecks) answer = "I looked at the lesson and it seems mostly fine.";
         else if (kind === "check") {
           const round = messages.at(-1)!.content.includes("gave different results") ? 2 : 1;
           answer = checkReply(field("Topic"), round, field("Lesson"));
@@ -388,10 +397,12 @@ d("checked lessons", () => {
     ]);
     // As saved, with the person's rating and the organization's counts (none yet).
     expect(l.videos).toEqual([{ ...video, myRating: null, myReason: null, counts: { up: 0, ok: 0, down: 0 } }]);
-    expect(l.verification).toMatchObject({ status: "corrected", model: "adv-1" });
+    expect(l.verification).toMatchObject({ status: "corrected", model: "adv-1", rechecked: true });
     expect(l.modelId).toBe(ids["adv-1"]);
-    // The earlier version is still there as it was.
-    expect((await h.call(h.alice, "GET", `/api/learning/courses/${courseId}/lessons/0?version=1`)).json.verification.status).toBe("corrected");
+    // The earlier version is still there as it was (written from its sources, not checked later).
+    const v1Check = (await h.call(h.alice, "GET", `/api/learning/courses/${courseId}/lessons/0?version=1`)).json.verification;
+    expect(v1Check.status).toBe("corrected");
+    expect(v1Check.rechecked).toBeUndefined();
 
     // It counts against the day's lessons, like writing a new version.
     await h.call(h.owner, "PUT", "/api/admin/gem", { lessonsPerDay: 1 });
@@ -437,5 +448,114 @@ d("checked lessons", () => {
     expect(l.verification).toMatchObject({ status: "corrected", provider: null, sources: [], researchNote: null });
     expect(sent.find((s) => s.kind === "check")!.user).not.toContain("<reference_lookups>");
     await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "searxng" });
+  });
+
+  const versionsOf = async (id: string, n: number) => (await h.call(h.alice, "GET", `/api/learning/courses/${id}/lessons/${n}`)).json.versions as { version: number; status: string; current: boolean; error: string | null }[];
+  let rechecks = "";
+
+  it("a check that doesn't finish leaves the lesson shown, with its check, and isn't counted against the day", async () => {
+    await h.call(h.owner, "PUT", "/api/admin/gem", { coursesPerDay: 50 });
+    rechecks = (await newCourse("Resistor rechecks")).id;
+    failChecks = true;
+    try {
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/check`)).json).toEqual({ ok: true, status: "generating" });
+      await h.app.learning.idle();
+    } finally {
+      failChecks = false;
+    }
+    const l = (await h.call(h.alice, "GET", `/api/learning/courses/${rechecks}/lessons/0`)).json;
+    // Still version 1, with its "Checked · corrections"; the attempt is a failed version that says why.
+    expect(l.version).toBe(1);
+    expect(l.verification).toMatchObject({ status: "corrected", model: "adv-1" });
+    expect(l.versions.map((v: { version: number; status: string; current: boolean }) => [v.version, v.status, v.current])).toEqual([
+      [1, "ready", true],
+      [2, "failed", false],
+    ]);
+    expect(l.versions[1].error).toBe("The check didn't finish: the checking model's reply didn't match the required format twice. The lesson shown is unchanged.");
+    const [attempt] = await h.db.select().from(courseLesson).where(eq(courseLesson.id, (await h.db.select({ id: courseLesson.id }).from(courseLesson).where(sql`${courseLesson.courseId} = ${rechecks} and ${courseLesson.version} = 2`))[0]!.id));
+    expect(attempt!.modelId).toBeNull();
+  });
+
+  it("asking twice while another of the course's lessons is being written makes one check, not two", async () => {
+    let release!: () => void;
+    hold = new Promise<void>((r) => (release = r));
+    try {
+      // Lesson 2 is being written (and waits); a check of lesson 1 queues behind it.
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/1/generate`)).status).toBe(200);
+      const before = seen.length;
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/check`)).json).toEqual({ ok: true, status: "generating" });
+      // The new version is there at once, so the page shows it and a second ask finds it busy.
+      expect((await versionsOf(rechecks, 0)).filter((v) => v.status === "generating")).toHaveLength(1);
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/check`)).json).toEqual({ ok: true, status: "generating" });
+      expect((await versionsOf(rechecks, 0)).filter((v) => v.status === "generating")).toHaveLength(1);
+      release();
+      await h.app.learning.idle();
+      expect(seen.slice(before).filter((s) => s.kind === "check" && s.user.includes("Lesson: Current in a resistor"))).toHaveLength(1);
+    } finally {
+      release();
+      hold = null;
+    }
+    expect((await versionsOf(rechecks, 0)).map((v) => [v.version, v.status, v.current])).toEqual([
+      [1, "ready", false],
+      [2, "failed", false],
+      [3, "ready", true],
+    ]);
+  });
+
+  it("a check or a new version uses one of the day's lessons, not two; showing another version uses none", async () => {
+    // Everything written before today.
+    await h.db.execute(sql`update course_lesson set updated_at = now() - interval '2 days'`);
+    await h.call(h.owner, "PUT", "/api/admin/gem", { lessonsPerDay: 2 });
+    try {
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/check`)).status).toBe(200);
+      await h.app.learning.idle();
+      // One lesson today: the version replaced keeps its date, so a second fits.
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/regenerate`)).status).toBe(200);
+      await h.app.learning.idle();
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/check`)).status).toBe(429);
+      // Showing version 1 again isn't writing one.
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/restore`, { version: 1 })).status).toBe(200);
+      await h.call(h.owner, "PUT", "/api/admin/gem", { lessonsPerDay: 3 });
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${rechecks}/lessons/0/check`)).status).toBe(200);
+      await h.app.learning.idle();
+    } finally {
+      await h.call(h.owner, "PUT", "/api/admin/gem", { lessonsPerDay: 60 });
+    }
+  });
+
+  it("a checker that never answers is given up: the lesson is saved as written, not checked, and says why", async () => {
+    h.app.learning.timeouts.check = 300;
+    hangChecks = true;
+    try {
+      const { lesson: l } = await newCourse("Resistor slow checks");
+      expect(l).toMatchObject({ status: "ready", stage: null });
+      expect(l.content.workedExample.answer).toBe("I = 4 A");
+      expect(l.verification).toMatchObject({ status: "not_checked", reason: "The checking model didn't answer in time, so the lesson is shown as written." });
+    } finally {
+      hangChecks = false;
+      h.app.learning.timeouts.check = 10 * 60_000;
+    }
+  });
+
+  it("with the token allowance used up, nothing is searched for a lesson or a check: it says why", async () => {
+    const { id } = await newCourse("Resistor budget");
+    await h.db.update(workspace).set({ tokenLimit: 1 }).where(eq(workspace.id, h.workspaceId));
+    try {
+      web.searches.length = 0;
+      const before = seen.length;
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${id}/lessons/1/generate`)).status).toBe(200);
+      await h.app.learning.idle();
+      const l = (await h.call(h.alice, "GET", `/api/learning/courses/${id}/lessons/1`)).json;
+      expect(l).toMatchObject({ status: "failed", error: "You've used your token allowance for this period." });
+      expect((await h.call(h.alice, "POST", `/api/learning/courses/${id}/lessons/0/check`)).status).toBe(200);
+      await h.app.learning.idle();
+      const checked = await versionsOf(id, 0);
+      expect(checked.at(-1)).toMatchObject({ status: "failed", current: false, error: "The check didn't run: You've used your token allowance for this period." });
+      // No paid search and no model call was made for either.
+      expect(web.searches).toEqual([]);
+      expect(seen.slice(before).filter((s) => s.kind === "lesson" || s.kind === "check")).toEqual([]);
+    } finally {
+      await h.db.update(workspace).set({ tokenLimit: null }).where(eq(workspace.id, h.workspaceId));
+    }
   });
 });

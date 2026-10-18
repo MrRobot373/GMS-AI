@@ -351,11 +351,16 @@ export function factorial(n: number): number {
   return r;
 }
 
+/**
+ * The loops stop once the product overflows (it can only stay Infinity from there): the answer is
+ * the same, and "1e15 nPr 1e15" takes a few hundred steps instead of 10^15. Every factor is at
+ * least 1, so a large r always overflows within about 170 steps for nPr, about 1,100 for nCr.
+ */
 export function nPr(n: number, r: number): number {
   if (!Number.isInteger(n) || !Number.isInteger(r) || n < 0 || r < 0) throw new ExprError("nPr needs whole numbers ≥ 0");
   if (r > n) return 0;
   let out = 1;
-  for (let k = n - r + 1; k <= n; k++) out *= k;
+  for (let k = n - r + 1; k <= n && out !== Infinity; k++) out *= k;
   return out;
 }
 
@@ -364,7 +369,7 @@ export function nCr(n: number, r: number): number {
   if (r > n) return 0;
   r = Math.min(r, n - r);
   let out = 1;
-  for (let k = 1; k <= r; k++) out = (out * (n - r + k)) / k;
+  for (let k = 1; k <= r && out !== Infinity; k++) out = (out * (n - r + k)) / k;
   return Math.round(out);
 }
 

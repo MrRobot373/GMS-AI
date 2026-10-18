@@ -30,14 +30,16 @@ import type { AppContext } from "../context";
 import { HttpError } from "../errors";
 import { msg } from "../i18n";
 import { quotaFor } from "./quota";
-import { chooseModel } from "./router";
+import { chooseModel, type Chosen } from "./router";
 import { getGemSettings, videoDeps, webSearchDeps } from "./gem";
 import {
   buildVerification,
   calcMismatchMessage,
   checkMessages,
+  LOOKUP_TOKENS_MAX,
   lookupReferences,
   NO_RESEARCH,
+  RESEARCH_TOKENS_MAX,
   researchLesson,
   researchQueries,
   runCalcChecks,
@@ -138,12 +140,23 @@ function lessonHeader(c: { topic: string; level: keyof typeof LEVEL_TEXT; outlin
   ];
 }
 
+/** What the router is told about a check (it's asked for the hard tier directly). */
+const checkText = (c: { level: string }, lesson: LessonContent) => `Check a ${c.level} engineering lesson: ${lesson.title}`;
+
 export function flatLessons(o: CourseOutline) {
   return o.modules.flatMap((m, mi) => m.lessons.map((l, li) => ({ ...l, module: mi, index: li })));
 }
 
 /** The reply didn't pass the schema twice: nothing is stored. */
 export class LearningOutputError extends Error {}
+
+/** The model took longer than the call allows. */
+export class LearningTimeoutError extends Error {}
+
+/** The video pick is a small call with a fallback (search order): it never holds a written lesson up for long. */
+const PICK_TIMEOUT_MS = 45_000;
+/** Each check call: a long reply on the Advanced tier, but never an endless wait. */
+const CHECK_TIMEOUT_MS = 10 * 60_000;
 
 interface GenerateOpts<T extends z.ZodType> {
   workspaceId: string;
@@ -159,15 +172,16 @@ interface GenerateOpts<T extends z.ZodType> {
   contextTokens?: number;
   /** 2 (the default) gives the model one chance to fix a reply in the wrong shape; 1 when the caller has a fallback. */
   attempts?: 1 | 2;
+  /** The model, when the caller chose it already (modelFor); else the router chooses it here. */
+  model?: Chosen;
+  /** How long each attempt may take before it's given up (LearningTimeoutError); none by default. */
+  timeoutMs?: number;
 }
 
-/**
- * One call through the gateway, validated; on a failed check the model gets one chance to fix its
- * reply. Usage is metered under "learning" against the person's budget.
- */
-export async function generateJson<T extends z.ZodType>(ctx: AppContext, o: GenerateOpts<T>) {
-  const { db, box } = ctx;
-  const { model: m, provider, thinking } = await chooseModel(db, box, {
+type ModelAsk = Pick<GenerateOpts<z.ZodType>, "workspaceId" | "userId" | "text" | "contextTokens" | "difficulty">;
+
+const choose = (ctx: AppContext, o: ModelAsk) =>
+  chooseModel(ctx.db, ctx.box, {
     workspaceId: o.workspaceId,
     section: "chat",
     userId: o.userId,
@@ -176,14 +190,45 @@ export async function generateJson<T extends z.ZodType>(ctx: AppContext, o: Gene
     contextTokens: o.contextTokens ?? 1500,
     difficulty: o.difficulty,
   });
-  const { status: quota, groupId } = await quotaFor(db, o.workspaceId, o.userId, m);
+
+/** Who pays for a call to `m`: 402 when the person's allowance for it is used up. */
+async function budgetFor(ctx: AppContext, workspaceId: string, userId: string, m: Chosen["model"]) {
+  const { status: quota, groupId } = await quotaFor(ctx.db, workspaceId, userId, m);
   if (!quota.result.allowed) throw new HttpError(402, "You've used your token allowance for this period.", "quota_exceeded", quota);
+  return groupId;
+}
+
+/**
+ * The model a call will use, with its budget checked, before anything else is spent on the call:
+ * a lesson's research and reference lookups are paid searches, made only once this has passed.
+ */
+export async function modelFor(ctx: AppContext, o: ModelAsk): Promise<Chosen> {
+  const chosen = await choose(ctx, o);
+  await budgetFor(ctx, o.workspaceId, o.userId, chosen.model);
+  return chosen;
+}
+
+/**
+ * One call through the gateway, validated; on a failed check the model gets one chance to fix its
+ * reply. Usage is metered under "learning" against the person's budget.
+ */
+export async function generateJson<T extends z.ZodType>(ctx: AppContext, o: GenerateOpts<T>) {
+  const { db } = ctx;
+  const { model: m, provider, thinking } = o.model ?? (await choose(ctx, o));
+  const groupId = await budgetFor(ctx, o.workspaceId, o.userId, m);
   const messages = [...o.messages];
   let tokens = { input: 0, output: 0 };
   let lastError = "";
   for (let attempt = 0; attempt < (o.attempts ?? 2); attempt++) {
     const started = Date.now();
-    const r = await completeChat(provider, m.modelKey, messages, { maxTokens: o.maxTokens, temperature: 0.3, thinking });
+    const signal = o.timeoutMs ? AbortSignal.timeout(o.timeoutMs) : undefined;
+    let r: Awaited<ReturnType<typeof completeChat>>;
+    try {
+      r = await completeChat(provider, m.modelKey, messages, { maxTokens: o.maxTokens, temperature: 0.3, thinking, signal });
+    } catch (e) {
+      throw signal?.aborted ? new LearningTimeoutError() : e;
+    }
+    if (signal?.aborted) throw new LearningTimeoutError();
     tokens = { input: tokens.input + r.usage.inputTokens, output: tokens.output + r.usage.outputTokens };
     const parsed = parseModelJson(o.schema, r.text);
     await db.insert(usageEvent).values({
@@ -216,15 +261,32 @@ const errorText = (e: unknown) =>
 const checkErrorText = (e: unknown) =>
   e instanceof LearningOutputError
     ? msg("The checking model's reply didn't match the required format twice, so the lesson is shown as written.")
-    : e instanceof HttpError
-      ? e.message
-      : msg("The checking model failed to respond, so the lesson is shown as written.");
+    : e instanceof LearningTimeoutError
+      ? msg("The checking model didn't answer in time, so the lesson is shown as written.")
+      : e instanceof HttpError
+        ? e.message
+        : msg("The checking model failed to respond, so the lesson is shown as written.");
+
+/** A refusal before the check ran (the token allowance used up), said as being about the check. */
+const recheckHttpText = (why: string) => msg(`The check didn't run: ${why}`);
+
+/** Why "Check this lesson" didn't finish; the lesson shown, and its earlier check, stay as they are. */
+const recheckErrorText = (e: unknown) =>
+  e instanceof LearningOutputError
+    ? msg("The check didn't finish: the checking model's reply didn't match the required format twice. The lesson shown is unchanged.")
+    : e instanceof LearningTimeoutError
+      ? msg("The check didn't finish: the checking model didn't answer in time. The lesson shown is unchanged.")
+      : e instanceof HttpError
+        ? recheckHttpText(e.message)
+        : msg("The check didn't finish: the checking model failed to respond. The lesson shown is unchanged.");
 
 type CourseRow = { workspaceId: string; userId: string; topic: string; level: keyof typeof LEVEL_TEXT; outline: CourseOutline };
 
 /** Background generation, one job per course at a time, recovered after a restart. */
 export class LearningRunner {
   private running = new Map<string, Promise<void>>();
+  /** How long the video pick and each check call may take (tests shorten them). */
+  timeouts = { pick: PICK_TIMEOUT_MS, check: CHECK_TIMEOUT_MS };
   constructor(
     private ctx: AppContext,
     private log: (msg: string, err?: unknown) => void,
@@ -251,13 +313,40 @@ export class LearningRunner {
     return this.run(courseId, () => this.writeOutline(courseId));
   }
 
-  lesson(courseId: string, ordinal: number, regenerate = false) {
-    return this.run(courseId, () => this.writeLesson(courseId, ordinal, regenerate));
+  /** Write a lesson that's waiting (or failed). */
+  lesson(courseId: string, ordinal: number) {
+    return this.run(courseId, () => this.writeLesson(courseId, ordinal));
   }
 
-  /** Research and check the lesson as it is now, saved as a new version (its videos kept). */
-  check(courseId: string, ordinal: number) {
-    return this.run(courseId, () => this.checkLesson(courseId, ordinal));
+  /**
+   * A new version of a written lesson, as a row that's "generating" as soon as this returns, so a
+   * second request sees it even while the job waits behind another of the course's lessons. Null
+   * when a version is already being made (checked in the same statement, so two requests at once
+   * can't both add one).
+   */
+  private async addVersion(courseId: string, ordinal: number, title: string): Promise<string | null> {
+    const rows = (await this.ctx.db.execute(sql`
+      insert into course_lesson (course_id, ordinal, version, current, title, status)
+      select ${courseId}::text, ${ordinal}::int, coalesce(max(version), 0) + 1, false, ${title}::text, 'generating'::lesson_status
+      from course_lesson where course_id = ${courseId} and ordinal = ${ordinal}
+      having not coalesce(bool_or(status = 'generating'), false)
+      on conflict do nothing
+      returning id`)) as unknown as { id: string }[];
+    return rows[0]?.id ?? null;
+  }
+
+  /** Write a new version of a written lesson; the current one stays until it's ready. False: one is being made already. */
+  async regenerate(courseId: string, ordinal: number, title: string) {
+    const id = await this.addVersion(courseId, ordinal, title);
+    if (id) void this.run(courseId, () => this.writeLesson(courseId, ordinal, id));
+    return !!id;
+  }
+
+  /** Research and check the lesson as it is now, saved as a new version (its videos kept). False: one is being made already. */
+  async check(courseId: string, ordinal: number, title: string) {
+    const id = await this.addVersion(courseId, ordinal, title);
+    if (id) void this.run(courseId, () => this.checkLesson(courseId, ordinal, id));
+    return !!id;
   }
 
   private async setStage(lessonId: string, stage: LessonStage) {
@@ -272,28 +361,62 @@ export class LearningRunner {
   }
 
   /**
+   * The checker's model (the Advanced tier), with its budget checked. `sourcesTokens`: what the
+   * sources add, or the most they can when they haven't been found yet; the reference lookups are
+   * counted at their most, since they're made only after this.
+   */
+  private checker(c: CourseRow, lesson: LessonContent, sourcesTokens: number) {
+    return modelFor(this.ctx, {
+      workspaceId: c.workspaceId,
+      userId: c.userId,
+      text: checkText(c, lesson),
+      difficulty: "hard",
+      contextTokens: 3000 + estimateTokens(JSON.stringify(lesson)) + sourcesTokens + LOOKUP_TOKENS_MAX,
+    });
+  }
+
+  /**
    * The check: one call on the Advanced tier with the lesson, the sources and a lookup of each
    * reference; its calculations are worked out, and when one doesn't come out as the lesson says,
    * the checker gets the list once for a final lesson. A check that fails keeps the lesson as it is,
-   * with the reason; it never fails the lesson.
+   * with the reason (and `failed`, what went wrong); it never fails the lesson. The checker's model
+   * and budget come first: nothing is looked up for a check that can't run.
    */
-  private async verify(c: CourseRow, ordinal: number, lesson: LessonContent, research: Research, deps: WebSearchDeps) {
+  private async verify(c: CourseRow, ordinal: number, lesson: LessonContent, research: Research, deps: WebSearchDeps, opts: { recheck?: boolean; checker?: Chosen } = {}) {
+    const recheck = opts.recheck ?? false;
+    const notChecked = (e: unknown) => ({
+      content: lesson,
+      verification: buildVerification({ research, model: null, issues: [], calc: [], failed: checkErrorText(e), recheck }),
+      modelId: null,
+      tokens: { input: 0, output: 0 },
+      failed: e,
+    });
+    let model = opts.checker;
+    if (!model) {
+      try {
+        model = await this.checker(c, lesson, estimateTokens(sourcesBlock(research.sources)));
+      } catch (e) {
+        return notChecked(e);
+      }
+    }
     const messages = checkMessages({ product: await productName(this.ctx.db), header: lessonHeader(c, ordinal), lesson, sources: research.sources, lookups: await lookupReferences(deps, lesson.references) });
     const base = {
       workspaceId: c.workspaceId,
       userId: c.userId,
       schema: lessonCheckSchema,
-      text: `Check a ${c.level} engineering lesson: ${lesson.title}`,
+      text: checkText(c, lesson),
       maxTokens: 16000,
       difficulty: "hard" as const,
       contextTokens: messages.reduce((n, m) => n + estimateTokens(m.content), 0),
+      model,
+      timeoutMs: this.timeouts.check,
     };
     let tokens = { input: 0, output: 0 };
     let first;
     try {
       first = await generateJson(this.ctx, { ...base, messages });
     } catch (e) {
-      return { content: lesson, verification: buildVerification({ research, model: null, issues: [], calc: [], failed: checkErrorText(e) }), modelId: null, tokens };
+      return notChecked(e);
     }
     let out = first.value;
     let calc = runCalcChecks(out.calcChecks);
@@ -312,8 +435,8 @@ export class LearningRunner {
         // The first round's lesson stands; what's still wrong is recorded as open issues.
       }
     }
-    const verification = buildVerification({ research, model: { id: first.modelId, name: first.modelName }, issues: out.issues, calc });
-    return { content: out.lesson as LessonContent, verification, modelId: first.modelId, tokens };
+    const verification = buildVerification({ research, model: { id: first.modelId, name: first.modelName }, issues: out.issues, calc, recheck });
+    return { content: out.lesson as LessonContent, verification, modelId: first.modelId, tokens, failed: null };
   }
 
   private async writeOutline(courseId: string) {
@@ -341,30 +464,32 @@ export class LearningRunner {
       return;
     }
     // The first lesson is written straight away; the rest when they're opened.
-    await this.writeLesson(c.id, 0, false);
+    await this.writeLesson(c.id, 0);
   }
 
-  private async writeLesson(courseId: string, ordinal: number, regenerate: boolean) {
+  /**
+   * Write a lesson: the current one when it's waiting (or failed), or `versionId`, a new version
+   * (addVersion) written beside the current one, which stays until the new one is ready.
+   */
+  private async writeLesson(courseId: string, ordinal: number, versionId?: string) {
     const { db } = this.ctx;
     const [c] = await db.select().from(course).where(eq(course.id, courseId));
-    if (!c?.outline) return;
-    const [cur] = await db.select().from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.current, true)));
-    if (!cur) return;
-    if (!regenerate && cur.status === "ready") return;
-    // A regeneration writes a new version; the current one stays until the new one is ready.
-    let rowId = cur.id;
-    if (regenerate && cur.status === "ready") {
-      const [{ v }] = (await db.select({ v: sql<number>`max(${courseLesson.version})::int` }).from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal)))) as [{ v: number }];
-      const [row] = await db.insert(courseLesson).values({ courseId: c.id, ordinal, version: v + 1, current: false, title: cur.title, status: "generating" }).returning({ id: courseLesson.id });
-      rowId = row!.id;
-    } else {
-      await db.update(courseLesson).set({ status: "generating", error: null }).where(eq(courseLesson.id, cur.id));
+    const [cur] = c?.outline ? await db.select().from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.current, true))) : [];
+    if (!c?.outline || !cur || (versionId && cur.status !== "ready")) {
+      if (versionId) await db.delete(courseLesson).where(eq(courseLesson.id, versionId));
+      return;
     }
+    if (!versionId && cur.status === "ready") return;
+    const rowId = versionId ?? cur.id;
+    if (!versionId) await db.update(courseLesson).set({ status: "generating", error: null }).where(eq(courseLesson.id, cur.id));
     try {
       const cr: CourseRow = { ...c, outline: c.outline };
       // With the check on: sources first (when web search is set up), the check after writing.
       const check = (await getGemSettings(db)).lessonCheck;
       const deps = check ? await webSearchDeps(this.ctx) : null;
+      const text = `Write a detailed ${c.level} engineering lesson: ${cur.title}`;
+      // The writer's model and budget before the research: its searches cost the organization credit.
+      const writer = await modelFor(this.ctx, { workspaceId: c.workspaceId, userId: c.userId, text, contextTokens: 1500 + (deps && webSearchReady(deps) ? RESEARCH_TOKENS_MAX : 0) });
       const research = deps ? await this.research(rowId, deps, cr, ordinal, cur.title) : NO_RESEARCH;
       await this.setStage(rowId, "writing");
       const written = await generateJson(this.ctx, {
@@ -372,9 +497,10 @@ export class LearningRunner {
         userId: c.userId,
         messages: lessonMessages({ topic: c.topic, level: c.level, outline: c.outline }, ordinal, await productName(db), research.sources),
         schema: lessonSchema,
-        text: `Write a detailed ${c.level} engineering lesson: ${cur.title}`,
+        text,
         maxTokens: 12000,
         contextTokens: 1500 + estimateTokens(sourcesBlock(research.sources)),
+        model: writer,
       });
       let content: LessonContent = written.value;
       let verification: LessonVerification | null = null;
@@ -390,7 +516,8 @@ export class LearningRunner {
       await this.setStage(rowId, "videos");
       const yt = await this.findVideos(cr, content.videoQueries.length ? content.videoQueries : [`${c.topic} ${cur.title}`], content);
       await db.transaction(async (tx) => {
-        if (rowId !== cur.id) await tx.update(courseLesson).set({ current: false }).where(eq(courseLesson.id, cur.id));
+        // The version it replaces keeps its updatedAt: it wasn't written today (checkLearningLimits counts those).
+        if (rowId !== cur.id) await tx.update(courseLesson).set({ current: false, updatedAt: cur.updatedAt }).where(eq(courseLesson.id, cur.id));
         await tx
           .update(courseLesson)
           .set({
@@ -411,31 +538,48 @@ export class LearningRunner {
           .where(eq(courseLesson.id, rowId));
       });
     } catch (e) {
-      await db.update(courseLesson).set({ status: "failed", error: errorText(e), stage: null }).where(eq(courseLesson.id, rowId));
+      // A new version that failed is shown above the lesson, so it says what it was.
+      const why = errorText(e);
+      await db.update(courseLesson).set({ status: "failed", error: versionId ? msg(`The new version wasn't saved: ${why}`) : why, stage: null }).where(eq(courseLesson.id, rowId));
     }
   }
 
-  private async checkLesson(courseId: string, ordinal: number) {
+  /**
+   * "Check this lesson" on the version made for it (addVersion). It becomes the one shown only when
+   * the check ran: one that didn't finish (the model failed, its budget was used up) is kept as a
+   * failed version that says why, the lesson shown keeps its earlier check, and nothing is counted
+   * against the day's lessons. The checker's model and budget come before any search.
+   */
+  private async checkLesson(courseId: string, ordinal: number, versionId: string) {
     const { db } = this.ctx;
     const [c] = await db.select().from(course).where(eq(course.id, courseId));
-    if (!c?.outline) return;
-    const [cur] = await db.select().from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.current, true)));
-    if (!cur?.content || cur.status !== "ready") return;
-    const [{ v }] = (await db.select({ v: sql<number>`max(${courseLesson.version})::int` }).from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal)))) as [{ v: number }];
-    const deps = await webSearchDeps(this.ctx);
-    const [row] = await db
-      .insert(courseLesson)
-      .values({ courseId: c.id, ordinal, version: v + 1, current: false, title: cur.title, status: "generating", stage: webSearchReady(deps) ? "researching" : "checking" })
-      .returning({ id: courseLesson.id });
-    const rowId = row!.id;
+    const [cur] = c?.outline ? await db.select().from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.current, true))) : [];
+    if (!c?.outline || !cur?.content || cur.status !== "ready") {
+      await db.delete(courseLesson).where(eq(courseLesson.id, versionId));
+      return;
+    }
+    const failed = (e: unknown) => db.update(courseLesson).set({ status: "failed", error: recheckErrorText(e), stage: null }).where(eq(courseLesson.id, versionId));
     try {
       const cr: CourseRow = { ...c, outline: c.outline };
-      const research = await this.research(rowId, deps, cr, ordinal, cur.title);
-      await this.setStage(rowId, "checking");
-      const checked = await this.verify(cr, ordinal, cur.content, research, deps);
-      // The new version keeps the lesson's videos (and when they were last checked).
+      const deps = await webSearchDeps(this.ctx);
+      let checker: Chosen;
+      try {
+        checker = await this.checker(cr, cur.content, webSearchReady(deps) ? RESEARCH_TOKENS_MAX : 0);
+      } catch (e) {
+        await failed(e);
+        return;
+      }
+      const research = await this.research(versionId, deps, cr, ordinal, cur.title);
+      await this.setStage(versionId, "checking");
+      const checked = await this.verify(cr, ordinal, cur.content, research, deps, { recheck: true, checker });
+      if (checked.failed !== null) {
+        await failed(checked.failed);
+        return;
+      }
+      // The new version keeps the lesson's videos (and when they were last checked); the one it
+      // replaces keeps its updatedAt, as in writeLesson.
       await db.transaction(async (tx) => {
-        await tx.update(courseLesson).set({ current: false }).where(eq(courseLesson.id, cur.id));
+        await tx.update(courseLesson).set({ current: false, updatedAt: cur.updatedAt }).where(eq(courseLesson.id, cur.id));
         await tx
           .update(courseLesson)
           .set({
@@ -453,10 +597,10 @@ export class LearningRunner {
             stage: null,
             error: null,
           })
-          .where(eq(courseLesson.id, rowId));
+          .where(eq(courseLesson.id, versionId));
       });
     } catch (e) {
-      await db.update(courseLesson).set({ status: "failed", error: errorText(e), stage: null }).where(eq(courseLesson.id, rowId));
+      await db.update(courseLesson).set({ status: "failed", error: errorText(e), stage: null }).where(eq(courseLesson.id, versionId));
     }
   }
 
@@ -487,6 +631,7 @@ export class LearningRunner {
         difficulty: "easy",
         attempts: 1,
         contextTokens: messages.reduce((n, m) => n + estimateTokens(m.content), 0),
+        timeoutMs: this.timeouts.pick,
       });
       return { videos: applyPicks(videos, value.picks) ?? inSearchOrder(videos), note: found.note };
     } catch {

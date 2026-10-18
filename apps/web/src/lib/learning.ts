@@ -114,6 +114,8 @@ export interface LessonVerification {
   provider: "searxng" | "ollama" | "brave" | "tavily" | "serper" | null;
   queries?: string[];
   researchNote?: string | null;
+  /** Checked later ("Check this lesson"): the lesson wasn't written from these sources. */
+  rechecked?: boolean;
   /** Links come from the search provider, never from a model. */
   sources: { n: number; title: string; url: string }[];
   issues: LessonIssue[];
@@ -133,7 +135,8 @@ export interface LessonDetail {
   videos: LessonVideo[] | null;
   videosNote: "not_configured" | "quota" | "unavailable" | "blocked" | null;
   verification: LessonVerification | null;
-  versions: { version: number; status: LessonStatus; current: boolean; stage: LessonStage | null; createdAt: string }[];
+  /** `error`: why a version that wasn't made failed (a check that didn't finish, say). */
+  versions: { version: number; status: LessonStatus; current: boolean; stage: LessonStage | null; error: string | null; createdAt: string }[];
   state: { completedAt: string | null; bookmarkedAt: string | null; note: string | null } | null;
   total: number;
   courseTitle: string;

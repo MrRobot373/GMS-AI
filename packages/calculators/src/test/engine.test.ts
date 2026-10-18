@@ -98,6 +98,20 @@ describe("expressions", () => {
     near(calc("1/2πfC", { vars: { f: 50, C: 1e-6 } }), 3183.09886183791);
     expect(calc("Ans*2", { vars: { Ans: 21 } })).toBe(42);
   });
+  it("permutations and combinations of huge numbers overflow at once instead of counting to them", () => {
+    // These ran 10^15 steps (and "1e17 nPr 1e17" never ended: k++ stops changing k past 2^53).
+    for (const src of ["1e15 nPr 1e15", "nPr(1e9, 1e9)", "2e9 nCr 1e9", "nCr(1e17, 5e16)", "1e17 nPr 1e17", "99999999999999 nPr 99999999999999"]) {
+      const started = performance.now();
+      expect(() => calc(src), src).toThrow(/too large/);
+      expect(performance.now() - started, src).toBeLessThan(100);
+    }
+    // Large but finite answers are as before.
+    expect(calc("1e9 nPr 2")).toBe(1e9 * (1e9 - 1));
+    expect(calc("nCr(1e9, 1)")).toBe(1e9);
+    expect(calc("nCr(1000, 3)")).toBe(166167000);
+    expect(calc("170 nPr 170")).toBe(calc("170!"));
+    expect(calc("7 nPr 0")).toBe(1);
+  });
   it("draws random numbers from the source it is given", () => {
     expect(calc("rand()", { random: () => 0.25 })).toBe(0.25);
     expect(calc("randint(1,6)", { random: () => 0.999 })).toBe(6);

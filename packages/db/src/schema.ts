@@ -1315,9 +1315,13 @@ export interface GemSettingsStored {
   webProvider?: "off" | "searxng" | "ollama" | "brave" | "tavily" | "serper";
   /** The SearXNG server (null: WEB_SEARCH_URL, then Work AI's SearXNG). */
   webUrl?: string | null;
-  /** The paid provider's API key, encrypted (WEB_SEARCH_KEY in the environment also works). */
+  /**
+   * Each paid provider's API key, encrypted (WEB_SEARCH_KEY in the environment also works). A key
+   * is only ever sent to its own provider; switching to another and back finds it again.
+   */
+  webKeysEnc?: Partial<Record<"ollama" | "brave" | "tavily" | "serper", string>>;
+  /** One key and the provider it's for, as saved before keys were kept per provider (still read; folded into webKeysEnc at the next key change). */
   webKeyEnc?: string | null;
-  /** Which provider that key is for, so it's never sent to another one after a switch. */
   webKeyProvider?: "ollama" | "brave" | "tavily" | "serper" | null;
   /** People may switch web search on in chat (default on). */
   chatWebSearch?: boolean;
@@ -1390,6 +1394,8 @@ export interface LessonVerification {
   queries?: string[];
   /** Why there are no sources (the search failed), in English; translated when shown. */
   researchNote?: string | null;
+  /** Checked later ("Check this lesson"): the lesson as it was, not written from these sources. */
+  rechecked?: boolean;
   /** The pages the writer and the checker read, numbered as the issues cite them. Links come only from the provider. */
   sources: { n: number; title: string; url: string }[];
   issues: LessonIssue[];

@@ -8,7 +8,7 @@
  * checked again. See docs/15-gem-ai.md.
  */
 import type { WebProvider } from "@aatmiq/shared";
-import { lookup } from "node:dns/promises";
+import { lookup, Resolver } from "node:dns/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP, type LookupFunction } from "node:net";
@@ -31,8 +31,8 @@ export interface WebSearchDeps {
   key: string | null;
   /** Outgoing HTTP (tests pass a fake one, which page reads then use too). */
   fetch?: typeof fetch;
-  /** Name lookups for page reads (tests replace it). */
-  resolve?: (host: string) => Promise<string[]>;
+  /** Name lookups for page reads (tests replace it); `signal` is the page's time running out. */
+  resolve?: (host: string, signal?: AbortSignal) => Promise<string[]>;
 }
 
 export type WebSearchErrorKind = "not_configured" | "auth" | "quota" | "unavailable";
@@ -50,6 +50,8 @@ export class WebSearchError extends Error {
 
 const SEARCH_TIMEOUT_MS = 15_000;
 const PAGE_TIMEOUT_MS = 8_000;
+/** Per DNS query; two tries per server, all within the page's 8 seconds. */
+const DNS_TIMEOUT_MS = 2_000;
 const PAGE_MAX_BYTES = 1.5 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
 const QUERY_MAX = 300;
@@ -92,11 +94,129 @@ export function decodeEntities(s: string): string {
 // Control characters can't go into Postgres text or jsonb and only get in the way of a model.
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 
+/*
+ * Tags are found by scanning forward, never by a pattern that can run back over the page: a page of
+ * a million "<" (or of tags and comments left open) takes no longer than any other page its size.
+ * Each search for a ">" or a closing tag is remembered, so none is made twice over the same text.
+ */
+
 // Inline tags join their text (V<sub>in</sub> is "Vin"); any other tag separates words.
-const INLINE_TAG = /<\/?(a|abbr|b|bdi|bdo|cite|code|data|dfn|em|font|i|kbd|mark|q|s|samp|small|span|strong|sub|sup|time|u|var|wbr)\b[^>]*>/gi;
+const INLINE = new Set("a abbr b bdi bdo cite code data dfn em font i kbd mark q s samp small span strong sub sup time u var wbr".split(" "));
+const BLOCK = new Set("p div li ul ol dl dt dd h1 h2 h3 h4 h5 h6 tr table section article main blockquote pre figure figcaption header".split(" "));
+/** Dropped with what's in them. */
+const SKIPPED = new Set("script style noscript template svg nav footer head iframe select".split(" "));
+/** Their content is never text: one left open runs to the end of the page. */
+const RAW = new Set(["script", "style"]);
+/** More than any page read (1.5 MB) holds; a longer text is cut here before it's scanned. */
+const HTML_MAX = 2_000_000;
+
+const isNameStart = (c: number) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+const isNameChar = (c: number) => isNameStart(c) || (c >= 48 && c <= 57) || c === 45 || c === 58 || c === 95;
+
+/** Where `find(from)` is next found at or after `pos`, searched again only when `pos` has passed it. */
+function remembered(find: (from: number) => number) {
+  let from = -1;
+  let at = -1;
+  return (pos: number) => {
+    if (from === -1 || pos < from || (at !== -1 && at < pos)) {
+      from = pos;
+      at = find(pos);
+    }
+    return at;
+  };
+}
+
+/** What a tag becomes in the text: a line break, a bullet, a cell separator, a space, or nothing. */
+function tagText(name: string, closing: boolean, lines: boolean): string {
+  if (INLINE.has(name)) return "";
+  if (!lines) return " ";
+  if (name === "br" || name === "hr") return "\n";
+  if (closing && BLOCK.has(name)) return "\n";
+  if (!closing && name === "li") return "\n• ";
+  if (closing && (name === "td" || name === "th")) return " | ";
+  return " ";
+}
+
+/**
+ * The text between the tags. `lines`: a page (blocks on their own lines, scripts, styles,
+ * navigation and footers dropped); otherwise one line (a title or a snippet). A "<" that starts no
+ * tag ("5 < 6") is text; a comment left open hides the rest, as it does in a browser.
+ */
+function stripTags(html: string, lines: boolean): string {
+  const s = html.length > HTML_MAX ? html.slice(0, HTML_MAX) : html;
+  const out: string[] = [];
+  const nextLt = remembered((p) => s.indexOf("<", p));
+  const nextGt = remembered((p) => s.indexOf(">", p));
+  const closes = new Map<string, (pos: number) => number>();
+  const closeOf = (name: string, pos: number) => {
+    let f = closes.get(name);
+    if (!f) {
+      const re = new RegExp(`</${name}(?=[\\s/>])`, "gi");
+      f = remembered((p) => {
+        re.lastIndex = p;
+        return re.exec(s)?.index ?? -1;
+      });
+      closes.set(name, f);
+    }
+    return f(pos);
+  };
+  let i = 0;
+  while (i < s.length) {
+    const lt = nextLt(i);
+    if (lt < 0) {
+      out.push(s.slice(i));
+      break;
+    }
+    if (lt > i) out.push(s.slice(i, lt));
+    i = lt + 1;
+    if (s.startsWith("<!--", lt)) {
+      const end = s.indexOf("-->", lt + 2);
+      if (end < 0) break;
+      out.push(" ");
+      i = end + 3;
+      continue;
+    }
+    const c1 = s.charCodeAt(lt + 1);
+    const closing = c1 === 47;
+    // <!doctype …>, <?xml …?>, and "</" without a name: dropped up to their ">".
+    const other = c1 === 33 || c1 === 63 || (closing && !isNameStart(s.charCodeAt(lt + 2)));
+    if (!other && !isNameStart(c1) && !closing) {
+      out.push("<");
+      continue;
+    }
+    let e = closing ? lt + 2 : lt + 1;
+    if (!other) while (e < s.length && isNameChar(s.charCodeAt(e))) e++;
+    const gt = nextGt(other ? lt + 2 : e);
+    const lt2 = nextLt(lt + 1);
+    if (gt < 0 || (lt2 >= 0 && lt2 < gt)) {
+      out.push("<");
+      continue;
+    }
+    i = gt + 1;
+    if (other) {
+      out.push(" ");
+      continue;
+    }
+    const name = s.slice(closing ? lt + 2 : lt + 1, e).toLowerCase();
+    // "<svg/>" holds nothing; "<script/>" is still open, as a browser reads it.
+    if (lines && !closing && SKIPPED.has(name) && (RAW.has(name) || s.charCodeAt(gt - 1) !== 47)) {
+      const close = closeOf(name, i);
+      if (close >= 0) {
+        const end = nextGt(close + 2 + name.length);
+        if (end < 0) break;
+        out.push(" ");
+        i = end + 1;
+      } else if (RAW.has(name)) break;
+      else out.push(" ");
+      continue;
+    }
+    out.push(tagText(name, closing, lines));
+  }
+  return out.join("");
+}
 
 /** One line of plain text: tags dropped, entities decoded, whitespace collapsed. */
-const plain = (s: string) => decodeEntities(s.replace(INLINE_TAG, "").replace(/<[^>]*>/g, " ")).replace(CONTROL, "").replace(/\s+/g, " ").trim();
+const plain = (s: string) => decodeEntities(stripTags(s.slice(0, 20_000), false)).replace(CONTROL, "").replace(/\s+/g, " ").trim();
 
 /** Whitespace collapsed, paragraph breaks kept. */
 const tidy = (s: string) =>
@@ -112,16 +232,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trim
 
 /** A page's readable text: scripts, styles, navigation and footers dropped; blocks become lines. */
 export function htmlToText(html: string): string {
-  const body = html
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<(script|style|noscript|template|svg|nav|footer|head|iframe|select)\b[\s\S]*?<\/\1\s*>/gi, " ")
-    .replace(/<(br|hr)\b[^>]*>/gi, "\n")
-    .replace(/<\/(p|div|li|ul|ol|dl|dt|dd|h[1-6]|tr|table|section|article|main|blockquote|pre|figure|figcaption|header)\s*>/gi, "\n")
-    .replace(/<li\b[^>]*>/gi, "\n• ")
-    .replace(/<\/t[dh]\s*>/gi, " | ")
-    .replace(INLINE_TAG, "")
-    .replace(/<[^>]*>/g, " ");
-  return tidy(decodeEntities(body));
+  return tidy(decodeEntities(stripTags(html, true)));
 }
 
 /* ───────────── Search ───────────── */
@@ -159,7 +270,8 @@ function clean(raw: Raw[], max: number, maxChars: number): WebResult[] {
     const key = href.replace(/\/$/, "");
     if (seen.has(key)) continue;
     seen.add(key);
-    const content = r.content !== undefined ? clip(tidy(str(r.content)), maxChars) : "";
+    // A provider's page text is cut long before it's tidied: only maxChars of it is kept.
+    const content = r.content !== undefined ? clip(tidy(str(r.content).slice(0, Math.max(20_000, maxChars * 10))), maxChars) : "";
     out.push({
       title: clip(plain(str(r.title)) || u.hostname, TITLE_MAX),
       url: href,
@@ -271,10 +383,50 @@ export async function webSearch(deps: WebSearchDeps, query: string, opts: { max?
 /** A page that may not be read (a private address, a type we don't read). */
 export class PageRefused extends Error {}
 
-const defaultResolve = async (host: string) => (await lookup(host, { all: true, verbatim: true })).map((a) => a.address);
+/** `p`, or the signal's reason as soon as it's aborted (what `p` was doing carries on, unseen). */
+function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p;
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const stop = () => reject(signal.reason);
+    signal.addEventListener("abort", stop, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", stop);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", stop);
+        reject(e);
+      },
+    );
+  });
+}
 
-/** The public address to connect to for this host, or PageRefused. */
-async function publicAddress(deps: WebSearchDeps, hostname: string): Promise<string> {
+/**
+ * A name's addresses (IPv4 first) from the DNS servers themselves: each query has its own timeout
+ * and is cancelled with the page, and none of them takes one of the few threads that the system
+ * resolver (getaddrinfo) shares with every other lookup in the process. Only when no DNS server
+ * can be reached at all does the system resolver answer, bounded by the page's time.
+ */
+async function defaultResolve(host: string, signal?: AbortSignal): Promise<string[]> {
+  const r = new Resolver({ timeout: DNS_TIMEOUT_MS, tries: 2 });
+  const cancel = () => r.cancel();
+  signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    const [v4, v6] = await Promise.allSettled([r.resolve4(host), r.resolve6(host)]);
+    const addrs = [...(v4.status === "fulfilled" ? v4.value : []), ...(v6.status === "fulfilled" ? v6.value : [])];
+    if (addrs.length) return addrs;
+    const why = v4.status === "rejected" ? (v4.reason as NodeJS.ErrnoException) : null;
+    if (why?.code === "ECONNREFUSED") return (await abortable(lookup(host, { all: true, verbatim: true }), signal)).map((a) => a.address);
+    throw why ?? new Error(`${host} has no addresses`);
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+  }
+}
+
+/** The public address to connect to for this host, or PageRefused; the lookup ends with `signal`. */
+async function publicAddress(deps: WebSearchDeps, hostname: string, signal?: AbortSignal): Promise<string> {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (isIP(host)) {
     if (isPrivateAddress(host)) throw new PageRefused(`${host} is a private address`);
@@ -284,8 +436,9 @@ async function publicAddress(deps: WebSearchDeps, hostname: string): Promise<str
   if (!host.includes(".") || /(^|\.)(localhost|local|internal|lan|home|corp|intranet)$/.test(host)) throw new PageRefused(`${host} is an internal name`);
   let addrs: string[];
   try {
-    addrs = await (deps.resolve ?? defaultResolve)(host);
-  } catch {
+    addrs = await abortable((deps.resolve ?? defaultResolve)(host, signal), signal);
+  } catch (e) {
+    if (signal?.aborted) throw signal.reason;
     throw new PageRefused(`${host} couldn't be found`);
   }
   // Every answer must be public: one private record is enough to refuse.
@@ -392,12 +545,16 @@ function decode(body: Buffer, type: string, html: boolean): string {
   }
 }
 
-/** One page's text, following at most 3 redirects, each to a public address. */
-export async function readPage(deps: WebSearchDeps, href: string, maxChars = CONTENT_MAX): Promise<string> {
-  const signal = AbortSignal.timeout(PAGE_TIMEOUT_MS);
+/**
+ * One page's text, following at most 3 redirects, each to a public address. The 8 seconds cover
+ * everything: the name lookups, every hop and the download.
+ */
+export async function readPage(deps: WebSearchDeps, href: string, maxChars = CONTENT_MAX, timeoutMs = PAGE_TIMEOUT_MS): Promise<string> {
+  const signal = AbortSignal.timeout(timeoutMs);
   let url = safeUrl(href);
   for (let hop = 0; url && hop <= MAX_REDIRECTS; hop++) {
-    const address = await publicAddress(deps, url.hostname);
+    signal.throwIfAborted();
+    const address = await publicAddress(deps, url.hostname, signal);
     const page = deps.fetch ? await fetchGet(deps.fetch, url, signal) : await pinnedGet(url, address, signal);
     if (page.status >= 300 && page.status < 400 && page.location) {
       let next: URL | null = null;

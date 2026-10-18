@@ -286,6 +286,9 @@ function LessonReader({ courseId, ordinal, total, onGo }: { courseId: string; or
   }
   const busy = l.status === "generating" || l.status === "pending";
   const newer = l.versions.find((v) => v.status === "generating");
+  // The last try at a new version failed (a check that didn't finish, say): why, until another is made.
+  const latest = l.versions.at(-1);
+  const lastFailed = !newer && l.current && latest && !latest.current && latest.status === "failed" && latest.error ? latest : null;
 
   return (
     <article className="mx-auto max-w-3xl px-6 py-8 sm:px-10" aria-busy={busy}>
@@ -314,6 +317,11 @@ function LessonReader({ courseId, ordinal, total, onGo }: { courseId: string; or
           <span className="flex items-center gap-1">
             <Loader2 className="size-3 animate-spin" /> {t("A new version is being written")}
             {newer.stage ? ` · ${t(STAGE_TEXT[newer.stage])}` : ""}
+          </span>
+        )}
+        {lastFailed && (
+          <span className="flex items-center gap-1 text-warning" role="status">
+            <CircleAlert className="size-3 shrink-0" aria-hidden /> {lastFailed.error}
           </span>
         )}
       </div>
@@ -609,28 +617,52 @@ function LessonVideos({ courseId, ordinal, videos }: { courseId: string; ordinal
 
 const chip = (on: boolean) =>
   cn(
-    "inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-[11.5px] transition-colors disabled:opacity-50 [&_svg]:size-3",
+    "inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-[11.5px] transition-colors aria-disabled:opacity-50 [&_svg]:size-3",
     on ? "border-accent-line bg-accent-soft text-accent-text" : "border-border text-fg-muted hover:bg-surface-2 hover:text-fg",
   );
 
 function VideoCard({ v, busy, onRate }: { v: LessonVideo; busy: boolean; onRate: (rating: VideoRating | null, reason?: VideoReason | null) => void }) {
   const t = useT();
+  const folded = v.myRating === "down";
+  // Not helpful folds the card and Undo unfolds it, taking the pressed button away: focus goes to
+  // the one in its place (Undo, or Not helpful again), not back to the top of the page.
+  const undoRef = useRef<HTMLButtonElement>(null);
+  const downRef = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    (folded ? undoRef : downRef).current?.focus();
+  }, [folded]);
+  // Busy buttons stay focusable (aria-disabled, not disabled), so focus isn't dropped while a rating saves.
+  const rate = (rating: VideoRating | null, reason?: VideoReason | null) => {
+    if (busy) return;
+    refocus.current = folded ? rating === null : rating === "down";
+    onRate(rating, reason);
+  };
   // Not helpful: folded away, with Undo and an optional reason.
-  if (v.myRating === "down") {
+  if (folded) {
     return (
       <div className="rounded-xl border border-border bg-surface p-3" data-testid="video-not-helpful">
         <div className="flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-fg-muted">
           <ThumbsDown className="size-3.5" aria-hidden />
           <span>{t("You marked this not helpful")}</span>
           <span aria-hidden>·</span>
-          <button type="button" onClick={() => onRate(null)} disabled={busy} className="text-fg underline-offset-2 hover:underline disabled:opacity-50">
+          <button
+            ref={undoRef}
+            type="button"
+            onClick={() => rate(null)}
+            aria-disabled={busy || undefined}
+            aria-label={t("Undo Not helpful for {title}", { title: v.title })}
+            className="text-fg underline-offset-2 hover:underline aria-disabled:opacity-50"
+          >
             {t("Undo")}
           </button>
         </div>
         <div className="mt-0.5 truncate text-[12px] text-fg-subtle">{v.title}</div>
-        <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label={t("Why wasn't it helpful?")}>
+        <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label={t("Why wasn't {title} helpful?", { title: v.title })}>
           {VIDEO_REASONS.map((r) => (
-            <button key={r.value} type="button" aria-pressed={v.myReason === r.value} disabled={busy} onClick={() => onRate("down", v.myReason === r.value ? null : r.value)} className={chip(v.myReason === r.value)}>
+            <button key={r.value} type="button" aria-pressed={v.myReason === r.value} aria-disabled={busy || undefined} onClick={() => rate("down", v.myReason === r.value ? null : r.value)} className={chip(v.myReason === r.value)}>
               {t(r.label)}
             </button>
           ))}
@@ -639,7 +671,14 @@ function VideoCard({ v, busy, onRate }: { v: LessonVideo; busy: boolean; onRate:
     );
   }
   const button = (rating: VideoRating, label: string, count: number, icon?: ReactNode) => (
-    <button type="button" aria-pressed={v.myRating === rating} disabled={busy} onClick={() => onRate(v.myRating === rating ? null : rating)} className={chip(v.myRating === rating)}>
+    <button
+      ref={rating === "down" ? downRef : undefined}
+      type="button"
+      aria-pressed={v.myRating === rating}
+      aria-disabled={busy || undefined}
+      onClick={() => rate(v.myRating === rating ? null : rating)}
+      className={chip(v.myRating === rating)}
+    >
       {icon}
       {label}
       {count > 0 && <span className="text-fg-subtle tabular-nums">{count}</span>}
@@ -662,7 +701,7 @@ function VideoCard({ v, busy, onRate }: { v: LessonVideo; busy: boolean; onRate:
         </div>
       </a>
       {v.why && <p className="px-3 pt-1 text-[12px] text-fg-muted">{v.why}</p>}
-      <div className="mt-auto flex flex-wrap items-center gap-1 p-3 pt-2" role="group" aria-label={t("Rate this video")}>
+      <div className="mt-auto flex flex-wrap items-center gap-1 p-3 pt-2" role="group" aria-label={t("Rate {title}", { title: v.title })}>
         {button("up", t("Helpful"), v.counts.up, <ThumbsUp aria-hidden />)}
         {button("ok", t("Okay"), v.counts.ok)}
         {button("down", t("Not helpful"), v.counts.down, <ThumbsDown aria-hidden />)}
@@ -705,6 +744,15 @@ const subhead = "mb-2 text-[12px] font-medium tracking-wide text-fg-subtle upper
 /** How this lesson was checked: model and date, corrections, arithmetic and the web sources. */
 function CheckDetails({ v, open, onToggle }: { v: LessonVerification; open: boolean; onToggle: (open: boolean) => void }) {
   const t = useT();
+  // What the sources were for: writing and checking it, checking it later ("Check this lesson"), or only writing it (the check didn't run).
+  const sourcesLine = (n: number, provider: string) =>
+    v.status === "not_checked"
+      ? v.rechecked
+        ? t.n(n, "{n} web source was found through {provider}, but the check didn't run.", "{n} web sources were found through {provider}, but the check didn't run.", { provider })
+        : t.n(n, "Written with {n} web source found through {provider}.", "Written with {n} web sources found through {provider}.", { provider })
+      : v.rechecked
+        ? t.n(n, "Checked against {n} web source found through {provider}.", "Checked against {n} web sources found through {provider}.", { provider })
+        : t.n(n, "Written and checked with {n} web source found through {provider}.", "Written and checked with {n} web sources found through {provider}.", { provider });
   const sourceHref = (n: number) => webHref(v.sources.find((s) => s.n === n)?.url);
   return (
     <section id="lesson-check" className="scroll-mt-6 border-t border-border pt-6">
@@ -723,7 +771,7 @@ function CheckDetails({ v, open, onToggle }: { v: LessonVerification; open: bool
               <p>{t("Checked by {model} on {date}.", { model: v.model ?? t("the Advanced model"), date: t.date(v.checkedAt, { day: "numeric", month: "long", year: "numeric" }) })}</p>
             )}
             {v.sources.length > 0 && v.provider ? (
-              <p>{t.n(v.sources.length, "Written and checked with {n} web source found through {provider}.", "Written and checked with {n} web sources found through {provider}.", { provider: t(WEB_PROVIDER_NAMES[v.provider]) })}</p>
+              <p>{sourcesLine(v.sources.length, t(WEB_PROVIDER_NAMES[v.provider]))}</p>
             ) : v.researchNote ? (
               <p className="text-warning">{v.researchNote}</p>
             ) : !v.provider ? (

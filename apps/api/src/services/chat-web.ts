@@ -138,6 +138,13 @@ export const domainOf = (url: string) => {
   }
 };
 
+/**
+ * Text a web page shaped can't open or close a block of the prompt: a tag that names one of them
+ * loses its "<" ("</sources>" becomes "‹/sources>"). It runs on decoded text, so a page's
+ * "&lt;/sources&gt;" is caught too; "5 < 6" and other text keep their "<".
+ */
+export const asData = (s: string) => s.replace(/<(?=\s*\/?\s*(?:sources?|lesson|reference[\s_-]*lookups?)\b)/gi, "‹");
+
 /** The sources as citations, numbered from `first` (after the document sources). */
 export function webCitations(sources: WebResult[], first: number): Citation[] {
   return sources.map((s, i) => ({
@@ -163,7 +170,7 @@ export function webPrompt(sources: WebResult[], first: number, failed: boolean, 
   }
   const last = first + sources.length - 1;
   const blocks = sources
-    .map((s, i) => `[${first + i}] ${s.title} (${domainOf(s.url)})\n${s.content || s.snippet || "(no text)"}`)
+    .map((s, i) => `[${first + i}] ${asData(s.title)} (${domainOf(s.url)})\n${asData(s.content || s.snippet || "(no text)")}`)
     .join("\n\n---\n\n");
   return [
     `Web search results for this message are below, numbered ${first === last ? `[${first}]` : `[${first}] to [${last}]`}: extracts from pages found today, ${longDate(today)}.`,
@@ -179,16 +186,34 @@ export function webPrompt(sources: WebResult[], first: number, failed: boolean, 
   ].join("\n");
 }
 
+/** `fix` applied to the text outside code, fenced or inline (code is left as it is). */
+const outsideCode = (text: string, fix: (part: string) => string) =>
+  text
+    .split(/(```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\n]*`)/)
+    .map((part, i) => (i % 2 ? part : fix(part)))
+    .join("");
+
 /**
  * Citation numbers that match no source are taken out of the answer (with the space before them).
  * Code, fenced or inline, is left alone: `a[1]` there is code, not a citation.
  */
 export function dropUnknownCitations(text: string, count: number): string {
-  return text
-    .split(/(```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\n]*`)/)
-    .map((part, i) => (i % 2 ? part : part.replace(/ ?\[(\d{1,3})\](?![(:])/g, (m, d: string) => (Number(d) >= 1 && Number(d) <= count ? m : ""))))
-    .join("");
+  return outsideCode(text, (part) => part.replace(/ ?\[(\d{1,3})\](?![(:])/g, (m, d: string) => (Number(d) >= 1 && Number(d) <= count ? m : "")));
 }
+
+/**
+ * Images the model wrote are taken out of a web answer, their alt text kept, and so are link
+ * definitions ("[x]: https://…"): a page among the sources could otherwise get the model to put
+ * the conversation into an image's address, which a browser fetches as soon as the answer shows.
+ */
+export function dropModelImages(text: string): string {
+  return outsideCode(text, (part) => part.replace(INLINE_IMAGE, "$1").replace(LINK_DEFINITION, ""));
+}
+
+// ![alt](address "title"), one level of brackets in the alt text and of parentheses in the address.
+const INLINE_IMAGE = /!\[((?:[^[\]\n]|\[[^[\]\n]*\])*)\]\((?:[^()\n]|\([^()\n]*\))*\)/g;
+// [label]: address "title" on a line of its own; without it, ![alt][label] is only text.
+const LINK_DEFINITION = /^ {0,3}\[[^[\]\n]+\]:[ \t]*(?:<[^>\n]*>|[^\s<]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*$/gm;
 
 export interface ChatWebResult {
   web: MessageWeb;

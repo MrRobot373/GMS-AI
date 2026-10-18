@@ -81,9 +81,14 @@ export interface WebSearchSetup {
   /** The SearXNG server (whichever provider is chosen, so the admin page can show it). */
   url: string | null;
   urlFrom: "settings" | "environment" | "work" | "none";
-  /** The key for `provider`; one saved for another provider is never used. */
+  /** The key for `provider` (each provider keeps its own); one saved for another provider is never used. */
   key: string | null;
   keyFrom: "settings" | "environment" | "none";
+}
+
+/** Each paid provider's stored key (encrypted), including one saved before keys were kept per provider. */
+export function storedWebKeys(g: Partial<GemSettingsStored>): NonNullable<GemSettingsStored["webKeysEnc"]> {
+  return { ...(g.webKeyEnc && g.webKeyProvider ? { [g.webKeyProvider]: g.webKeyEnc } : {}), ...(g.webKeysEnc ?? {}) };
 }
 
 /**
@@ -103,9 +108,10 @@ export async function webSearchSetup(ctx: AppContext, provider?: WebProvider): P
   let key: string | null = null;
   let keyFrom: WebSearchSetup["keyFrom"] = "none";
   if (p && p !== "searxng") {
-    if (g.webKeyEnc && g.webKeyProvider === p) {
+    const enc = storedWebKeys(g)[p];
+    if (enc) {
       try {
-        key = ctx.box.decrypt(g.webKeyEnc);
+        key = ctx.box.decrypt(enc);
         keyFrom = "settings";
       } catch {
         // Encrypted with another APP_SECRET: the environment's key, if there is one, still works.

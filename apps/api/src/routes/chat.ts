@@ -12,7 +12,7 @@ import { quotaFor } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
 import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
 import { getGemSettings, webSearchDeps } from "../services/gem";
-import { chatWebSearch, domainOf, dropUnknownCitations, queryModel } from "../services/chat-web";
+import { chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
 import { webSearchReady, type WebSearchDeps } from "../services/web-search";
 
 const MAX_HISTORY = 40;
@@ -513,9 +513,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     if (abort.signal.aborted && usage.outputTokens === 0) {
       usage = { inputTokens: messages.reduce((n, x) => n + Math.ceil(x.content.length / 4), 0), outputTokens: Math.ceil(text.length / 4), estimated: true };
     }
-    // With web search, a number that matches no source is taken out of what's saved (and shown).
+    // With web search, a number that matches no source is taken out of what's saved (and shown),
+    // and so is any image the model wrote (the page shows web answers' images as their alt text).
     const streamed = text;
-    if (web) text = dropUnknownCitations(text, citations.length);
+    if (web) text = dropModelImages(dropUnknownCitations(text, citations.length));
 
     const [assistant] = await db
       .insert(message)

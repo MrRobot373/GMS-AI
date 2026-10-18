@@ -57,6 +57,12 @@ not through us, when the customer uses them:
 - Open VSX (open-vsx.org), when someone installs an extension in Aatmiq Code;
 - search engines, through the private search service in the installation, when Work AI searches
   the web (without the person's identity);
+- the web search provider the customer chooses for chat and lessons, when someone switches on
+  *Search the web* in chat or a lesson is researched: the installation's own SearXNG (the search
+  words stay on the customer's server), or Ollama, Brave, Tavily or Serper, which receive the search
+  words a model writes from the person's message or the lesson's topic (without the person's
+  identity); and the websites in the results, which the server reads;
+- YouTube, to find lesson videos and confirm they're public;
 - websites the Work AI browser opens, and apps people connect (such as Gmail, Slack or GitHub),
   at their direction;
 - the customer's email server, and any external model service the customer configures.

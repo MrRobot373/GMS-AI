@@ -14,7 +14,7 @@ import { loadWebSearch } from "./config";
 import type { AppContext } from "./context";
 import { createSecretBox } from "./crypto";
 import { webSearchSetup } from "./services/gem";
-import { clearWebSearchCache, htmlToText, pinnedGet, readPages, webSearch, WebSearchError, webSearchReady, type WebSearchDeps, type WebResult } from "./services/web-search";
+import { clearWebSearchCache, htmlToText, pinnedGet, readPage, readPages, webSearch, WebSearchError, webSearchReady, type WebSearchDeps, type WebResult } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -58,6 +58,8 @@ function fakeWeb() {
       case "searx.test":
         if (u.pathname.startsWith("/nojson")) return new Response("Forbidden", { status: 403 });
         if (u.pathname.startsWith("/down")) return new Response("oops", { status: 502 });
+        // Every engine blocked: SearXNG still answers 200.
+        if (u.pathname.startsWith("/empty")) return Response.json({ results: [], unresponsive_engines: [["google", "timeout"], ["bing", "CAPTCHA"]] });
         return Response.json({
           results: [
             { title: "Ohm's law - Wikipedia", url: "https://en.wikipedia.org/wiki/Ohm%27s_law", content: "Ohm's law states that the current…" },
@@ -249,6 +251,28 @@ describe("reading pages", () => {
     expect(text).not.toMatch(/ {2}|\n{3}/);
   });
 
+  it("reads a hostile page as fast as any other: 1.5 MB of tags or comments left open, or of bare '<'", () => {
+    const size = 1.5 * 1024 * 1024;
+    // Each of these took minutes with patterns that searched to the end of the page for every "<".
+    const pages = ["<", "<nav ", "<!-- ", "<b ", "<a", "<svg/>", "</", "<script>", "<p>x<nav>y"].map((u) => u.repeat(Math.ceil(size / u.length)));
+    pages.push(`<${"a".repeat(size)}`);
+    for (const page of pages) {
+      const started = performance.now();
+      htmlToText(page);
+      expect(performance.now() - started, page.slice(0, 12)).toBeLessThan(3000);
+    }
+  });
+
+  it("a '<' that starts no tag is text; what's left open is handled the way a browser does", () => {
+    expect(htmlToText("<p>a < b and c > d</p><p>x<5</p>")).toBe("a < b and c > d\nx<5");
+    // An open comment or script hides the rest; an open nav loses only its tag.
+    expect(htmlToText("kept<!-- hidden <p>text</p>")).toBe("kept");
+    expect(htmlToText("kept<script>if (a<b) { x() }")).toBe("kept");
+    expect(htmlToText("<nav>text after an open nav")).toBe("text after an open nav");
+    expect(htmlToText("before<svg/>after<br>next<!DOCTYPE html></ x>end")).toBe("before after\nnext end");
+    expect(htmlToText("<table><tr><td>a</td><td>b</td></tr></table><ol><li>one<li>two</ol>")).toBe("a | b |\n\n• one\n• two");
+  });
+
   it("reads public pages, refuses private ones (by IP, by name, mixed answers, after a redirect) and keeps provider text", async () => {
     const input = [
       result("https://docs.example.org/ohm"),
@@ -304,6 +328,23 @@ describe("reading pages", () => {
     // Text the provider sent isn't fetched again, only trimmed.
     expect(hosts).not.toContain("www.fluke.com");
     expect(content["https://www.fluke.com/ohms-law"]!.length).toBeLessThanOrEqual(500);
+  });
+
+  it("the page's 8 seconds include the name lookups: a lookup that never answers ends with the page", async () => {
+    let lookup: AbortSignal | undefined;
+    const hanging: WebSearchDeps = {
+      ...deps,
+      resolve: (_host, signal) => {
+        lookup = signal;
+        return new Promise<string[]>(() => undefined);
+      },
+    };
+    const started = Date.now();
+    await expect(readPage(hanging, "https://slow-dns.example.org/page", 500, 300)).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(2000);
+    // The lookup was told to stop.
+    expect(lookup?.aborted).toBe(true);
+    expect(web.hosts()).not.toContain("slow-dns.example.org");
   });
 
   it("reads at most `max` pages", async () => {
@@ -399,8 +440,8 @@ d("web search settings and the Test button", () => {
     expect(res.body).not.toContain(key);
     const [o] = await h.db.select({ g: organization.gemSettings }).from(organization);
     expect(JSON.stringify(o!.g)).not.toContain(key);
-    expect(o!.g).toMatchObject({ webProvider: "brave", webKeyProvider: "brave" });
-    expect(createSecretBox(SECRET).decrypt(o!.g!.webKeyEnc!)).toBe(key);
+    expect(o!.g).toMatchObject({ webProvider: "brave" });
+    expect(createSecretBox(SECRET).decrypt(o!.g!.webKeysEnc!.brave!)).toBe(key);
     const audits = await h.db.select().from(auditLog);
     const entry = audits.filter((a) => a.action === "settings.gem_updated").at(-1)!;
     expect(entry.meta).toMatchObject({ webProvider: "brave", webKeyChanged: true });
@@ -414,12 +455,41 @@ d("web search settings and the Test button", () => {
     await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "tavily" });
     expect((await gem()).web).toMatchObject({ provider: "tavily", key: "none", ready: false });
     web.calls.length = 0;
+    // Test says what's missing, not that a provider should be chosen.
     const t = await h.call(h.owner, "POST", "/api/admin/gem/test-web", {});
-    expect(t.json).toMatchObject({ ok: false, kind: "not_configured" });
+    expect(t.json).toMatchObject({ ok: false, kind: "not_configured", error: "Add the API key for Tavily first, then test it." });
     expect(web.calls).toEqual([]);
     // Back to Brave: its key is there again.
     await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "brave" });
     expect((await gem()).web).toMatchObject({ provider: "brave", key: "settings", ready: true });
+  });
+
+  it("each provider keeps its own key: saving or removing Tavily's leaves Brave's", async () => {
+    await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "tavily", webKey: "tavily-key-0001" });
+    expect((await gem()).web).toMatchObject({ provider: "tavily", key: "settings", ready: true });
+    await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "brave" });
+    expect((await gem()).web).toMatchObject({ provider: "brave", key: "settings", ready: true });
+    web.calls.length = 0;
+    await h.call(h.owner, "POST", "/api/admin/gem/test-web", {});
+    expect(web.calls[0]!.headers.get("x-subscription-token")).toBe("brave-secret-0123456789");
+    // Removing Tavily's key (chosen in the same save) leaves Brave's.
+    await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "tavily", webKey: "" });
+    expect((await gem()).web).toMatchObject({ provider: "tavily", key: "none" });
+    await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "brave" });
+    expect((await gem()).web).toMatchObject({ provider: "brave", key: "settings" });
+    const [o] = await h.db.select({ g: organization.gemSettings }).from(organization);
+    expect(Object.keys(o!.g!.webKeysEnc!)).toEqual(["brave"]);
+  });
+
+  it("Test says what's missing, and a search that comes back empty isn't working", async () => {
+    // SearXNG with no address anywhere.
+    const noUrl = await h.call(h.owner, "POST", "/api/admin/gem/test-web", { provider: "searxng" });
+    expect(noUrl.json).toMatchObject({ ok: false, kind: "not_configured", error: "Add your SearXNG server's address first, then test it." });
+    // Every engine blocked: SearXNG answers, with nothing.
+    const empty = await h.call(h.owner, "POST", "/api/admin/gem/test-web", { provider: "searxng", url: "http://searx.test/empty" });
+    expect(empty.json).toMatchObject({ ok: false, kind: "empty", results: 0, error: expect.stringMatching(/^SearXNG answered, but found nothing/) });
+    const hi = await h.call({ cookie: `${h.owner.cookie}; aatmiq_lang=hi` }, "POST", "/api/admin/gem/test-web", { provider: "searxng" });
+    expect(hi.json.error).toBe("पहले अपने SearXNG सर्वर का पता जोड़ें, फिर उसे जाँचें।");
   });
 
   it("Test searches with the saved values, or with what's typed, and says what went wrong", async () => {
@@ -499,8 +569,11 @@ d("web search settings and the Test button", () => {
     await h.db.update(organization).set({ gemSettings: { webProvider: "tavily" } });
     expect(await webSearchSetup(ctx(envBrave))).toMatchObject({ provider: "tavily", key: null, keyFrom: "none" });
     // A key saved here wins over the environment's for the same provider.
-    await h.db.update(organization).set({ gemSettings: { webProvider: "brave", webKeyEnc: box.encrypt("settings-key"), webKeyProvider: "brave" } });
+    await h.db.update(organization).set({ gemSettings: { webProvider: "brave", webKeysEnc: { brave: box.encrypt("settings-key") } } });
     expect(await webSearchSetup(ctx(envBrave))).toMatchObject({ key: "settings-key", keyFrom: "settings" });
+    // So does one saved before keys were kept per provider.
+    await h.db.update(organization).set({ gemSettings: { webProvider: "brave", webKeyEnc: box.encrypt("older-key"), webKeyProvider: "brave" } });
+    expect(await webSearchSetup(ctx(envBrave))).toMatchObject({ key: "older-key", keyFrom: "settings" });
     // SearXNG with nothing set here or in the environment: Work AI's server.
     await h.db.update(organization).set({ gemSettings: { webProvider: "searxng" } });
     expect(await webSearchSetup(ctx({ provider: null, url: null, key: null }))).toMatchObject({ provider: "searxng", url: "http://searx.work", urlFrom: "work", key: null });

@@ -2009,14 +2009,18 @@ export const HI: Record<string, string> = {
   "Same as Work AI: {url}": "Work AI वाला ही: {url}",
   "From WEB_SEARCH_URL: {url}": "WEB_SEARCH_URL से: {url}",
   "Chat and lessons search the web with {provider}.": "चैट और पाठ {provider} से वेब पर खोजते हैं।",
+  "Chat searches the web with {provider}. Lessons don't: lesson checks are off.": "चैट {provider} से वेब पर खोजती है। पाठ नहीं खोजते: पाठों की जाँच बंद है।",
+  "Lessons are researched with {provider}. Chat doesn't: web search in chat is off.": "पाठों के लिए {provider} से खोज होती है। चैट नहीं खोजती: चैट में वेब खोज बंद है।",
+  "{provider} is set up, but web search in chat and lesson checks are both off.": "{provider} सेट है, पर चैट में वेब खोज और पाठों की जाँच, दोनों बंद हैं।",
   "Off: chat and lessons don't search the web.": "बंद: चैट और पाठ वेब पर नहीं खोजते।",
   "Add your SearXNG server's address, or set one in Admin → Work AI.": "अपने SearXNG सर्वर का पता डालें, या एडमिन → Work AI में सेट करें।",
   "Add the API key from your {provider} account.": "अपने {provider} खाते की API की डालें।",
   "From WEB_SEARCH_PROVIDER": "WEB_SEARCH_PROVIDER से",
   "Web search provider": "वेब खोज प्रोवाइडर",
-  "Leave empty to use the same server as Work AI.": "Work AI वाला सर्वर इस्तेमाल करने के लिए खाली छोड़ें।",
+  "Leave empty to use WEB_SEARCH_URL when it's set, else Work AI's server.": "खाली छोड़ने पर WEB_SEARCH_URL सेट हो तो वह, नहीं तो Work AI वाला सर्वर इस्तेमाल होता है।",
   "Save URL": "URL सहेजें",
   "Stored encrypted": "एन्क्रिप्ट करके रखी गई",
+  "Each provider keeps its own key, and a key is only ever sent to its provider.": "हर प्रोवाइडर की अपनी कुंजी रहती है, और कुंजी सिर्फ़ उसी प्रोवाइडर को भेजी जाती है।",
   "From WEB_SEARCH_KEY": "WEB_SEARCH_KEY से",
   "Works: {results} results in {ms} ms for a test search": "काम कर रहा है: टेस्ट खोज के {results} नतीजे, {ms} ms में",
   "Search words go to the provider you choose; with SearXNG they stay on your own server. Pages from the results are read by this server, at public addresses only. Links come only from search results, never from what a model wrote.": "खोज के शब्द आपके चुने प्रोवाइडर को जाते हैं; SearXNG के साथ वे आपके अपने सर्वर पर ही रहते हैं। नतीजों के पेज यही सर्वर पढ़ता है, सिर्फ़ सार्वजनिक पतों पर। लिंक सिर्फ़ खोज नतीजों से आते हैं, मॉडल के लिखे से कभी नहीं।",
@@ -2039,6 +2043,12 @@ export const HI: Record<string, string> = {
   "This lesson wasn't checked.": "इस पाठ की जाँच नहीं हुई।",
   "Checked by {model} on {date}.": "{date} को {model} ने जाँचा।",
   "the Advanced model": "उन्नत मॉडल",
+  "Written with {n} web source found through {provider}.|Written with {n} web sources found through {provider}.":
+    "{provider} से मिले {n} वेब स्रोत के साथ लिखा गया।|{provider} से मिले {n} वेब स्रोतों के साथ लिखा गया।",
+  "Checked against {n} web source found through {provider}.|Checked against {n} web sources found through {provider}.":
+    "{provider} से मिले {n} वेब स्रोत से जाँचा गया।|{provider} से मिले {n} वेब स्रोतों से जाँचा गया।",
+  "{n} web source was found through {provider}, but the check didn't run.|{n} web sources were found through {provider}, but the check didn't run.":
+    "{provider} से {n} वेब स्रोत मिला, पर जाँच नहीं हो सकी।|{provider} से {n} वेब स्रोत मिले, पर जाँच नहीं हो सकी।",
   "Written and checked with {n} web source found through {provider}.|Written and checked with {n} web sources found through {provider}.":
     "{provider} से मिले {n} वेब स्रोत के साथ लिखा और जाँचा गया।|{provider} से मिले {n} वेब स्रोतों के साथ लिखा और जाँचा गया।",
   "Web search isn't set up, so no web sources were used.": "वेब खोज सेट नहीं है, इसलिए कोई वेब स्रोत इस्तेमाल नहीं हुआ।",
@@ -2071,8 +2081,9 @@ export const HI: Record<string, string> = {
   // Rated lesson videos.
   "Your ratings help pick better videos for everyone in your organization.": "आपकी रेटिंग से आपके संगठन में सबके लिए बेहतर वीडियो चुने जाते हैं।",
   "You marked this not helpful": "आपने इसे काम का नहीं बताया",
-  "Why wasn't it helpful?": "यह काम का क्यों नहीं था?",
-  "Rate this video": "इस वीडियो को रेट करें",
+  "Why wasn't {title} helpful?": "{title} काम का क्यों नहीं था?",
+  "Rate {title}": "{title} को रेट करें",
+  "Undo Not helpful for {title}": "{title} के लिए काम का नहीं हटाएँ",
   "Helpful": "काम का",
   "Okay": "ठीक-ठाक",
   "Not helpful": "काम का नहीं",
@@ -2097,6 +2108,10 @@ export const HI: Record<string, string> = {
   "Blocked by {name} on {date}": "{date} को {name} ने ब्लॉक किया",
   "Blocked on {date}": "{date} को ब्लॉक किया गया",
   "Unblock": "अनब्लॉक करें",
+  "Block {title}": "{title} ब्लॉक करें",
+  "Unblock {title}": "{title} अनब्लॉक करें",
+  "Ratings couldn't be loaded.": "रेटिंग लोड नहीं हो सकीं।",
+  "GEM AI settings couldn't be loaded.": "GEM AI की सेटिंग लोड नहीं हो सकीं।",
   "No videos are blocked. A blocked video leaves the lessons that have it the next time they're opened, and isn't offered again.":
     "कोई वीडियो ब्लॉक नहीं है। ब्लॉक किया गया वीडियो, जिन पाठों में है, उनके अगली बार खुलने पर उनसे हट जाता है, और फिर कभी नहीं दिया जाता।",
 };

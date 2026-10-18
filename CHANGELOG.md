@@ -27,13 +27,16 @@ without one.
   - `tests/e2e/live-smoke.mjs` checks every AI feature against a running server with its real models.
   - **Web search** for chat and lessons, in Admin → Settings → Web search: your own SearXNG (the
     same one as Work AI by default) or Ollama web search, Brave Search, Tavily or Serper with a key
-    stored encrypted, a Test button, and switches for web search in chat and for checking lessons.
-    Pages from the results are read only at public addresses, redirects included. Also
+    stored encrypted (each provider keeps its own), a Test button that says what's missing and
+    doesn't call an empty answer working, and switches for web search in chat and for checking
+    lessons. Pages from the results are read only at public addresses, redirects included, within 8
+    seconds name lookups included, and a hostile page can't tie the server up. Also
     `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_URL` and `WEB_SEARCH_KEY`.
   - **Search the web in chat**: a globe button in the message box, on for the chat until switched
     off. A small model writes the queries, the best pages are read, and the answer cites them by
     number after any document sources, with a *Sources* list that opens each page. Numbers that
-    match no source are taken out; a search that fails leaves the answer and a note saying why.
+    match no source are taken out, and images the model writes show as their alt text; a page can't
+    close its block of the prompt. A search that fails leaves the answer and a note saying why.
     Migration `0024_chat_web.sql` adds `message.web`.
   - **Checked lessons**: each lesson is written from web sources (when web search is set up), then
     checked by your Advanced model, which corrects facts, formulas and references and drops books
@@ -41,8 +44,10 @@ without one.
     wrong one goes back to the checker once. A badge by the title says *Checked*, how many
     corrections there were, or *Not checked* and why, and *How this lesson was checked* lists the
     corrections, the arithmetic and the sources. *Check this lesson* checks one written earlier, as
-    a new version. A failed check never loses the lesson. Migration `0025_lesson_checks.sql` adds
-    `course_lesson.verification` and `stage`.
+    a new version; one that doesn't finish leaves the lesson and its check as they were and says
+    why. A failed check never loses the lesson, nothing is searched once the token allowance is
+    used up, and each new version counts once against the day's lessons. Migration
+    `0025_lesson_checks.sql` adds `course_lesson.verification` and `stage`.
   - **Rated lesson videos**: up to seven per lesson (was four), from three searches of ten results,
     picked and ordered by a small model call that says in a line why each one helps, and kept in
     search order when the pick fails. People rate each video *Helpful*, *Okay* or *Not helpful*
@@ -52,6 +57,8 @@ without one.
     Ratings are in the data export. Migration `0026_video_feedback.sql` adds `video_feedback` and
     `video_block`.
 - Chat renders maths (KaTeX), whichever way the model writes it ($…$, \(…\), \[…\]).
+- **Fixed:** `nPr` and `nCr` of huge numbers (`1e15 nPr 1e15`) answer *too large* at once instead
+  of counting for hours.
 - **Fixed:** a Work AI task whose model sent back nothing (or only its thinking) showed as done; the
   model is now asked again, and a task that still gets nothing says so and fails.
 - **Fixed:** the chat composer and the custom-instructions hint use your organization's product name.

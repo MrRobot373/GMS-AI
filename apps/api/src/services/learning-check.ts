@@ -9,7 +9,7 @@ import type { LessonContent, LessonIssue, LessonVerification } from "@aatmiq/db"
 import type { ChatMessage } from "@aatmiq/model-gateway";
 import type { LessonCheckOutput } from "@aatmiq/shared";
 import { msg } from "../i18n";
-import { domainOf, searchSources } from "./chat-web";
+import { asData, domainOf, searchSources } from "./chat-web";
 import { webSearch, webSearchReady, WebSearchError, type WebResult, type WebSearchDeps } from "./web-search";
 
 const RESULTS_PER_QUERY = 4;
@@ -17,6 +17,10 @@ const SOURCES_MAX = 6;
 const PAGE_CHARS = 2500;
 const REFERENCES_LOOKED_UP = 5;
 const LOOKUP_RESULTS = 3;
+/** The most a lesson's sources add to a prompt (6 pages of 2,500 characters, with their titles), in tokens. */
+export const RESEARCH_TOKENS_MAX = Math.ceil((SOURCES_MAX * (PAGE_CHARS + 400)) / 4);
+/** The most the reference lookups add to the checker's prompt (5 searches of 3 results), in tokens. */
+export const LOOKUP_TOKENS_MAX = Math.ceil((REFERENCES_LOOKED_UP * (LOOKUP_RESULTS * 1000 + 200)) / 4);
 /** A calculation is right within 0.5 % of the engine's result (or 1e-9 when that's about zero). */
 const REL_TOLERANCE = 0.005;
 const ABS_TOLERANCE = 1e-9;
@@ -103,9 +107,9 @@ export async function lookupReferences(deps: WebSearchDeps, refs: LessonContent[
 
 /* ───────────── Prompts ───────────── */
 
-/** The sources as numbered extracts, the way chat shows them to a model. */
+/** The sources as numbered extracts, the way chat shows them to a model (none can close the block). */
 export function sourcesBlock(sources: WebResult[]): string {
-  return sources.map((s, i) => `[${i + 1}] ${s.title} (${domainOf(s.url)})\n${s.content || s.snippet || "(no text)"}`).join("\n\n---\n\n");
+  return sources.map((s, i) => `[${i + 1}] ${asData(s.title)} (${domainOf(s.url)})\n${asData(s.content || s.snippet || "(no text)")}`).join("\n\n---\n\n");
 }
 
 /** What the lesson writer is told about the sources (added to its rules). */
@@ -124,15 +128,16 @@ const CHECK_SHAPE = [
 
 /**
  * The checker's messages: the lesson as JSON, the numbered sources and the reference lookups, all
- * marked as data. `header` names the course, topic, level and lesson.
+ * marked as data, and none able to close its block (the lesson was written from the pages too).
+ * `header` names the course, topic, level and lesson.
  */
 export function checkMessages(o: { product: string; header: string[]; lesson: LessonContent; sources: WebResult[]; lookups: ReferenceLookup[] }): ChatMessage[] {
   const lookups = o.lookups.length
     ? o.lookups
         .map((r, i) =>
           [
-            `Reference ${i + 1}: ${r.title}${r.author ? `, ${r.author}` : ""}`,
-            ...(r.failed ? ["(the search failed)"] : r.results.length ? r.results.map((x) => `- ${x.title} (${domainOf(x.url)}): ${x.snippet}`) : ["(nothing found)"]),
+            `Reference ${i + 1}: ${asData(r.title)}${r.author ? `, ${asData(r.author)}` : ""}`,
+            ...(r.failed ? ["(the search failed)"] : r.results.length ? r.results.map((x) => `- ${asData(x.title)} (${domainOf(x.url)}): ${asData(x.snippet)}`) : ["(nothing found)"]),
           ].join("\n"),
         )
         .join("\n\n")
@@ -161,11 +166,11 @@ export function checkMessages(o: { product: string; header: string[]; lesson: Le
     {
       role: "user",
       content: [
-        ...o.header,
+        ...o.header.map(asData),
         "",
         "The lesson to check:",
         "<lesson>",
-        JSON.stringify(o.lesson, null, 1),
+        asData(JSON.stringify(o.lesson, null, 1)),
         "</lesson>",
         "",
         o.sources.length ? `Web sources for this lesson, numbered [1] to [${o.sources.length}]:\n<sources>\n${sourcesBlock(o.sources)}\n</sources>` : "There are no web sources for this lesson: check it against what you know for certain.",
@@ -222,6 +227,8 @@ export function buildVerification(o: {
   issues: LessonCheckOutput["issues"];
   calc: LessonVerification["calc"];
   failed?: string;
+  /** "Check this lesson": an existing lesson checked, not one written from these sources. */
+  recheck?: boolean;
 }): LessonVerification {
   const n = o.research.sources.length;
   const issues: LessonIssue[] = o.issues.map((i) => ({ ...i, sources: [...new Set(i.sources)].filter((s) => s >= 1 && s <= n) }));
@@ -250,5 +257,6 @@ export function buildVerification(o: {
     sources: o.research.sources.map((s, i) => ({ n: i + 1, title: s.title, url: s.url })),
     issues,
     calc: o.calc,
+    ...(o.recheck ? { rechecked: true } : {}),
   };
 }

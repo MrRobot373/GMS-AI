@@ -56,7 +56,11 @@ export const Markdown = memo(function Markdown({
   content: string;
   citations?: Citation[] | null;
   onCite?: (c: Citation) => void;
-  /** Links the model wrote show as text (a web search answer: its links come only from the sources). */
+  /**
+   * Links and images the model wrote show as text (a web search answer: its links come only from the
+   * sources). An image would be fetched as soon as the answer shows, with whatever a page in the
+   * sources got the model to put in its address.
+   */
   plainLinks?: boolean;
 }) {
   return (
@@ -86,6 +90,7 @@ export const Markdown = memo(function Markdown({
               </a>
             );
           },
+          ...(plainLinks && { img: ({ alt }) => (alt ? <span>{alt}</span> : null) }),
         }}
       >
         {linkCitations(normalizeMath(content), citations)}

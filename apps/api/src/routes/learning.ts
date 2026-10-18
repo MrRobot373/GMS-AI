@@ -224,7 +224,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
       .where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), version ? eq(courseLesson.version, version) : eq(courseLesson.current, true)));
     if (!l) throw notFound("Lesson not found");
     const versions = await db
-      .select({ version: courseLesson.version, status: courseLesson.status, current: courseLesson.current, stage: courseLesson.stage, createdAt: courseLesson.createdAt })
+      .select({ version: courseLesson.version, status: courseLesson.status, current: courseLesson.current, stage: courseLesson.stage, error: courseLesson.error, createdAt: courseLesson.createdAt })
       .from(courseLesson)
       .where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal)))
       .orderBy(asc(courseLesson.version));
@@ -240,7 +240,8 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
       error: l.error && tr(locale, l.error),
       verification: verificationIn(locale, l.verification),
       videos: await videosShown(db, u.id, l.videos),
-      versions,
+      // Why a version that wasn't made failed ("Check this lesson" that didn't finish, say).
+      versions: versions.map((v) => ({ ...v, error: v.error && tr(locale, v.error) })),
       state: state ?? null,
       total,
       courseTitle: c.title,
@@ -290,7 +291,10 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     return { ok: true, status: "generating" };
   });
 
-  /** A new version of a lesson; the old one is kept and stays current until the new one is ready. */
+  /**
+   * A new version of a lesson; the old one is kept and stays current until the new one is ready.
+   * The new version exists (generating) before this answers, so asking again finds it busy.
+   */
   app.post<{ Params: { id: string; ordinal: string } }>("/api/learning/courses/:id/lessons/:ordinal/regenerate", async (req) => {
     const u = await requireUser(ctx, req);
     const c = await ownCourse(ctx, u, req.params.id);
@@ -300,14 +304,22 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     const [busy] = await db.select({ id: courseLesson.id }).from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.status, "generating")));
     if (busy) return { ok: true, status: "generating" };
     await checkLearningLimits(ctx, u.id, "lesson");
-    void ctx.learning.lesson(c.id, ordinal, true);
+    if (l.status === "ready") {
+      if (!(await ctx.learning.regenerate(c.id, ordinal, l.title))) return { ok: true, status: "generating" };
+    } else {
+      // Not written yet (or failed): written in place, as /generate does.
+      await db.update(courseLesson).set({ status: "generating", error: null }).where(eq(courseLesson.id, l.id));
+      void ctx.learning.lesson(c.id, ordinal);
+    }
     await audit(ctx, { actor: u, action: "lesson.regenerated", workspaceId: c.workspaceId, targetType: "course", targetId: c.id, meta: { ordinal } });
     return { ok: true, status: "generating" };
   });
 
   /**
    * Research and check the lesson shown, as a new version (its videos kept); counts against the
-   * day's lessons like a new version. The current one stays until the checked one is ready.
+   * day's lessons like a new version. The current one stays until the checked one is ready, and
+   * stays for good when the check doesn't finish. The new version exists (generating) before this
+   * answers, so asking again finds it busy, even while it waits behind another lesson's job.
    */
   app.post<{ Params: { id: string; ordinal: string } }>("/api/learning/courses/:id/lessons/:ordinal/check", async (req) => {
     const u = await requireUser(ctx, req);
@@ -320,7 +332,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     if (busy) return { ok: true, status: "generating" };
     if (l.status !== "ready" || !l.content) throw badRequest("Only a lesson that's been written can be checked.");
     await checkLearningLimits(ctx, u.id, "lesson");
-    void ctx.learning.check(c.id, ordinal);
+    if (!(await ctx.learning.check(c.id, ordinal, l.title))) return { ok: true, status: "generating" };
     await audit(ctx, { actor: u, action: "lesson.checked", workspaceId: c.workspaceId, targetType: "course", targetId: c.id, meta: { ordinal } });
     return { ok: true, status: "generating" };
   });
@@ -333,9 +345,11 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     const { version } = parse(z.object({ version: z.number().int().min(1) }), req.body);
     const [l] = await db.select().from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.version, version)));
     if (!l || l.status !== "ready") throw badRequest("That version isn't available.");
+    // Each version keeps its updatedAt: showing another one isn't writing a lesson (checkLearningLimits).
+    const kept = { updatedAt: sql`${courseLesson.updatedAt}` };
     await db.transaction(async (tx) => {
-      await tx.update(courseLesson).set({ current: false }).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal)));
-      await tx.update(courseLesson).set({ current: true }).where(eq(courseLesson.id, l.id));
+      await tx.update(courseLesson).set({ current: false, ...kept }).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal)));
+      await tx.update(courseLesson).set({ current: true, ...kept }).where(eq(courseLesson.id, l.id));
     });
     return { ok: true };
   });

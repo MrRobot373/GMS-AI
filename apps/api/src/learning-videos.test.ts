@@ -237,6 +237,8 @@ d("GEM AI Learning: seven picked videos, rated", () => {
   const searches: string[] = [];
   /** What the picker answers (the user message it got → its reply). */
   let pick: (user: string) => string = () => "";
+  /** The picker never answers. */
+  let hangPick = false;
   const seen: { kind: string; model: string; user: string }[] = [];
   const ids: Record<string, string> = {};
   const course: Record<"alice" | "bob" | "owner", string> = { alice: "", bob: "", owner: "" };
@@ -287,6 +289,7 @@ d("GEM AI Learning: seven picked videos, rated", () => {
         const field = (name: string) => new RegExp(`^${name}: (.+)$`, "m").exec(user)?.[1]?.trim() ?? "";
         const kind = system.startsWith("You rate how hard") ? "judge" : system.includes("<<GEM:OUTLINE>>") ? "outline" : system.includes("<<GEM:LESSON>>") ? "lesson" : system.includes("<<GEM:VIDEOS>>") ? "videos" : "other";
         seen.push({ kind, model: body.model, user });
+        if (kind === "videos" && hangPick) return;
         const answer =
           kind === "judge"
             ? "medium"
@@ -366,6 +369,23 @@ d("GEM AI Learning: seven picked videos, rated", () => {
     expect(seen.slice(before).filter((s) => s.kind === "videos")).toHaveLength(1);
     const usage = await h.db.select().from(usageEvent).where(and(eq(usageEvent.modelId, ids["fast-1"]!), eq(usageEvent.section, "learning")));
     expect(usage.map((u) => u.status).sort()).toEqual(["error", "ok", "ok"]);
+  });
+
+  it("a pick call that never answers is given up after a while, and the lesson is saved in search order", async () => {
+    h.app.learning.timeouts.pick = 300;
+    hangPick = true;
+    try {
+      const started = Date.now();
+      const id = await newCourse(h.alice, "Resistors, picked slowly");
+      const l = await lessonOf(h.alice, id, 0);
+      expect(l.status).toBe("ready");
+      expect(l.stage).toBeNull();
+      expect(videoIds(l)).toEqual([1, 2, 3, 4, 5, 6, 7].map(vid));
+      expect(Date.now() - started).toBeLessThan(10_000);
+    } finally {
+      hangPick = false;
+      h.app.learning.timeouts.pick = 45_000;
+    }
   });
 
   it("ratings: the course's owner only, a video of that lesson only, and they can be changed or taken back", async () => {

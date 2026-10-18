@@ -62,7 +62,13 @@ they're told). **Admin → Usage** shows who used what, by model and section, wi
 everyone, shows or hides beta calculators, sets how many courses and lessons each person can have
 written per day, and holds the YouTube Data API key for lesson videos. Its *Lesson videos* card
 shows how people rated the videos, with *Block* for the most disliked and the blocked list (see
-[Rated videos](../15-gem-ai.md#rated-videos)). Each person's access is in
+[Rated videos](../15-gem-ai.md#rated-videos)). Its *Web search* card chooses the provider chat
+and lessons search with (your own SearXNG, which keeps the search words on your server, or Ollama
+web search, Brave, Tavily or Serper with an API key, each kept encrypted), with a *Test* button,
+and two switches: *Let people search the web in chat*, and *Check lessons before they're saved*,
+which is on by default and has your Advanced model check every lesson, so each lesson uses more
+tokens (see [Web search](../15-gem-ai.md#web-search) and
+[Checked lessons](../15-gem-ai.md#checked-lessons)). Each person's access is in
 **Admin → Workspaces → *a workspace* → Members** (their sections). Knowledge's general references
 are documents a workspace admin adds from the library. Tuning retrieval for your documents:
 [15-gem-ai.md](../15-gem-ai.md#evaluating-and-tuning-retrieval).

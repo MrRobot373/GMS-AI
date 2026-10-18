@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Section } from "@/components/admin/table";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Badge, Card, Switch } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/spinner";
 import { msg, useT } from "@/i18n";
 import { get, post, put } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { REASON_NAMES } from "@/lib/learning";
 import type { VideoReason } from "@aatmiq/shared";
 
@@ -87,6 +88,22 @@ function switchRow(name: string, hint: string, on: boolean, flip: (v: boolean) =
   );
 }
 
+/** A part of the page that didn't load: what, why, and Try again. */
+function LoadFailed({ text, error, retry, busy }: { text: string; error: Error | null; retry: () => void; busy: boolean }) {
+  const t = useT();
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-[12.5px] text-danger" role="alert">
+      <span>
+        {text}
+        {error?.message ? ` ${error.message}` : ""}
+      </span>
+      <Button size="sm" variant="outline" onClick={retry} loading={busy}>
+        {t("Try again")}
+      </Button>
+    </div>
+  );
+}
+
 /** Web search for chat and lessons: the provider, its server or key, a test, and where it's used. */
 function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknown>) => void }) {
   const t = useT();
@@ -102,13 +119,21 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
   const typedUrl = url ?? g.webUrl ?? "";
   const urlHint =
     g.web.urlFrom === "work" ? t("Same as Work AI: {url}", { url: g.web.url ?? "" }) : g.web.urlFrom === "environment" ? t("From WEB_SEARCH_URL: {url}", { url: g.web.url ?? "" }) : "http://searxng:8080";
+  const name = t(providerName(p));
+  // Where search is used now: the two switches below decide, not only the provider.
   const status = g.web.ready
-    ? t("Chat and lessons search the web with {provider}.", { provider: t(providerName(p)) })
+    ? g.chatWebSearch && g.lessonCheck
+      ? t("Chat and lessons search the web with {provider}.", { provider: name })
+      : g.chatWebSearch
+        ? t("Chat searches the web with {provider}. Lessons don't: lesson checks are off.", { provider: name })
+        : g.lessonCheck
+          ? t("Lessons are researched with {provider}. Chat doesn't: web search in chat is off.", { provider: name })
+          : t("{provider} is set up, but web search in chat and lesson checks are both off.", { provider: name })
     : p === "off"
       ? t("Off: chat and lessons don't search the web.")
       : p === "searxng"
         ? t("Add your SearXNG server's address, or set one in Admin → Work AI.")
-        : t("Add the API key from your {provider} account.", { provider: t(providerName(p)) });
+        : t("Add the API key from your {provider} account.", { provider: name });
   return (
     <Card className="space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -137,7 +162,7 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
         </select>
       </div>
       {p === "searxng" && (
-        <Field label={t("SearXNG URL")} hint={t("Leave empty to use the same server as Work AI.")}>
+        <Field label={t("SearXNG URL")} hint={t("Leave empty to use WEB_SEARCH_URL when it's set, else Work AI's server.")}>
           <div className="flex flex-wrap gap-2">
             <Input value={typedUrl} onChange={(e) => setUrl(e.target.value)} placeholder={urlHint} className="max-w-sm" data-testid="web-url" />
             <Button
@@ -175,6 +200,7 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
               </Button>
             )}
           </div>
+          <p className="text-[12px] text-fg-subtle">{t("Each provider keeps its own key, and a key is only ever sent to its provider.")}</p>
         </div>
       )}
       {p !== "off" && (
@@ -249,20 +275,40 @@ function VideoRatings() {
   const t = useT();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["admin-gem-videos"], queryFn: () => get<VideoReport>("/api/admin/gem/videos/feedback") });
+  // Block and Unblock move the row to the other list: focus goes to the button now in its place
+  // (the next row's), or to the Blocked videos heading, not back to the top of the page.
+  const box = useRef<HTMLDivElement>(null);
+  const moved = useRef<{ list: "disliked" | "blocked"; index: number } | null>(null);
+  useEffect(() => {
+    const m = moved.current;
+    if (!m || !q.data) return;
+    moved.current = null;
+    const buttons = box.current?.querySelectorAll<HTMLButtonElement>(`[data-list="${m.list}"] button`);
+    const next = buttons?.length ? buttons[Math.min(m.index, buttons.length - 1)] : null;
+    (next ?? box.current?.querySelector<HTMLElement>("[data-heading=blocked]"))?.focus();
+  }, [q.data]);
   const block = useMutation({
     mutationFn: (b: { videoId: string; blocked: boolean }) => put(`/api/admin/gem/videos/${encodeURIComponent(b.videoId)}/block`, { blocked: b.blocked }),
     onSuccess: (_, b) => {
       qc.invalidateQueries({ queryKey: ["admin-gem-videos"] });
       toast.success(b.blocked ? t("Blocked: lessons won't offer it again") : t("Unblocked"));
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      moved.current = null;
+      toast.error(e.message);
+    },
   });
+  const act = (list: "disliked" | "blocked", index: number, videoId: string) => {
+    moved.current = { list, index };
+    block.mutate({ videoId, blocked: list === "disliked" });
+  };
+  if (!q.data && q.isError) return <LoadFailed text={t("Ratings couldn't be loaded.")} error={q.error} retry={() => q.refetch()} busy={q.isFetching} />;
   if (!q.data) return <Skeleton className="h-16" />;
   const r = q.data;
   const counts = (v: { up: number; ok: number; down: number }) => t("{up} helpful, {ok} okay, {down} not helpful", { up: v.up, ok: v.ok, down: v.down });
   const busy = (id: string) => block.isPending && block.variables?.videoId === id;
   return (
-    <div className="space-y-4 border-t border-border pt-4">
+    <div ref={box} className="space-y-4 border-t border-border pt-4">
       <div>
         <div className="text-[13.5px] text-fg">{t("Ratings")}</div>
         <div className="text-[12.5px] text-fg-subtle">
@@ -274,8 +320,8 @@ function VideoRatings() {
       {r.mostDisliked.length > 0 && (
         <div>
           <h3 className={subhead}>{t("Most disliked")}</h3>
-          <ul>
-            {r.mostDisliked.map((v) => (
+          <ul data-list="disliked">
+            {r.mostDisliked.map((v, i) => (
               <VideoLine
                 key={v.videoId}
                 v={v}
@@ -291,7 +337,7 @@ function VideoRatings() {
                   </>
                 }
                 action={
-                  <Button size="sm" variant="outline" loading={busy(v.videoId)} onClick={() => block.mutate({ videoId: v.videoId, blocked: true })}>
+                  <Button size="sm" variant="outline" loading={busy(v.videoId)} onClick={() => act("disliked", i, v.videoId)} aria-label={t("Block {title}", { title: v.title ?? v.videoId })}>
                     {t("Block")}
                   </Button>
                 }
@@ -311,10 +357,12 @@ function VideoRatings() {
         </div>
       )}
       <div>
-        <h3 className={subhead}>{t("Blocked videos")}</h3>
+        <h3 className={cn(subhead, "outline-none")} tabIndex={-1} data-heading="blocked">
+          {t("Blocked videos")}
+        </h3>
         {r.blocked.length ? (
-          <ul>
-            {r.blocked.map((v) => (
+          <ul data-list="blocked">
+            {r.blocked.map((v, i) => (
               <VideoLine
                 key={v.videoId}
                 v={v}
@@ -329,7 +377,7 @@ function VideoRatings() {
                   </>
                 }
                 action={
-                  <Button size="sm" variant="ghost" loading={busy(v.videoId)} onClick={() => block.mutate({ videoId: v.videoId, blocked: false })}>
+                  <Button size="sm" variant="ghost" loading={busy(v.videoId)} onClick={() => act("blocked", i, v.videoId)} aria-label={t("Unblock {title}", { title: v.title ?? v.videoId })}>
                     {t("Unblock")}
                   </Button>
                 }
@@ -360,6 +408,7 @@ export function GemSettings() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  if (!q.data && q.isError) return <LoadFailed text={t("GEM AI settings couldn't be loaded.")} error={q.error} retry={() => q.refetch()} busy={q.isFetching} />;
   if (!q.data) return <Skeleton className="h-40" />;
   const g = q.data;
   const l = limits ?? { courses: String(g.coursesPerDay), lessons: String(g.lessonsPerDay) };
