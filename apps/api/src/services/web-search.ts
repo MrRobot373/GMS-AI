@@ -15,6 +15,7 @@ import { isIP, type LookupFunction } from "node:net";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { msg } from "../i18n";
 import { isPrivateAddress } from "./egress";
+import { pdfText } from "./extract";
 
 export interface WebResult {
   title: string;
@@ -455,7 +456,7 @@ interface Page {
 
 const PAGE_HEADERS = {
   "user-agent": "Mozilla/5.0 (compatible; AatmiqReader/1.0)",
-  accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
+  accept: "text/html,application/xhtml+xml,text/plain;q=0.9,application/pdf;q=0.8,*/*;q=0.1",
   "accept-language": "en",
 };
 
@@ -547,7 +548,8 @@ function decode(body: Buffer, type: string, html: boolean): string {
 
 /**
  * One page's text, following at most 3 redirects, each to a public address. The 8 seconds cover
- * everything: the name lookups, every hop and the download.
+ * everything: the name lookups, every hop and the download. HTML, plain text, and the text a PDF
+ * carries (datasheets, application notes, standards), without OCR: a scanned PDF is skipped.
  */
 export async function readPage(deps: WebSearchDeps, href: string, maxChars = CONTENT_MAX, timeoutMs = PAGE_TIMEOUT_MS): Promise<string> {
   const signal = AbortSignal.timeout(timeoutMs);
@@ -570,6 +572,11 @@ export async function readPage(deps: WebSearchDeps, href: string, maxChars = CON
     if (page.status !== 200) throw new Error(`the page answered ${page.status}`);
     const type = page.type.toLowerCase();
     const html = /^(text\/html|application\/xhtml\+xml)/.test(type);
+    if (/^application\/(x-)?pdf/.test(type)) {
+      // A PDF's index is at its end: one cut at the size cap is seldom readable, so it isn't parsed.
+      if (page.body.length >= PAGE_MAX_BYTES) throw new PageRefused("a PDF over 1.5 MB");
+      return clip(tidy(await pdfText(page.body, { maxChars, signal })), maxChars);
+    }
     if (!html && !/^text\/plain/.test(type)) throw new PageRefused(`${type || "no content type"} isn't read`);
     const text = html ? htmlToText(decode(page.body, page.type, true)) : tidy(decode(page.body, page.type, false));
     return clip(text, maxChars);
@@ -592,7 +599,7 @@ export async function readPages(deps: WebSearchDeps, results: WebResult[], opts:
         const text = await readPage(deps, r.url, maxChars);
         if (text) read.set(r, text);
       } catch {
-        // Skipped: private, too slow, not text, or gone. The snippet still says something.
+        // Skipped: private, too slow, not text (or a PDF that can't be read), or gone. The snippet still says something.
       }
     }),
   );

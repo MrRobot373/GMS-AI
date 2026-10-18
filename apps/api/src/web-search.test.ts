@@ -5,6 +5,7 @@
  * the settings round trip, the environment filling in, and the admin's Test button.
  */
 import { auditLog, organization } from "@aatmiq/db";
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
@@ -13,6 +14,7 @@ import { startHarness, type Harness } from "../test/gem-harness";
 import { loadWebSearch } from "./config";
 import type { AppContext } from "./context";
 import { createSecretBox } from "./crypto";
+import { pdfText } from "./services/extract";
 import { webSearchSetup } from "./services/gem";
 import { clearWebSearchCache, htmlToText, pinnedGet, readPage, readPages, webSearch, WebSearchError, webSearchReady, type WebSearchDeps, type WebResult } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
@@ -21,6 +23,12 @@ const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
 
 const GOOD = "good-key-7f3a9c";
+
+/** Two pages of text; a page that's only an image (a scan). */
+const REPORT_PDF = readFileSync(new URL("../test/fixtures/report.pdf", import.meta.url));
+const SCANNED_PDF = readFileSync(new URL("../test/fixtures/scanned.pdf", import.meta.url));
+/** Over the 1.5 MB cap, but whole before it: it would read, so only the cap leaves it out. */
+const BIG_PDF = Buffer.concat([REPORT_PDF, Buffer.alloc(1.6 * 1024 * 1024, "\n")]);
 
 interface Call {
   host: string;
@@ -85,6 +93,11 @@ function fakeWeb() {
       case "docs.example.org":
         if (u.pathname === "/plain") return new Response("Plain text\n\n\n\nwith   gaps", { headers: { "content-type": "text/plain; charset=utf-8" } });
         if (u.pathname === "/file.pdf") return new Response("%PDF-1.7", { headers: { "content-type": "application/pdf" } });
+        if (u.pathname === "/report.pdf") return new Response(REPORT_PDF, { headers: { "content-type": "application/pdf" } });
+        if (u.pathname === "/old-type.pdf") return new Response(REPORT_PDF, { headers: { "content-type": "application/x-pdf" } });
+        if (u.pathname === "/scanned.pdf") return new Response(SCANNED_PDF, { headers: { "content-type": "application/pdf" } });
+        if (u.pathname === "/big.pdf") return new Response(BIG_PDF, { headers: { "content-type": "application/pdf" } });
+        if (u.pathname === "/image.png") return new Response(SCANNED_PDF, { headers: { "content-type": "image/png" } });
         if (u.pathname === "/latin1") return new Response(Buffer.from("caf\xe9 \xb0C", "latin1"), { headers: { "content-type": "text/html; charset=iso-8859-1" } });
         return new Response(PAGE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
       case "hop.example.org": {
@@ -290,7 +303,6 @@ describe("reading pages", () => {
       result("https://hop.example.org/ok"),
       result("https://hop.example.org/rel"),
       result("https://hop.example.org/loop1"),
-      result("https://docs.example.org/file.pdf"),
       result("https://docs.example.org/latin1"),
       result("https://unknown.example.org/page"),
       result("https://www.fluke.com/ohms-law", { content: "Provider text. ".repeat(400) }),
@@ -317,7 +329,6 @@ describe("reading pages", () => {
       "https://hop.example.org/inner",
       "https://hop.example.org/js",
       "https://hop.example.org/loop1",
-      "https://docs.example.org/file.pdf",
       "https://unknown.example.org/page",
     ])
       expect(content[refused], refused).toBeUndefined();
@@ -328,6 +339,22 @@ describe("reading pages", () => {
     // Text the provider sent isn't fetched again, only trimmed.
     expect(hosts).not.toContain("www.fluke.com");
     expect(content["https://www.fluke.com/ohms-law"]!.length).toBeLessThanOrEqual(500);
+  });
+
+  it("reads the text a PDF carries, without OCR: a scanned, broken or capped one keeps its snippet", async () => {
+    const input = ["report.pdf", "old-type.pdf", "scanned.pdf", "file.pdf", "big.pdf", "image.png"].map((f) => result(`https://docs.example.org/${f}`));
+    const out = await readPages(deps, input, { max: 10 });
+    const content = Object.fromEntries(out.map((r) => [r.url.split("/").pop(), r.content]));
+    expect(content["report.pdf"]).toBe("Quarterly report: revenue grew 18 percent.\n\nPage two: hiring plan adds 12 engineers.");
+    expect(content["old-type.pdf"]).toBe(content["report.pdf"]);
+    for (const skipped of ["scanned.pdf", "file.pdf", "big.pdf", "image.png"]) expect(content[skipped], skipped).toBeUndefined();
+    await expect(pdfText(BIG_PDF.subarray(0, 1.5 * 1024 * 1024), { maxChars: 3000 })).resolves.toContain("Quarterly report");
+    expect(out.every((r) => r.snippet === "s")).toBe(true);
+    // Pages are opened only until there's enough text.
+    await expect(pdfText(REPORT_PDF, { maxChars: 10 })).resolves.toBe("Quarterly report: revenue grew 18 percent.");
+    await expect(pdfText(REPORT_PDF, { maxChars: 3000, maxPages: 1 })).resolves.toBe("Quarterly report: revenue grew 18 percent.");
+    // Asks for PDFs after HTML and text.
+    expect(web.calls.find((c) => c.url.pathname === "/report.pdf")!.headers.get("accept")).toMatch(/text\/plain;q=0\.9,application\/pdf;q=0\.8/);
   });
 
   it("the page's 8 seconds include the name lookups: a lookup that never answers ends with the page", async () => {

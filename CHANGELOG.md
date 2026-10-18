@@ -29,8 +29,9 @@ without one.
     same one as Work AI by default) or Ollama web search, Brave Search, Tavily or Serper with a key
     stored encrypted (each provider keeps its own), a Test button that says what's missing and
     doesn't call an empty answer working, and switches for web search in chat and for checking
-    lessons. Pages from the results are read only at public addresses, redirects included, within 8
-    seconds name lookups included, and a hostile page can't tie the server up. Also
+    lessons. Pages from the results (HTML, text, and the text of PDFs) are read only at public
+    addresses, redirects included, within 8 seconds name lookups included, and a hostile page can't
+    tie the server up. Also
     `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_URL` and `WEB_SEARCH_KEY`.
   - **Search the web in chat**: a globe button in the message box, on for the chat until switched
     off. A small model writes the queries, the best pages are read, and the answer cites them by

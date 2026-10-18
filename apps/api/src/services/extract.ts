@@ -104,6 +104,30 @@ async function extractPdf(data: Buffer): Promise<PageText[]> {
   return pages;
 }
 
+/**
+ * The text a PDF carries, from its first pages until there's `maxChars` of it, never with OCR: cheap
+ * enough for a page read from the web, where a scanned PDF just has no text. Each page checks
+ * `signal` first; the document is let go either way.
+ */
+export async function pdfText(data: Buffer, opts: { maxChars: number; maxPages?: number; signal?: AbortSignal }): Promise<string> {
+  const { getDocumentProxy } = await import("unpdf");
+  // Errors only: a broken file's warnings would just fill the log.
+  const pdf = await getDocumentProxy(new Uint8Array(data), { verbosity: 0 });
+  try {
+    const parts: string[] = [];
+    let n = 0;
+    for (let p = 1; p <= Math.min(pdf.numPages, opts.maxPages ?? 30) && n < opts.maxChars; p++) {
+      opts.signal?.throwIfAborted();
+      const { items } = await (await pdf.getPage(p)).getTextContent();
+      const text = normalize(items.map((item) => ("str" in item ? item.str + (item.hasEOL ? "\n" : "") : "")).join(""));
+      if (text) parts.push(text), (n += text.length + 2);
+    }
+    return parts.join("\n\n");
+  } finally {
+    await pdf.loadingTask.destroy();
+  }
+}
+
 export async function extractText(name: string, data: Buffer): Promise<PageText[]> {
   const ext = extensionOf(name);
   if (ext === "pdf") return extractPdf(data);

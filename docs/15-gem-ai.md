@@ -65,8 +65,11 @@ search* (`services/web-search.ts`):
   to 600. Searches are cached in memory for 10 minutes per provider and query. A link always comes
   from a search result, never from what a model wrote.
 - **Reading pages**: when a result has no page text (SearXNG, Brave, Serper), the server reads the
-  page itself: HTML and plain text only, up to 1.5 MB, scripts, styles, navigation and footers
-  dropped. Its 8 seconds cover everything, name lookups included: names are looked up from the DNS
+  page itself: HTML and plain text, up to 1.5 MB, scripts, styles, navigation and footers dropped,
+  and PDFs (datasheets, application notes, standards) for the text they carry, from their first
+  pages until there's enough. PDFs are never read with OCR here, even when OCR is on for uploads, so
+  a scanned one keeps only its snippet, and so does one over 1.5 MB (its index is at the end). A
+  page's 8 seconds cover everything, name lookups included: names are looked up from the DNS
   servers directly, each query with its own timeout, so a domain whose name servers don't answer
   can't hold a page (or the server's other lookups) up. Tags are found by scanning the page once,
   so a hostile page (a megabyte of `<`, or of tags and comments left open) takes no longer than any
@@ -386,7 +389,7 @@ These block a release, and each has tests that run on every push:
 | No wrong calculator numbers | `packages/calculators/test/`: every reference case of every calculator, the 20 verified ones with 101 hand-worked cases, plus the expression, symbolic, matrix, statistics and finance engines; `apps/api/src/calculators.test.ts` for the API and chat |
 | Citations only point at sources the person can open and passages that were retrieved | `knowledge.test.ts` (citation opening, dropped invented citations) |
 | Learning output is validated before it's stored | `apps/api/src/learning.test.ts` (malformed output, URLs, limits, versions, owner-only access) |
-| Web search reads pages only at public addresses, and its keys never leave the server | `apps/api/src/web-search.test.ts` (private addresses by IP, by name, mixed answers and after redirects; the key not in errors, responses or the audit log; a key never sent to another provider, and each provider's kept; hostile HTML read in linear time; a name lookup that never answers ends with the page; *Test* with something missing or no results) |
+| Web search reads pages only at public addresses, and its keys never leave the server | `apps/api/src/web-search.test.ts` (private addresses by IP, by name, mixed answers and after redirects; PDFs read for their text, scanned, broken and oversized ones skipped; the key not in errors, responses or the audit log; a key never sent to another provider, and each provider's kept; hostile HTML read in linear time; a name lookup that never answers ends with the page; *Test* with something missing or no results) |
 | Chat's web sources are real search results and every citation matches one | `apps/api/src/chat-web.test.ts` (sources saved and cited after the documents', invented numbers removed, nothing searched with the switch off, a failing provider leaves an answer and a note, private pages never read, a page that can't close the block of sources, images the model wrote taken out) |
 | Lesson videos are picked only from real results, and ratings and blocks keep bad ones out | `apps/api/src/learning-videos.test.ts` (seven picked from three searches of ten, invented numbers ignored, search order when the pick fails, ratings owner-only and only for the lesson's videos, the organization's dislikes and an admin's block keeping a video out of new lessons, ratings in the export and gone with the person) |
 | A checked lesson keeps only real sources, and a failed check never loses a lesson | `apps/api/src/learning-check.test.ts` (corrections saved with their issues and sources on the Advanced tier, a wrong calculation sent back once, a failing checker or search leaves the lesson ready, links only from the provider, *Check this lesson* as a new version and owner-only, one that doesn't finish changing nothing, asking twice while the course is busy checking once, one new version counted once, nothing searched with the allowance used up, the switch off) |
@@ -428,4 +431,5 @@ These block a release, and each has tests that run on every push:
 | `GET /api/knowledge/references`, `PUT /api/knowledge/references/:id` | The workspace's general references |
 
 Personal data export (Settings → Your data) includes courses, lessons (with how each version was
-checked) and their state, calculator history and favorites, and Knowledge questions.
+checked) and their state, ratings of lesson videos, calculator history and favorites, and Knowledge
+questions. Chats in the export keep their web sources and searches.
