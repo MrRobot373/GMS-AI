@@ -51,6 +51,11 @@ d("GEM AI Calculators", () => {
       [{ calculatorId: "ohms-law", inputs: { V: { value: 12, unit: "A" }, R: { value: 4 } } }, /not a unit of voltage/, "V"],
       [{ calculatorId: "rc-time-constant", inputs: { R: { value: null }, C: { value: 1 } } }, /required/, "R"],
       [{ calculatorId: "ohms-law", inputs: { V: { value: 1e308 }, I: { value: 1e308 } } }, /finite/, null],
+      // Outside the formula's range: a rod too short and thick for Dwight's formula (it gave ≈ −305 Ω),
+      // and a temperature below absolute zero in any unit (heat radiation gave a number).
+      [{ calculatorId: "ground-rod-resistance", inputs: { rho: { value: 100 }, L: { value: 0.1 }, d: { value: 1000 } } }, /slender rod/, "L"],
+      [{ calculatorId: "heat-radiation", inputs: { eps: { value: 0.9 }, A: { value: 1 }, Ts: { value: -300, unit: "C" }, Tinf: { value: 20, unit: "C" } } }, /below absolute zero/, "Ts"],
+      [{ calculatorId: "ideal-gas", inputs: { p: { value: 101.325 }, V: { value: 22.4 }, T: { value: -500, unit: "F" } } }, /below absolute zero/, "T"],
     ] as const;
     for (const [body, re, field] of bad) {
       const r = await h.call(h.alice, "POST", "/api/calculators/run", { workspaceId: h.workspaceId, ...body });
@@ -122,8 +127,10 @@ d("GEM AI Calculators", () => {
   it("chat leaves ordinary messages alone, and refuses to show a result that doesn't run", async () => {
     expect((await ask(h.alice, "Hello! How are you today?")).start.calculation).toBeNull();
     expect((await ask(h.alice, "What happened in 1947?")).start.calculation).toBeNull();
-    // D = 1 divides by zero in a boost: no result rather than a wrong one.
-    expect((await ask(h.alice, "/calc boost-ideal Vin=12V D=1")).start.calculation).toBeNull();
+    // D = 1 divides by zero in a boost: no result rather than a wrong one, and the reason for the model.
+    const boost = (await ask(h.alice, "/calc boost-ideal Vin=12V D=1")).start.calculation;
+    expect(boost).toMatchObject({ calculatorId: "boost-ideal", outputs: [], refused: { field: "D" } });
+    expect(boost.refused.message).toMatch(/less than 1/);
     expect((await ask(h.alice, "/calc boost-ideal Vin=12V D=0.5")).start.calculation.outputs[0].value).toBe(24);
     // "/calc" with words instead of an id is matched like a question; a real id with a bad unit isn't.
     const loose = (await ask(h.alice, "/calc ohm's law 12 V and 0.25 A")).start.calculation;
@@ -131,6 +138,16 @@ d("GEM AI Calculators", () => {
     expect(loose.outputs.find((o: { key: string }) => o.key === "R").value).toBeCloseTo(48);
     expect((await ask(h.alice, "/calc boost-ideal Vin=12furlongs D=0.5")).start.calculation).toBeNull();
   }, 20_000);
+
+  it("chat passes on a calculator's refusal instead of a number, and keeps no history for it", async () => {
+    const before = (await h.db.select().from(calculatorHistory).where(eq(calculatorHistory.source, "chat"))).length;
+    const r = await ask(h.alice, "/calc ground-rod-resistance rho=100 L=0.1m d=1000mm");
+    expect(r.start.calculation).toMatchObject({ calculatorId: "ground-rod-resistance", version: 2, outputs: [], refused: { field: "L" } });
+    expect(r.start.calculation.refused.message).toMatch(/at least 10 times the rod diameter/);
+    const msgs = await h.db.select().from(message).where(eq(message.chatId, r.chatId));
+    expect(msgs.find((m) => m.role === "assistant")!.calculation).toMatchObject({ refused: { field: "L" } });
+    expect((await h.db.select().from(calculatorHistory).where(eq(calculatorHistory.source, "chat"))).length).toBe(before);
+  });
 
   it("chat doesn't run calculators for someone who doesn't have them", async () => {
     const members = await h.call(h.owner, "GET", `/api/admin/workspaces/${h.workspaceId}/members`);

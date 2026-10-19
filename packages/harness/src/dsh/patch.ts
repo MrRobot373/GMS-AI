@@ -76,6 +76,12 @@ export function buildPatch(spec: TaskSpec): string {
           "Explain what you are doing in plain language. When you produce a document, report or data file, save it in the working folder so the person can download it.",
           "When you mention files to the person, use their names or relative paths (like `summary.md`), never the full folder path: they open and download them from Aatmiq.",
           "For work with several steps, record your plan with the todo_write tool and call it again to mark each step completed as soon as it's done, then carry the whole task out in the same turn: don't stop after planning or ask for confirmation unless something is unclear or risky.",
+          // Research states only what was read: models otherwise cite pages they never opened and dress estimates as facts.
+          "When you research on the web, every figure, date, price or specification you give must come from page text you read with web_fetch in this task; search results are leads, not sources.",
+          "Cite a page only if you fetched it and it says what you cite it for. When a page couldn't be read or doesn't give the figure, say so plainly instead of writing an estimate as if it were the published value (no \"~91.9 %\").",
+          "Put work you only need along the way (debugging and checking scripts, temporary data) in a scratch/ folder, so the working folder holds what the person asked for; files they asked for go where they asked.",
+          "Save to the person's Documents in Aatmiq (documents_save) only when they ask for that; otherwise the results stay in the working folder.",
+          "When you finish, close with a short summary: the key results, the files you made, and anything unresolved (pages you couldn't read, approximations you used, parts of the request you didn't do).",
           spec.instructions ? `\nInstructions for this task:\n${spec.instructions}` : "",
         ]
           .filter(Boolean)
@@ -90,6 +96,8 @@ export function buildPatch(spec: TaskSpec): string {
       },
     },
     { id: "web", name: "@deepseek-ai/dsh-web", config: { searchProvider: PROVIDER_ID, fetchProvider: "http" } },
+    // web_search stays DSH's; web_fetch is Aatmiq's (dsh-plugin/web.mjs): a page's main text, in parts, PDFs too.
+    { id: "tool-web", name: "@deepseek-ai/dsh-tool-web", config: { fetch: false, searchTimeoutMs: 60_000 } },
     // Every approval goes to Aatmiq, whatever the sandbox mode (the stock profile skips asking when unconfined).
     { id: "approval", name: "@deepseek-ai/dsh-user-approval", config: { policy: "ask" } },
     {

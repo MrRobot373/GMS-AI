@@ -82,6 +82,18 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   ]);
 }
 
+/** Public pages the agent's web_fetch reads (through Aatmiq, never from the runtime). */
+const pageReads: string[] = [];
+const pagesFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const u = new URL(String(input instanceof Request ? input.url : input));
+  if (u.host !== "pages.example") return fetch(input, init);
+  pageReads.push(u.pathname);
+  const html = `<html><head><title>Motor efficiency</title></head><body><nav>${"<a href=/x>Menu</a>".repeat(20)}</nav>
+    <main><h1>IEC 60034-30-1</h1><table><tr><th>kW</th><th>IE3</th><th>IE4</th></tr><tr><td>7.5</td><td>90.4</td><td>92.6</td></tr></table></main><footer>Footer</footer></body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}) as typeof fetch;
+const pagesResolve = async (host: string) => (host === "pages.example" ? ["93.184.216.34"] : Promise.reject(new Error("ENOTFOUND")));
+
 /* ───────────── HTTP helpers ───────────── */
 
 const owner = { cookie: "" };
@@ -234,7 +246,7 @@ d("Work AI", () => {
       storageDir: (storageDir = await mkdtemp(join(tmpdir(), "aatmiq-files-"))),
       workDir: (workDir = await mkdtemp(join(tmpdir(), "aatmiq-work-"))),
     };
-    app = await buildApp(db, cfg);
+    app = await buildApp(db, cfg, { fetch: pagesFetch, resolve: pagesResolve });
     apiUrl = await app.listen({ port: 0, host: "127.0.0.1" });
 
     expect((await call("POST", "/api/setup", { orgName: "Acme", name: "Asha Owner", email: "owner@acme.test", password: "correct-horse-battery" })).status).toBe(200);
@@ -336,6 +348,39 @@ d("Work AI", () => {
       { content: "Gather the numbers", status: "completed" },
       { content: "Write the summary", status: "completed" },
     ]);
+  }, 60_000);
+
+  it("reads web pages for the agent: the page's main text, public addresses only", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'use web_fetch {"url":"https://pages.example/ie-classes"}' });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    const result = t.events.find((e) => e.kind === "tool_result")!.data;
+    expect(result.isError).toBe(false);
+    expect(result.text).toContain("Title: Motor efficiency");
+    expect(result.text).toContain("# IEC 60034-30-1");
+    expect(result.text).toContain("7.5 | 90.4 | 92.6");
+    expect(result.text).not.toContain("Menu");
+    expect(pageReads).toEqual(["/ie-classes"]);
+    // Aatmiq's own addresses (and any private one) are never read for the agent.
+    const r2 = await call("POST", "/api/work/tasks", { workspaceId, prompt: `use web_fetch {"url":"${apiUrl}/api/health"}` });
+    const t2 = await waitStatus(r2.json.id, "completed", "failed");
+    const refused = t2.events.find((e) => e.kind === "tool_result")!.data;
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain("127.0.0.1 is a private address");
+    // The internal route needs a running task's token.
+    expect((await app.inject({ method: "POST", url: "/api/internal/work/fetch", payload: { url: "https://pages.example/x" } })).statusCode).toBe(401);
+  }, 60_000);
+
+  it("reports a command that exits non-zero as failed, with its exit code; a call without a label still runs", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo half-done; exit 4" });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    expect(t.events.find((e) => e.kind === "tool_result")!.data).toMatchObject({ isError: true, exitCode: 4 });
+    const r2 = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'use bash {"command":"echo no-label-needed"}' });
+    const t2 = await waitStatus(r2.json.id, "completed", "failed");
+    expect(t2.events.find((e) => e.kind === "tool_result")!.data).toMatchObject({ isError: false });
+    expect(t2.events.find((e) => e.kind === "tool_result")!.data.text).toContain("no-label-needed");
+    const r3 = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'use write {"content":"x"}' });
+    const t3 = await waitStatus(r3.json.id, "completed", "failed");
+    expect(t3.events.find((e) => e.kind === "tool_result")!.data).toMatchObject({ isError: true, notRun: 'missing required property "file_path"' });
   }, 60_000);
 
   it("survives binary command output (an image printed to the terminal)", async () => {

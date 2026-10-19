@@ -74,6 +74,8 @@ interface Live {
   runUid?: number;
   /** Container mode: the task may use the egress proxy (Admin → Work AI → Containers → Internet). */
   internet?: boolean;
+  /** The runtime runs in a container of its own (Work AI tasks in container mode). */
+  inContainer?: boolean;
   /** The connectors its project allows (null: all). */
   connectorIds?: string[] | null;
   /** Waiting for a person's approval: not working, so not counted against `maxRunning`. */
@@ -438,6 +440,7 @@ export class WorkRunner {
       const inContainer = !code && !!this.containerEngine;
       const engine = inContainer ? this.containerEngine! : this.engine;
       l.internet = inContainer && settings.containerNetwork === "proxy";
+      l.inContainer = inContainer;
       const runtime = await engine.start(
         {
           taskId,
@@ -534,6 +537,8 @@ export class WorkRunner {
           callId: e.callId,
           text: looksBinary(e.text) ? `(binary output, ${e.text.length.toLocaleString()} characters, not shown)` : clip(e.text, MAX_TOOL_TEXT),
           isError: e.isError,
+          ...(e.exitCode !== undefined ? { exitCode: e.exitCode } : {}),
+          ...(e.notRun ? { notRun: e.notRun } : {}),
         });
         this.pulse(taskId, "files", {});
         return;
@@ -676,6 +681,12 @@ export class WorkRunner {
     const id = this.byToken.get(token);
     const l = id ? this.live.get(id) : undefined;
     return l && !l.cancelled ? { taskId: l.taskId, userId: l.userId, workspaceId: l.workspaceId } : null;
+  }
+
+  /** Whether a running task may reach the internet: always in process mode; in a container, as Admin → Work AI → Containers says. */
+  internetAllowed(taskId: string): boolean {
+    const l = this.live.get(taskId);
+    return !!l && (!l.inContainer || !!l.internet);
   }
 
   /** Whether a running task may use a connector (its project may allow only some). */

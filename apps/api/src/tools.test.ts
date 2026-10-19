@@ -338,8 +338,8 @@ d("Work AI tools", () => {
     ]);
     expect(t.task.status).toBe("completed");
     expect(t.results[0]).toContain("intranet.example/travel");
-    // The test site is on this machine; web_fetch refuses private and internal addresses.
-    expect(t.results[1]).toMatch(/non-public IP address/);
+    // The test site is on this machine; web_fetch (read by Aatmiq) refuses private and internal addresses.
+    expect(t.results[1]).toMatch(/127\.0\.0\.1 is a private address/);
     expect(await t.files()).toContain("travel.md");
   }, 90_000);
 

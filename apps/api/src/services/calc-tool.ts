@@ -8,10 +8,13 @@
  *      by quantity and by the words around them. Every number with a unit must find a place.
  *   3. With a real model (not the demo one), the model may map the question to one of a short
  *      list of calculators as JSON; the inputs it picks are still checked and run by the code.
- * Nothing is computed by a model; a result that doesn't run cleanly is never shown.
+ * Nothing is computed by a model; a result that doesn't run cleanly is never shown. When every input
+ * is there but the calculator refuses them (a rod too thick for Dwight's formula, a temperature below
+ * absolute zero), the refusal is passed on instead, so the model explains it rather than working out a
+ * number of its own.
  */
 import { calculatorHistory, type DB } from "@aatmiq/db";
-import { calculatorCatalog, getCalculator, QUANTITIES, runCalculator, searchCalculators, unitOf, type CalculatorDef, type InputValue, type RunResult } from "@aatmiq/calculators";
+import { CalcError, calculatorCatalog, getCalculator, QUANTITIES, runCalculator, searchCalculators, unitOf, type CalculatorDef, type InputValue, type RunResult } from "@aatmiq/calculators";
 import { completeChat, type ProviderConfig } from "@aatmiq/model-gateway";
 import { extractJson } from "@aatmiq/shared";
 
@@ -27,6 +30,8 @@ export interface CalcToolResult {
   warnings: string[];
   assumptions: string[];
   formula: string[];
+  /** The calculator refused these inputs (outputs are empty): why, and the input it's about. */
+  refused?: { message: string; field?: string };
 }
 
 interface Quantity {
@@ -55,6 +60,8 @@ const UNIT_INDEX = (() => {
       add(u.symbol.replace("µ", "u"), q.id, u.id);
       add(u.symbol.replace("Ω", "ohm"), q.id, u.id);
       add(u.symbol.replace("µ", "u").replace("Ω", "ohm"), q.id, u.id);
+      // m² typed as m2.
+      add(u.symbol.replace(/²/g, "2").replace(/³/g, "3"), q.id, u.id);
     }
   }
   // Words and common spellings.
@@ -74,8 +81,9 @@ const UNIT_INDEX = (() => {
 })();
 
 function unitFor(token: string): [string, string] | null {
+  // As typed first: the symbols themselves have ² and ³ (m², not m2).
   const t = token.replace(/²/g, "2").replace(/³/g, "3");
-  return UNIT_INDEX.exact.get(t) ?? UNIT_INDEX.loose.get(t.toLowerCase()) ?? null;
+  return UNIT_INDEX.exact.get(token) ?? UNIT_INDEX.exact.get(t) ?? UNIT_INDEX.loose.get(t.toLowerCase()) ?? null;
 }
 
 // A number, with its thousands groups (1,440 and the Indian 1,00,000) read as one number.
@@ -161,6 +169,48 @@ function assign(def: CalculatorDef, qs: Quantity[]): { given: Record<string, Inp
   return { given, assumed };
 }
 
+/** Every input the calculator needs is there, so an error from it is about the values, not a gap. */
+function complete(def: CalculatorDef, given: Record<string, InputValue>): boolean {
+  return def.inputs.every((i) => i.optional || i.key in given) && (!def.pick || def.pick.keys.filter((k) => k in given).length === def.pick.count);
+}
+
+/** Run, or the calculator's refusal when the inputs are complete; null for anything else. */
+function attempt(def: CalculatorDef, given: Record<string, InputValue>, via: CalcToolResult["via"], assumed: string[]): CalcToolResult | null {
+  try {
+    return describe(def, runCalculator(def.id, given), via, assumed);
+  } catch (e) {
+    return e instanceof CalcError && complete(def, given) ? refusal(def, given, via, assumed, e) : null;
+  }
+}
+
+function refusal(def: CalculatorDef, given: Record<string, InputValue>, via: CalcToolResult["via"], assumed: string[], e: CalcError): CalcToolResult {
+  return {
+    calculatorId: def.id,
+    name: def.name,
+    status: def.status,
+    version: def.version,
+    via,
+    inputs: def.inputs
+      .filter((i) => i.key in given)
+      .map((i) => {
+        const v = given[i.key]!;
+        let unit = { symbol: "", id: v.unit ?? i.unit ?? "" };
+        try {
+          const u = unitOf(i.quantity, i.options ? null : (v.unit ?? i.unit));
+          unit = { symbol: u.symbol, id: u.id };
+        } catch {
+          /* shown as typed */
+        }
+        return { key: i.key, label: i.label, symbol: i.symbol, value: v.value as number | number[], unit: unit.symbol, unitId: unit.id, assumed: assumed.includes(i.key) || undefined };
+      }),
+    outputs: [],
+    warnings: [],
+    assumptions: def.assumptions,
+    formula: def.formula,
+    refused: { message: e.message, field: e.field },
+  };
+}
+
 function describe(def: CalculatorDef, r: RunResult, via: CalcToolResult["via"], assumed: string[]): CalcToolResult {
   return {
     calculatorId: def.id,
@@ -195,7 +245,8 @@ function command(text: string, allow: (d: CalculatorDef) => boolean): CalcToolRe
   }
   if (!allow(def)) return null;
   const given: Record<string, InputValue> = {};
-  for (const p of m[2]!.split("\n")[0]!.matchAll(/([A-Za-z0-9_]+)\s*=\s*(-?[\d.eE+-]+)\s*([^\s,;]*)/g)) {
+  // A unit is the word right after the value, unless that word is the next key (rho=100 L=3m).
+  for (const p of m[2]!.split("\n")[0]!.matchAll(/([A-Za-z0-9_]+)\s*=\s*(-?[\d.eE+-]+)(?:\s*([^\s,;=]+)(?=[\s,;]|$)(?!\s*=))?/g)) {
     const inp = def.inputs.find((i) => i.key.toLowerCase() === p[1]!.toLowerCase());
     if (!inp) continue;
     let unit: string | undefined = inp.unit;
@@ -215,11 +266,7 @@ function command(text: string, allow: (d: CalculatorDef) => boolean): CalcToolRe
     given[i.key] = { value: i.default, unit: i.unit };
     assumed.push(i.key);
   }
-  try {
-    return describe(def, runCalculator(def.id, given), "command", assumed);
-  } catch {
-    return null;
-  }
+  return attempt(def, given, "command", assumed);
 }
 
 export interface CalcToolOptions {
@@ -246,17 +293,19 @@ export async function findCalculation(o: CalcToolOptions): Promise<CalcToolResul
   if (!qs.length) return null;
   const formulas = calculatorCatalog().filter((c) => c.kind === "formula");
   const ranked = searchCalculators(text, formulas).slice(0, 6).map((c) => getCalculator(c.id)).filter(allow);
+  // The first candidate that runs; failing that, the first one that refused numbers that all fit it.
+  let refused: CalcToolResult | null = null;
   for (const def of ranked.slice(0, 4)) {
     const a = assign(def, qs);
     if (!a) continue;
-    try {
-      return describe(def, runCalculator(def.id, a.given), "rules", a.assumed);
-    } catch {
-      /* the next candidate */
-    }
+    const r = attempt(def, a.given, "rules", a.assumed);
+    if (r && !r.refused) return r;
+    refused ??= r;
   }
-  if (!o.model || o.model.provider.type === "mock" || !ranked.length) return null;
-  return viaModel(o, text, ranked.slice(0, 5));
+  if (!o.model || o.model.provider.type === "mock" || !ranked.length) return refused;
+  // A model may still find the calculator that does run; otherwise the refusal stands.
+  const viaM = await viaModel(o, text, ranked.slice(0, 5));
+  return viaM && !viaM.refused ? viaM : (refused ?? viaM);
 }
 
 async function viaModel(o: CalcToolOptions, text: string, candidates: CalculatorDef[]): Promise<CalcToolResult | null> {
@@ -294,7 +343,7 @@ async function viaModel(o: CalcToolOptions, text: string, candidates: Calculator
       given[i.key] = { value: i.default, unit: i.unit };
       assumed.push(i.key);
     }
-    return describe(def, runCalculator(def.id, given), "model", assumed);
+    return attempt(def, given, "model", assumed);
   } catch {
     return null;
   }
@@ -328,12 +377,24 @@ const fmt = (v: number) => (Math.abs(v) >= 1e-4 && Math.abs(v) < 1e12) || v === 
 /** What the model is told: the exact results, to explain and not to change. */
 export function calcContext(r: CalcToolResult): string {
   const unit = (u: string) => (u ? ` ${u}` : "");
+  const inputs = `Inputs: ${r.inputs.map((i) => `${i.symbol ?? i.key} = ${Array.isArray(i.value) ? i.value.join(", ") : fmt(i.value)}${unit(i.unit)}${i.assumed ? " (default, assumed)" : ""}`).join("; ")}`;
+  if (r.refused) {
+    return [
+      "<calculator>",
+      `GEM AI's tested calculator "${r.name}" (formula version ${r.version}${r.status === "beta" ? ", beta" : ", verified"}) refused the user's numbers: ${r.refused.message}`,
+      "Don't work out a result for these numbers yourself, by this formula or another. Tell the user plainly why they were refused and what values the formula does cover.",
+      `Formula: ${r.formula.join("; ")}`,
+      inputs,
+      `Assumptions: ${r.assumptions.join("; ")}`,
+      "</calculator>",
+    ].join("\n");
+  }
   return [
     "<calculator>",
     `GEM AI ran its tested calculator "${r.name}" (formula version ${r.version}${r.status === "beta" ? ", beta" : ", verified"}) on the user's numbers.`,
     "These results come from tested code. Use them exactly as given: don't recompute, round differently or change them. Explain what they mean, and state the assumptions.",
     `Formula: ${r.formula.join("; ")}`,
-    `Inputs: ${r.inputs.map((i) => `${i.symbol ?? i.key} = ${Array.isArray(i.value) ? i.value.join(", ") : fmt(i.value)}${unit(i.unit)}${i.assumed ? " (default, assumed)" : ""}`).join("; ")}`,
+    inputs,
     `Results: ${r.outputs.map((o) => `${o.label}${o.symbol ? ` ${o.symbol}` : ""} = ${fmt(o.value)}${o.unit ? ` ${o.unit}` : ""}`).join("; ")}`,
     `Assumptions: ${r.assumptions.join("; ")}`,
     ...(r.warnings.length ? [`Warnings: ${r.warnings.join("; ")}`] : []),
@@ -342,6 +403,8 @@ export function calcContext(r: CalcToolResult): string {
 }
 
 export async function saveChatCalculation(db: DB, userId: string, workspaceId: string, r: CalcToolResult) {
+  // A refusal has no result to keep; the chat message keeps it.
+  if (r.refused) return;
   await db.insert(calculatorHistory).values({
     userId,
     workspaceId,

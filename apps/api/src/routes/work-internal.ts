@@ -5,6 +5,7 @@
  *   POST /api/internal/work/approvals                  ask a person before a risky action
  *   GET  /api/internal/work/approvals/:id?wait=25      long-poll for the decision
  *   POST /api/internal/work/search                     private web search (self-hosted SearXNG)
+ *   POST /api/internal/work/fetch                      a public page's (or PDF's) main text, in parts (web_fetch)
  *   POST /api/internal/work/documents/search           the organization's documents (keyword + meaning search)
  *   GET  /api/internal/work/documents/:id?offset=      one document's text, in parts
  *   POST /api/internal/work/documents/save             a file from the task's folder into the person's documents
@@ -28,6 +29,7 @@ import { resolveModel } from "../services/models";
 import { quotaFor } from "../services/quota";
 import { getWorkSettings } from "../services/work";
 import { BrowserError } from "../services/browser";
+import { fetchPage, PageRefused } from "../services/web-search";
 
 const BASE = "/api/internal/work";
 /** Statuses worth retrying: the server is busy or briefly broken, not refusing the request. */
@@ -355,6 +357,26 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       return { sources, ...(answers.length ? { content: answers.join("\n") } : {}), truncated: (json.results?.length ?? 0) > sources.length };
     } catch (e) {
       return reply.status(502).send({ error: `Web search failed: ${e instanceof Error ? e.message : "unknown error"}` });
+    }
+  });
+
+  /* ───────────── Web pages (the agent's web_fetch) ───────────── */
+
+  // Aatmiq reads the page, not the runtime: public addresses only (every redirect checked), size and
+  // time capped, and a task container without internet gets none here either.
+  const fetchSchema = z.object({ url: z.string().trim().min(1).max(4000), offset: z.number().int().min(0).max(10_000_000).default(0) });
+  app.post(`${BASE}/fetch`, internal, async (req, reply) => {
+    const t = taskOf(req);
+    const b = parse(fetchSchema, req.body);
+    if (!work.internetAllowed(t.taskId)) return reply.status(403).send({ error: "This task has no internet access (Admin → Work AI → Containers → Internet)." });
+    try {
+      return await fetchPage({ provider: null, url: null, key: null, fetch: ctx.fetch, resolve: ctx.resolve }, b.url, { offset: b.offset });
+    } catch (e) {
+      const late = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      // The agent reads this and says so, or tries another page.
+      const why = late ? "the page didn't answer in 30 seconds" : e instanceof Error ? e.message.split("\n")[0] : "unknown error";
+      if (!(e instanceof PageRefused) && !late) req.log.info({ err: why }, "web_fetch: page not read");
+      return reply.status(422).send({ error: `${b.url} couldn't be read: ${why}.` });
     }
   });
 

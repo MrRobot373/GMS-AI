@@ -57,8 +57,16 @@ export function EquationTool() {
     const [r, e] = attempt(() => algebra.polynomialRoots(nums(coef)));
     setOut(r);
     setErr(e);
-    if (r) save.mutate({ calculatorId: "equation", inputs: { coefficients: coef }, outputs: { roots: r.roots.map((z) => algebra.formatComplex(z)) } });
+    if (r) {
+      save.mutate({
+        calculatorId: "equation",
+        inputs: { coefficients: coef },
+        outputs: { roots: r.roots.map((z) => algebra.formatComplex(z)), distinct: r.distinct.map((g) => ({ root: algebra.formatComplex(g.root), multiplicity: g.multiplicity })) },
+      });
+    }
   };
+  const sub = (i: number) => `x${out && out.roots.length > 1 ? String(i).split("").map((d) => "₀₁₂₃₄₅₆₇₈₉"[Number(d)]).join("") : ""}`;
+  const repeated = (m: number) => (m === 2 ? t("double root") : m === 3 ? t("triple root") : t("root of multiplicity {m}", { m }));
   return (
     <div className="space-y-4">
       <Panel title={t("Polynomial equation")}>
@@ -75,9 +83,20 @@ export function EquationTool() {
       <ErrorLine>{err}</ErrorLine>
       {out && (
         <Panel title={t("Roots")}>
-          {out.roots.map((z, i) => (
-            <ResultRow key={i} label={`x${out.roots.length > 1 ? `${"₁₂₃₄₅₆₇₈₉"[i] ?? i + 1}` : ""}`} value={algebra.formatComplex(z)} />
-          ))}
+          {/* A repeated root once, with its multiplicity: x₁ = x₂ = x₃ = 1 (triple root). */}
+          {out.distinct.map((g, k) => {
+            const first = out.distinct.slice(0, k).reduce((n, x) => n + x.multiplicity, 1);
+            const label = Array.from({ length: g.multiplicity }, (_, j) => sub(first + j)).join(" = ");
+            return <ResultRow key={k} label={g.multiplicity > 1 ? `${label} (${repeated(g.multiplicity)})` : label} value={algebra.formatComplex(g.root)} />;
+          })}
+          {(() => {
+            const real = out.distinct.filter((g) => g.root.im === 0).reduce((n, g) => n + g.multiplicity, 0);
+            return (
+              <p className="mt-2 text-[12.5px] text-fg-subtle">
+                {real === out.roots.length ? t("All {n} roots are real, repeated roots counted as often as they repeat.", { n: real }) : t("{real} real and {complex} complex roots, repeated roots counted as often as they repeat.", { real, complex: out.roots.length - real })}
+              </p>
+            );
+          })()}
           <ol className="mt-3 list-decimal space-y-0.5 pl-5 text-[12.5px] text-fg-muted">
             {out.steps.map((s, i) => (
               <li key={i}>{s}</li>
@@ -383,7 +402,11 @@ export function CalculusTool() {
               [t("Limit"), r.verdict === "different sides" ? t("doesn't exist (the sides differ)") : r.verdict === "unknown" ? t("couldn't be estimated") : show(r.value)],
               ...(typeof at === "number" ? ([[t("From the left"), show(r.left)], [t("From the right"), show(r.right)]] as [string, string][]) : []),
             ],
-            steps: [t("Estimated numerically by approaching the point.")],
+            // Exact when the symbolic route decided it (each L'Hôpital quotient shown), otherwise estimated.
+            steps:
+              r.method === "symbolic"
+                ? [t("Exact: by substitution and L'Hôpital's rule on symbolic derivatives, checked against the numbers."), ...r.steps.map((q) => `→ lim ${q}`)]
+                : [t("Estimated numerically by approaching the point.")],
           };
         }
         case "taylor": {
@@ -624,16 +647,17 @@ export function FractionsTool() {
   const [b, setB] = useState("1/6");
   const [op, setOp] = useState<"+" | "−" | "×" | "÷">("+");
   const [dec, setDec] = useState("0.375");
+  const [maxDen, setMaxDen] = useState("");
   const [r, err] = attempt(() => {
     const x = algebra.parseFraction(a);
     const y = algebra.parseFraction(b);
     const f = op === "+" ? algebra.fadd(x, y) : op === "−" ? algebra.fsub(x, y) : op === "×" ? algebra.fmul(x, y) : algebra.fdiv(x, y);
     return algebra.formatFraction(f);
   });
+  // What was typed, converted exactly; an approximation only when asked for or when it can't be exact.
   const [d2f, d2fErr] = attempt(() => {
-    const v = Number(dec);
-    if (!Number.isFinite(v)) throw new Error(t("Enter a number"));
-    return algebra.formatFraction(algebra.toFraction(v));
+    const den = maxDen.trim() ? Number(maxDen) : undefined;
+    return algebra.decimalToFraction(dec, { maxDen: den });
   });
   return (
     <div className="space-y-4">
@@ -658,9 +682,22 @@ export function FractionsTool() {
         )}
       </Panel>
       <Panel title={t("Decimal to fraction")}>
-        <TextField label={t("Decimal")} value={dec} onChange={setDec} mono className="w-48" />
+        <div className="flex flex-wrap items-end gap-2">
+          <TextField label={t("Decimal")} value={dec} onChange={setDec} mono className="w-48" />
+          <TextField label={t("Largest denominator (optional)")} value={maxDen} onChange={setMaxDen} mono className="w-48" inputMode="numeric" />
+        </div>
+        <p className="mt-2 text-[12px] text-fg-subtle">{t("A typed decimal is converted exactly. Repeating digits go in brackets: 0.1(6) is 1/6. A largest denominator asks for the closest simpler fraction.")}</p>
         <ErrorLine>{d2fErr}</ErrorLine>
-        {d2f && <ResultRow label={t("Fraction")} value={d2f.fraction} />}
+        {d2f && (
+          <div className="mt-2">
+            {d2f.exact && <ResultRow label={t("Exact fraction")} value={algebra.formatFraction(d2f.exact).fraction} />}
+            {d2f.exact && d2f.exact.d !== 1n && algebra.formatFraction(d2f.exact).mixed !== algebra.formatFraction(d2f.exact).fraction && <ResultRow label={t("Mixed number")} value={algebra.formatFraction(d2f.exact).mixed} />}
+            {d2f.approximation && (
+              <ResultRow label={t("Approximation, error {e}", { e: d2f.approximation.errorText })} value={`≈ ${algebra.formatFraction(d2f.approximation.fraction).fraction}`} />
+            )}
+            {!d2f.exact && <p className="mt-1 text-[12px] text-fg-subtle">{t("This value has no exact fraction from what was typed, so only an approximation is shown.")}</p>}
+          </div>
+        )}
       </Panel>
     </div>
   );

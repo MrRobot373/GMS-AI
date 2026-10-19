@@ -26,6 +26,11 @@ export interface Quantity {
   units: Unit[];
   /** Shown as its own converter tab. */
   converter?: boolean;
+  /**
+   * A value no input or result of this quantity can go below, in the base unit, checked after
+   * conversion: absolute zero for temperature (a temperature difference has no such floor).
+   */
+  floor?: { value: number; reason: string };
 }
 
 const lin = (id: string, symbol: string, name: string, factor: number): Unit => ({
@@ -193,6 +198,7 @@ export const QUANTITIES: Quantity[] = [
     name: "Temperature",
     base: "K",
     converter: true,
+    floor: { value: 0, reason: "below absolute zero (0 K = −273.15 °C = −459.67 °F)" },
     units: [
       lin("K", "K", "kelvin", 1),
       aff("C", "°C", "degree Celsius", 1, 273.15),
@@ -555,16 +561,24 @@ export function unitOf(quantityId: string, unitId?: string | null): Unit {
 
 export class UnitError extends Error {}
 
+/** The value in the base unit, refused below the quantity's floor (−300 °C is no temperature). */
+function toBaseChecked(value: number, quantityId: string, u: Unit): number {
+  const b = u.toBase(value);
+  const floor = quantity(quantityId).floor;
+  if (floor && b < floor.value) throw new UnitError(`${value} ${u.symbol} is ${floor.reason}.`);
+  return b;
+}
+
 /** Convert between two units of one quantity. */
 export function convert(value: number, quantityId: string, from: string, to: string): number {
-  return unitOf(quantityId, to).fromBase(unitOf(quantityId, from).toBase(value));
+  return unitOf(quantityId, to).fromBase(toBaseChecked(value, quantityId, unitOf(quantityId, from)));
 }
 
 /** Conversion result with the factor both ways, for the converter screen. */
 export function conversion(value: number, quantityId: string, from: string, to: string) {
   const f = unitOf(quantityId, from);
   const t = unitOf(quantityId, to);
-  const result = t.fromBase(f.toBase(value));
+  const result = t.fromBase(toBaseChecked(value, quantityId, f));
   const linear = f.factor !== undefined && t.factor !== undefined;
   return {
     value,

@@ -40,6 +40,8 @@ export interface RuleInput {
   webSearch?: boolean;
   /** Difficulty of the previous answer in this conversation (short follow-ups keep it). */
   follows?: Difficulty | null;
+  /** A Work AI or Code task: an agent that has to use tools well (web research, long jobs count as hard). */
+  agent?: boolean;
 }
 
 const SOCIAL =
@@ -86,8 +88,27 @@ const CODE_HARD = /\b(debug(ging)?|fix(es|ed)?|bugs?|errors?|crash(es|ed|ing)?|f
 const CODE_ASK = /\b(write|implement|build|code|create|generate)\b.{0,40}\b(function|program|script|class|algorithm|query|module|service|regex|api|macro|formula)\b/i;
 const CODE_DEPTH = /\b(algorithm|complexity|how fast|efficient(ly)?|optimal|shortest path|graph|tree|dynamic programming|recursi\w+|concurren\w+|thread\w*|distributed|scal(e|able|ing)|secure|security)\b/i;
 
+/** For agents: research on the web, where pages have to be read, compared and cited. */
+const WEB_RESEARCH =
+  /\b(search(ing)? (the )?(web|internet|online)|web search|use (the )?(web|internet)|look (it |this |them |that )?up online|find online|on the (web|internet))\b|\bcompar\w*\b.{0,80}\bsources\b|\b(latest|current(ly)? (edition|version|models?|standard)|(sold|available|on sale) (today|now)|up-to-date (prices?|figures|data))\b|\b(today'?s|current)\b[^.?!\n]{0,30}\b(prices?|rates?|values?)\b/i;
+/** For agents: what a long, many-part job asks for. */
+const AGENT_ACTIONS =
+  /\b(make|create|write|build|implement|add|run|report|calculate|compute|work out|simulate|choose|select|size|design|plot|chart|draw|save|keep|compare|find|state|stating|list|tune|estimate|check|verify|test|show|put|tell|return|raise|throw|print|read|generate|fix|convert|analy[sz]e)\b/gi;
+const AGENT_FILES = /\b[\w-]+\.(md|py|csv|xlsx|xls|png|jpe?g|svg|pdf|docx|pptx|json|txt|mjs|cjs|js|ts|html|ipynb|sh|sql|ya?ml)\b/gi;
+/** Engineering quantities: a number with a unit (case matters: m is metres, M isn't). */
+const QUANTITY = /\b\d+(\.\d+)? ?(kW|kWh|kVA|kVAr|MW|MWh|V|kV|mV|A|kA|mA|Hz|kHz|MHz|mm2|mm²|mm|m|km|s|ms|µs|%|Ω|kΩ|ohms?|µH|uH|mH|µF|uF|nF|pF|W|°C|K|rpm|bar|Pa|kPa|MPa|Nm|kg|t)(?![\w²])/g;
+
+/** An agent job long and many-sided enough that a stronger model with thinking pays off. */
+function longAgentJob(t: string, words: number): boolean {
+  if (words < 50) return false;
+  const actions = new Set((t.match(AGENT_ACTIONS) ?? []).map((a) => a.toLowerCase())).size;
+  if (actions < 4) return false;
+  const files = new Set((t.match(AGENT_FILES) ?? []).map((f) => f.toLowerCase())).size;
+  const quantities = (t.match(QUANTITY) ?? []).length;
+  return files >= 2 || quantities >= 2 || CODE_ASK.test(t) || /\b(unit ?tests?|tests)\b/i.test(t);
+}
+
 const RANK: Record<Difficulty, number> = { easy: 0, medium: 1, hard: 2 };
-const atLeast = (a: Difficulty, b: Difficulty): Difficulty => (RANK[a] >= RANK[b] ? a : b);
 
 /** Difficulty from the request alone; null when the rules can't tell. */
 export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null; reason: string } {
@@ -140,6 +161,12 @@ export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null;
     found = { difficulty: null, reason: "" };
   }
 
+  // Agents researching the web read pages, compare them and cite them; long jobs with many parts
+  // lose steps on smaller models. Both get the advanced tier.
+  if (input.agent && found.difficulty !== "hard") {
+    if (WEB_RESEARCH.test(t)) found = { difficulty: "hard", reason: "web research to read, compare and cite" };
+    else if (longAgentJob(t, words)) found = { difficulty: "hard", reason: "a long task with several parts" };
+  }
   // Answers from documents have to read and cite them; small models skip the details.
   if (input.hasSources && found.difficulty !== null && RANK[found.difficulty] < RANK.medium) {
     found = { difficulty: "medium", reason: "an answer from your documents" };
@@ -322,7 +349,8 @@ export async function chooseModel(db: DB, box: SecretBox, input: ChooseInput): P
     return { ...r, routing: null, thinking: r.model.thinkingSwitch ? false : undefined };
   }
 
-  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, webSearch: input.webSearch, follows: input.follows });
+  const agent = input.section === "work" || input.section === "code";
+  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, webSearch: input.webSearch, follows: input.follows, agent });
   let by: Routing["by"] = "rules";
   if (difficulty === null && settings.judge === "model") {
     const judge = await judgeModel(db, box, models, settings);
@@ -351,8 +379,12 @@ export async function chooseModel(db: DB, box: SecretBox, input: ChooseInput): P
     difficulty = "medium";
     reason = "an everyday request";
   }
-  // Agents need reliable tool use: Work AI and Code start at the standard tier.
-  if (input.section !== "chat") difficulty = atLeast(difficulty, "medium");
+  // Agents need reliable tool use: Work AI and Code start at the standard tier, on purpose (the
+  // reason says so, not "a short, simple question").
+  if (agent && RANK[difficulty] < RANK.medium) {
+    difficulty = "medium";
+    reason = "agent tasks use at least the standard tier";
+  }
 
   const promptTokens = estimateTokens(input.text) + (input.contextTokens ?? 0);
   let pool = models;

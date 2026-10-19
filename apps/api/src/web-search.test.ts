@@ -16,7 +16,7 @@ import type { AppContext } from "./context";
 import { createSecretBox } from "./crypto";
 import { pdfText } from "./services/extract";
 import { webSearchSetup } from "./services/gem";
-import { clearWebSearchCache, htmlToText, pinnedGet, readPage, readPages, webSearch, WebSearchError, webSearchReady, type WebSearchDeps, type WebResult } from "./services/web-search";
+import { clearFetchCache, clearWebSearchCache, fetchPage, htmlToText, pageTitle, pinnedGet, readPage, readPages, webSearch, WebSearchError, webSearchReady, type WebSearchDeps, type WebResult } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -29,6 +29,11 @@ const REPORT_PDF = readFileSync(new URL("../test/fixtures/report.pdf", import.me
 const SCANNED_PDF = readFileSync(new URL("../test/fixtures/scanned.pdf", import.meta.url));
 /** Over the 1.5 MB cap, but whole before it: it would read, so only the cap leaves it out. */
 const BIG_PDF = Buffer.concat([REPORT_PDF, Buffer.alloc(1.6 * 1024 * 1024, "\n")]);
+/** Too big for a search result's page read, small enough for the agent's web_fetch (10 MB). */
+const MID_PDF = Buffer.concat([REPORT_PDF, Buffer.alloc(3 * 1024 * 1024, "\n")]);
+const HUGE_PDF = Buffer.concat([REPORT_PDF, Buffer.alloc(11 * 1024 * 1024, "\n")]);
+/** 50,000 characters in numbered lines, to read in parts. */
+const LONG_TEXT = Array.from({ length: 1000 }, (_, i) => `Line ${String(i).padStart(4, "0")} ${"x".repeat(39)}`).join("\n");
 
 interface Call {
   host: string;
@@ -43,6 +48,22 @@ const PAGE_HTML = `<!doctype html><html><head><title>Ohm</title><style>body{colo
 <main><h1>Ohm&rsquo;s law</h1><p>The current through a resistor is <b>V&nbsp;/&nbsp;R</b>. Resistance is in &Omega; (&#8486; or &#x3A9;).</p>
 <ul><li>V in volts</li><li>R in ohms</li></ul><p>5 &lt; 6 &amp;&amp; 1 &times; 2</p>
 <script>alert("nope")</script></main><footer>Copyright footer text</footer></body></html>`;
+
+/** A product page as sites build them: menus, a mega-menu in the header, a sidebar, a cookie form, a footer, and a spec table. */
+const STORE_HTML = `<!doctype html><html><head><title>IE3 motor 7.5 kW | Motors Ltd</title><script>window.dataLayer=[]</script></head><body>
+<div id="cookie"><form action="/consent"><label>We use cookies</label><button>Accept all cookies</button></form></div>
+<header class="site"><a href="/">Motors Ltd</a><nav><ul>${Array.from({ length: 40 }, (_, i) => `<li><a href="/c/${i}">Category ${i}</a></li>`).join("")}</ul></nav>
+<div class="search"><input placeholder="Search"></div></header>
+<div class="layout"><aside class="filters"><h3>Filter by</h3><ul><li><a href="/f/1">Frame size</a></li><li><a href="/f/2">Poles</a></li></ul><p>Narrow the list with these filters before you compare prices.</p></aside>
+<div class="content"><div class="crumbs"><a href="/">Home</a> › <a href="/m">Motors</a></div>
+<h1>IE3 premium efficiency motor, 7.5 kW, 4 pole</h1>
+<p>A totally enclosed fan cooled induction motor for 400 V 50 Hz supplies, built to IEC 60034-30-1 efficiency class IE3.</p>
+<h2>Technical data</h2>
+<table><thead><tr><th>Rated output</th><th>Poles</th><th>Efficiency at full load</th></tr></thead>
+<tbody><tr><td>7.5 kW</td><td>4</td><td>90.4 %</td></tr><tr><td>11 kW</td><td>4</td><td>91.4 %</td></tr></tbody></table>
+<p>Efficiency values are measured to IEC 60034-2-1 and are the minimum the class allows for this rating.</p>
+</div></div>
+<footer><p>© Motors Ltd</p><ul><li><a href="/privacy">Privacy</a></li></ul></footer></body></html>`;
 
 /** Search providers and web pages, keyed on host. A key starting "bad" is refused, "broke" is out of credit, "busy" is rate limited. */
 function fakeWeb() {
@@ -99,6 +120,11 @@ function fakeWeb() {
         if (u.pathname === "/big.pdf") return new Response(BIG_PDF, { headers: { "content-type": "application/pdf" } });
         if (u.pathname === "/image.png") return new Response(SCANNED_PDF, { headers: { "content-type": "image/png" } });
         if (u.pathname === "/latin1") return new Response(Buffer.from("caf\xe9 \xb0C", "latin1"), { headers: { "content-type": "text/html; charset=iso-8859-1" } });
+        if (u.pathname === "/store") return new Response(STORE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
+        if (u.pathname === "/long") return new Response(LONG_TEXT, { headers: { "content-type": "text/plain" } });
+        if (u.pathname === "/data.json") return Response.json({ ie3: 90.4 });
+        if (u.pathname === "/datasheet.pdf") return new Response(MID_PDF, { headers: { "content-type": "application/pdf" } });
+        if (u.pathname === "/huge.pdf") return new Response(HUGE_PDF, { headers: { "content-type": "application/pdf" } });
         return new Response(PAGE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
       case "hop.example.org": {
         const to: Record<string, string> = {
@@ -264,17 +290,54 @@ describe("reading pages", () => {
     expect(text).not.toMatch(/ {2}|\n{3}/);
   });
 
+  it("a page's main text: no menus, header links, sidebar, cookie form or footer; headings marked, tables as rows", () => {
+    const text = htmlToText(STORE_HTML);
+    expect(text).toBe(
+      [
+        "Home › Motors",
+        "",
+        "# IE3 premium efficiency motor, 7.5 kW, 4 pole",
+        "A totally enclosed fan cooled induction motor for 400 V 50 Hz supplies, built to IEC 60034-30-1 efficiency class IE3.",
+        "",
+        "## Technical data",
+        "",
+        "Rated output | Poles | Efficiency at full load",
+        "7.5 kW | 4 | 90.4 %",
+        "11 kW | 4 | 91.4 %",
+        "Efficiency values are measured to IEC 60034-2-1 and are the minimum the class allows for this rating.",
+      ].join("\n"),
+    );
+    // Line breaks in the source are spaces, except in <pre>.
+    expect(htmlToText("<p>one\ntwo</p><pre>a\n  b</pre>")).toBe("one two\na\nb");
+    expect(pageTitle(STORE_HTML)).toBe("IE3 motor 7.5 kW | Motors Ltd");
+    // <main> wins; then the article that holds the page; a header with the page's title is read.
+    const main = `<body><div>${"<a href=/x>link</a> ".repeat(50)}<p>Side text that is long enough to matter here.</p></div><main><p>${"Main text. ".repeat(30)}</p></main></body>`;
+    expect(htmlToText(main)).toBe("Main text. ".repeat(30).trim());
+    const article = `<body><div class="related"><p>${"Other. ".repeat(10)}</p></div><article><header><h1>Title</h1></header><p>${"Body. ".repeat(60)}</p></article></body>`;
+    expect(htmlToText(article)).toBe(`# Title\n\n${"Body. ".repeat(60).trim()}`);
+    // A page with no block that holds most of it is read whole (minus what's never read).
+    const spread = `<body><div><p>${"First half. ".repeat(20)}</p></div><div><p>${"Second half. ".repeat(20)}</p></div><nav>Menu</nav></body>`;
+    expect(htmlToText(spread)).toBe(`${"First half. ".repeat(20).trim()}\n\n${"Second half. ".repeat(20).trim()}`);
+    // A form that holds the page's content (some sites wrap everything in one) is read.
+    expect(htmlToText(`<form id="aspnetForm"><h2>Data</h2><p>Kept text.</p></form>`)).toBe("## Data\nKept text.");
+    // A menu in a menu is dropped whole.
+    expect(htmlToText("<nav><nav>inner</nav>still menu</nav><p>after</p>")).toBe("after");
+  });
+
   it("reads a hostile page as fast as any other: 1.5 MB of tags or comments left open, or of bare '<'", () => {
     const size = 1.5 * 1024 * 1024;
     // Each of these took minutes with patterns that searched to the end of the page for every "<".
-    const pages = ["<", "<nav ", "<!-- ", "<b ", "<a", "<svg/>", "</", "<script>", "<p>x<nav>y"].map((u) => u.repeat(Math.ceil(size / u.length)));
+    const pages = ["<", "<nav ", "<!-- ", "<b ", "<a", "<svg/>", "</", "<script>", "<p>x<nav>y", "<nav>", "<div>", "<header>", "<form><p>", "<aside>x", "<td>", "<a href=x>"].map((u) => u.repeat(Math.ceil(size / u.length)));
     pages.push(`<${"a".repeat(size)}`);
+    // Thousands of nested menus, closed only at the end; nested blocks deeper than any page.
+    pages.push(`${"<nav>".repeat(200_000)}${"</nav>".repeat(3)}`);
+    pages.push(`${"<div><p>x".repeat(150_000)}${"</div>".repeat(150_000)}`);
     for (const page of pages) {
       const started = performance.now();
       htmlToText(page);
       expect(performance.now() - started, page.slice(0, 12)).toBeLessThan(3000);
     }
-  });
+  }, 60_000);
 
   it("a '<' that starts no tag is text; what's left open is handled the way a browser does", () => {
     expect(htmlToText("<p>a < b and c > d</p><p>x<5</p>")).toBe("a < b and c > d\nx<5");
@@ -283,7 +346,7 @@ describe("reading pages", () => {
     expect(htmlToText("kept<script>if (a<b) { x() }")).toBe("kept");
     expect(htmlToText("<nav>text after an open nav")).toBe("text after an open nav");
     expect(htmlToText("before<svg/>after<br>next<!DOCTYPE html></ x>end")).toBe("before after\nnext end");
-    expect(htmlToText("<table><tr><td>a</td><td>b</td></tr></table><ol><li>one<li>two</ol>")).toBe("a | b |\n\n• one\n• two");
+    expect(htmlToText("<table><tr><td>a</td><td>b</td></tr></table><ol><li>one<li>two</ol>")).toBe("a | b\n\n• one\n• two");
   });
 
   it("reads public pages, refuses private ones (by IP, by name, mixed answers, after a redirect) and keeps provider text", async () => {
@@ -372,6 +435,59 @@ describe("reading pages", () => {
     // The lookup was told to stop.
     expect(lookup?.aborted).toBe(true);
     expect(web.hosts()).not.toContain("slow-dns.example.org");
+  });
+
+  describe("the agent's web_fetch", () => {
+    afterEach(() => clearFetchCache());
+
+    it("gives a page's main text with its title", async () => {
+      const page = await fetchPage(deps, "https://docs.example.org/store");
+      expect(page).toMatchObject({ url: "https://docs.example.org/store", status: 200, title: "IE3 motor 7.5 kW | Motors Ltd", kind: "html", offset: 0, next: null, cut: false });
+      expect(page.text).toContain("7.5 kW | 4 | 90.4 %");
+      expect(page.text).not.toContain("Category 12");
+      expect(page.total).toBe(page.text.length);
+    });
+
+    it("reads a long page in parts, each ending at a line break, without downloading it again", async () => {
+      web.calls.length = 0;
+      const first = await fetchPage(deps, "https://docs.example.org/long");
+      expect(first.total).toBe(LONG_TEXT.length);
+      expect(first.text.length).toBeLessThanOrEqual(20_000);
+      expect(first.text.endsWith("\n")).toBe(true);
+      expect(first.next).toBe(first.text.length);
+      const parts = [first.text];
+      let next = first.next;
+      while (next !== null) {
+        const p = await fetchPage(deps, "https://docs.example.org/long", { offset: next });
+        expect(p.offset).toBe(next);
+        parts.push(p.text);
+        next = p.next;
+      }
+      expect(parts.length).toBe(3);
+      expect(parts.join("")).toBe(LONG_TEXT);
+      expect(web.calls.filter((c) => c.url.pathname === "/long")).toHaveLength(1);
+      // An offset past the end is an empty last part.
+      expect(await fetchPage(deps, "https://docs.example.org/long", { offset: 10_000_000 })).toMatchObject({ text: "", next: null, offset: LONG_TEXT.length });
+    });
+
+    it("reads PDFs up to 10 MB (more than a search result's page read takes), and JSON as text", async () => {
+      await expect(readPage(deps, "https://docs.example.org/datasheet.pdf")).rejects.toThrow("PDF over 2 MB");
+      const pdf = await fetchPage(deps, "https://docs.example.org/datasheet.pdf");
+      expect(pdf).toMatchObject({ kind: "pdf", title: null, next: null });
+      expect(pdf.text).toBe("Quarterly report: revenue grew 18 percent.\n\nPage two: hiring plan adds 12 engineers.");
+      await expect(fetchPage(deps, "https://docs.example.org/huge.pdf")).rejects.toThrow("a PDF over 10 MB");
+      await expect(fetchPage(deps, "https://docs.example.org/scanned.pdf")).resolves.toMatchObject({ text: "", kind: "pdf" });
+      expect((await fetchPage(deps, "https://docs.example.org/data.json")).text).toBe('{"ie3":90.4}');
+      await expect(fetchPage(deps, "https://docs.example.org/image.png")).rejects.toThrow("image/png isn't read");
+    });
+
+    it("keeps every check of page reads: public addresses only, redirects checked, http(s) only", async () => {
+      web.calls.length = 0;
+      for (const href of ["http://10.0.0.5/admin", "http://localhost:4000/api", "https://inner.example.org/secret", "https://mixed.example.org/page", "https://hop.example.org/meta", "https://hop.example.org/loop1", "file:///etc/passwd", "javascript:alert(1)"])
+        await expect(fetchPage(deps, href), href).rejects.toThrow();
+      expect(web.hosts().filter((h) => !["hop.example.org"].includes(h))).toEqual([]);
+      expect((await fetchPage(deps, "https://hop.example.org/ok")).url).toBe("https://docs.example.org/plain");
+    });
   });
 
   it("reads at most `max` pages", async () => {

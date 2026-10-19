@@ -2,7 +2,7 @@
  * Algebra and number tools: polynomial equations, linear systems, complex numbers, exact
  * fractions, primes, number bases, Roman numerals, sequences.
  */
-import { ExprError, gcd2 } from "./expression";
+import { calc, ExprError, gcd2 } from "./expression";
 
 /* ───────────── Complex numbers ───────────── */
 
@@ -64,9 +64,88 @@ export function parseComplex(s: string): Complex {
 export interface PolyRoots {
   /** Highest power first, as given. */
   coefficients: number[];
+  /** Every root, a repeated one as often as its multiplicity (as many as the degree), sorted. */
   roots: Complex[];
+  /** Each different root once, with its multiplicity, in the same order. */
+  distinct: { root: Complex; multiplicity: number }[];
   steps: string[];
   discriminant?: number;
+}
+
+const EPS = Number.EPSILON;
+/** By real part, then imaginary part; real parts equal to rounding count as equal (so -i comes before i). */
+const sortRoots = (a: Complex, b: Complex) => {
+  const dr = a.re - b.re;
+  return Math.abs(dr) > 1e-12 * Math.max(1, cabs(a), cabs(b)) ? dr : a.im - b.im;
+};
+
+/** p(z) by Horner's rule, with a bound on its rounding error (what "zero" can mean at z). */
+function horner(c: number[], z: Complex): { v: Complex; err: number } {
+  let v = cx(0);
+  let size = 0;
+  const az = cabs(z);
+  for (const a of c) {
+    v = cadd(cmul(v, z), cx(a));
+    size = size * az + Math.abs(a);
+  }
+  return { v, err: 4 * c.length * EPS * size };
+}
+
+const derivative = (c: number[]) => c.slice(0, -1).map((a, i) => a * (c.length - 1 - i));
+
+/** Newton's method on p from z, keeping the best point; it stops at the rounding floor. */
+function newton(c: number[], z: Complex, maxIt = 100): Complex {
+  const dc = derivative(c);
+  let best = z;
+  let bestAbs = cabs(horner(c, z).v);
+  for (let it = 0; it < maxIt && bestAbs > 0; it++) {
+    const { v, err } = horner(c, z);
+    if (cabs(v) <= err) break;
+    const d = horner(dc, z).v;
+    if (d.re === 0 && d.im === 0) break;
+    const next = csub(z, cdiv(v, d));
+    const nextAbs = cabs(horner(c, next).v);
+    if (!Number.isFinite(nextAbs)) break;
+    z = next;
+    if (nextAbs < bestAbs) {
+      best = z;
+      bestAbs = nextAbs;
+    } else if (it > 10) break;
+  }
+  return best;
+}
+
+/**
+ * Is there a root of multiplicity m near z0? Then p^(m-1) has a simple root there: find it with
+ * Newton's method and check that p, p′, …, p^(m-1) all vanish there, to rounding. Two roots that are
+ * close but different fail the check (p isn't zero halfway between them), so they stay apart.
+ */
+function multipleRootNear(c: number[], z0: Complex, m: number, radius: number): Complex | null {
+  const ds = [c];
+  for (let k = 1; k < m; k++) ds.push(derivative(ds[k - 1]!));
+  const z = m > 1 ? newton(ds[m - 1]!, z0) : newton(c, z0);
+  if (!(cabs(csub(z, z0)) <= radius)) return null;
+  for (const d of ds) {
+    const { v, err } = horner(d, z);
+    if (cabs(v) > 4 * err) return null;
+  }
+  return z;
+}
+
+/**
+ * The shortest decimal (within 10⁻⁹) where the polished simple root's p is no larger or zero to
+ * rounding: 8, not 8.000000001, for a root that floating point can't place better than that.
+ */
+function simplest(c: number[], z: Complex): Complex {
+  const at = cabs(horner(c, z).v);
+  for (let d = 1; d <= 15; d++) {
+    const t = cx(Number(z.re.toPrecision(d)), z.im === 0 ? 0 : Number(z.im.toPrecision(d)));
+    if (cabs(csub(t, z)) > 1e-9 * Math.max(1, cabs(z))) continue;
+    // p(t) no larger, or zero to rounding: t is as much a root as z.
+    const { v, err } = horner(c, t);
+    if (cabs(v) <= Math.max(at, err)) return t;
+  }
+  return z;
 }
 
 /** Roots of a·xⁿ + … + c = 0 (coefficients highest power first). */
@@ -80,36 +159,52 @@ export function polynomialRoots(coefficients: number[]): PolyRoots {
   if (deg === 1) {
     const [a, b] = c as [number, number];
     steps.push(`${a}x + ${b} = 0`, `x = -(${b}) / ${a}`);
-    return { coefficients, roots: [cx(-b / a)], steps };
+    const root = cx(-b / a);
+    return { coefficients, roots: [root], distinct: [{ root, multiplicity: 1 }], steps };
   }
   if (deg === 2) {
     const [a, b, k] = c as [number, number, number];
-    const D = b * b - 4 * a * k;
+    let D = b * b - 4 * a * k;
     steps.push(`Discriminant Δ = b² - 4ac = ${b}² - 4·${a}·${k} = ${round(D)}`);
-    if (D >= 0) {
+    // Δ within its own rounding error of 0 is 0: (x - 0.1)² is a repeated root, not 0.1 ± 1e-9i.
+    if (D !== 0 && Math.abs(D) <= 8 * EPS * (b * b + 4 * Math.abs(a * k))) {
+      D = 0;
+      steps.push("Δ is 0 to rounding");
+    }
+    if (D === 0) {
+      steps.push("Δ = 0: one repeated real root", "x = -b / 2a");
+      const root = cx(-b / (2 * a));
+      return { coefficients, roots: [root, root], distinct: [{ root, multiplicity: 2 }], steps, discriminant: D };
+    }
+    if (D > 0) {
       // Numerically stable form: avoids cancellation when b² ≫ 4ac.
       const q = -0.5 * (b + Math.sign(b || 1) * Math.sqrt(D));
       const r1 = q / a;
       const r2 = q !== 0 ? k / q : -b / (2 * a);
-      steps.push(D === 0 ? "Δ = 0: one repeated real root" : "Δ > 0: two real roots", `x = (-b ± √Δ) / 2a`);
+      steps.push("Δ > 0: two real roots", `x = (-b ± √Δ) / 2a`);
       const roots = [r1, r2].sort((p, q2) => p - q2).map((v) => cx(v));
-      return { coefficients, roots, steps, discriminant: D };
+      return { coefficients, roots, distinct: roots.map((root) => ({ root, multiplicity: 1 })), steps, discriminant: D };
     }
     steps.push("Δ < 0: two complex conjugate roots", "x = (-b ± i√(-Δ)) / 2a");
     const re = -b / (2 * a);
     const im = Math.sqrt(-D) / (2 * Math.abs(a));
-    return { coefficients, roots: [cx(re, -im), cx(re, im)], steps, discriminant: D };
+    const roots = [cx(re, -im), cx(re, im)];
+    return { coefficients, roots, distinct: roots.map((root) => ({ root, multiplicity: 1 })), steps, discriminant: D };
   }
-  // Durand–Kerner for cubic and higher (all roots at once), then polished with Newton's method.
+  // Durand–Kerner for cubic and higher (all roots at once).
   const lead = c[0]!;
   const monic = c.map((v) => v / lead);
   const evalP = (z: Complex) => monic.reduce<Complex>((acc, v) => cadd(cmul(acc, z), cx(v)), cx(0));
-  let roots = Array.from({ length: deg }, (_, k) => cpow(cx(0.4, 0.9), k));
+  // Start on a circle of the roots' size (half Fujiwara's bound), spread out so that the products of
+  // differences neither vanish nor overflow, whatever the degree.
+  const bound = Math.max(...monic.slice(1).map((v, k) => Math.abs(v) ** (1 / (k + 1))));
+  const R = bound > 0 && Number.isFinite(bound) ? bound : 1;
+  let found = Array.from({ length: deg }, (_, k) => cpolar(R, (2 * Math.PI * k) / deg + 0.4));
   for (let it = 0; it < 2000; it++) {
     let delta = 0;
-    roots = roots.map((r, i) => {
+    found = found.map((r, i) => {
       let den = cx(1);
-      roots.forEach((s, j) => {
+      found.forEach((s, j) => {
         if (j !== i) den = cmul(den, csub(r, s));
       });
       const next = csub(r, cdiv(evalP(r), den.re === 0 && den.im === 0 ? cx(1e-12) : den));
@@ -118,12 +213,69 @@ export function polynomialRoots(coefficients: number[]): PolyRoots {
     });
     if (delta < 1e-14) break;
   }
-  const scale = Math.max(1, ...roots.map(cabs));
-  roots = roots
-    .map((r) => cx(Math.abs(r.im) < 1e-9 * scale ? r.re : r.re, Math.abs(r.im) < 1e-9 * scale ? 0 : r.im))
-    .sort((a, b) => a.re - b.re || a.im - b.im);
-  steps.push(`Degree ${deg}: roots found numerically (Durand–Kerner iteration)`);
-  return { coefficients, roots, steps };
+  if (!found.every((z) => Number.isFinite(z.re) && Number.isFinite(z.im))) throw new ExprError("The roots of this polynomial couldn't be found numerically");
+  steps.push(`Degree ${deg}: roots found numerically (Durand–Kerner iteration), each polished with Newton's method on p(x)`);
+  // Polish each root on p itself. A step that would land on another root is not taken (that root
+  // would be counted twice); near a repeated root the roots stay as they are and are grouped below.
+  const polished = found.map((r, i) => {
+    const z = newton(c, r);
+    const nearest = Math.min(...found.filter((_, j) => j !== i).map((s) => cabs(csub(s, r))));
+    return cabs(csub(z, r)) <= 0.25 * nearest ? z : r;
+  });
+
+  // Group repeated roots: a numerical root finder spreads an m-fold root into m roots about
+  // (rounding)^(1/m) apart, (x - 1)³ into 0.99989 - 0.00001i, 1, 1.00012 + 0.00003i. Try the largest
+  // group around each root first; one that passes the check becomes one root with its multiplicity.
+  const distinct: { root: Complex; multiplicity: number }[] = [];
+  let left = polished.map((z, i) => ({ z, i }));
+  while (left.length) {
+    const r = left[0]!.z;
+    // Wide enough for a 10-fold root's spread; the check, not the distance, decides what is one root.
+    const radius = 0.5 * Math.max(1, cabs(r));
+    const near = left.map((x) => ({ ...x, d: cabs(csub(x.z, r)) })).sort((a, b) => a.d - b.d);
+    let group = { root: r, members: [left[0]!.i] };
+    for (let m = near.length; m >= 2; m--) {
+      if (near[m - 1]!.d > radius) continue;
+      const members = near.slice(0, m);
+      const mean = cx(members.reduce((s, x) => s + x.z.re, 0) / m, members.reduce((s, x) => s + x.z.im, 0) / m);
+      const z = multipleRootNear(c, mean, m, radius);
+      if (z) {
+        group = { root: z, members: members.map((x) => x.i) };
+        break;
+      }
+    }
+    distinct.push({ root: group.root, multiplicity: group.members.length });
+    left = left.filter((x) => !group.members.includes(x.i));
+  }
+
+  // The coefficients are real, so a root with a rounding-level imaginary part is real when its real
+  // part passes the same test; a genuinely complex root (1 ± 0.00001i) doesn't.
+  let madeReal = false;
+  const scale = Math.max(1, ...distinct.map((g) => cabs(g.root)));
+  for (const g of distinct) {
+    const z = g.root;
+    if (z.im === 0 || (Math.abs(z.im) > 1e-6 * cabs(z) && Math.abs(z.im) > 1e-14 * scale)) continue;
+    const real = multipleRootNear(c, cx(z.re), g.multiplicity, Math.max(Math.abs(z.im) * 10, 1e-12 * Math.max(1, cabs(z))));
+    if (real && real.im === 0) {
+      g.root = real;
+      madeReal = true;
+    }
+  }
+  distinct.sort((a, b) => sortRoots(a.root, b.root));
+  const primes = ["", "′", "″", "‴"];
+  for (const g of distinct.filter((x) => x.multiplicity > 1)) {
+    const names = Array.from({ length: g.multiplicity }, (_, k) => `p${primes[k] ?? `⁽${k}⁾`}(x)`);
+    steps.push(`x = ${formatComplex(g.root)} is a root of multiplicity ${g.multiplicity}: ${names.join(", ")} are all 0 there (to rounding)`);
+  }
+  if (madeReal) steps.push("Imaginary parts at rounding level dropped: those roots are real");
+  for (const g of distinct) {
+    // An m-fold root is a simple root of p^(m-1), where p's size says how close it is.
+    let d = c;
+    for (let k = 1; k < g.multiplicity; k++) d = derivative(d);
+    g.root = simplest(d, g.root);
+  }
+  const roots = distinct.flatMap((g) => Array.from({ length: g.multiplicity }, () => g.root));
+  return { coefficients, roots, distinct, steps };
 }
 
 const round = (v: number) => Number(v.toPrecision(12));
@@ -277,7 +429,16 @@ export function formatFraction(f: Fraction): { fraction: string; mixed: string; 
   const whole = f.n / f.d;
   const rest = babs(f.n % f.d);
   const mixed = f.d === 1n || whole === 0n ? fraction : `${whole} ${rest}/${f.d}`;
-  return { fraction, mixed, decimal: Number(f.n) / Number(f.d) };
+  return { fraction, mixed, decimal: fractionToNumber(f) };
+}
+
+/** n/d as the nearest number, also when n and d are too long for a number each (Number(n) / Number(d) is ∞/∞ then). */
+export function fractionToNumber(f: Fraction): number {
+  const digits = (v: bigint) => babs(v).toString().length;
+  // Scale the quotient to about 20 digits, divide exactly, then shift back.
+  const shift = digits(f.d) - digits(f.n) + 20;
+  const q = shift >= 0 ? (f.n * 10n ** BigInt(shift)) / f.d : f.n / (f.d * 10n ** BigInt(-shift));
+  return Number(`${q}e${-shift}`);
 }
 
 /** Closest fraction with a denominator up to maxDen (continued fractions). */
@@ -297,6 +458,176 @@ export function toFraction(x: number, maxDen = 1_000_000): Fraction {
   }
   return frac(h1, k1);
 }
+
+/* ───────────── Decimal to fraction ───────────── */
+
+export interface DecimalFraction {
+  /** The value, for showing it as a decimal. */
+  value: number;
+  /**
+   * Exactly what was typed: a terminating decimal (0.12345678 = 6172839/50000000) or a repeating one
+   * with the repeating digits in brackets (0.1(6) = 1/6). Null when the text doesn't fix one fraction:
+   * digits that trail off (0.333...) or a computed value (pi, sqrt(2)).
+   */
+  exact: Fraction | null;
+  /**
+   * A simpler fraction near the value. Always shown as an approximation, with its error: `error` as a
+   * number and `errorText` for showing it (also below 1e-308, where the number is 0).
+   */
+  approximation: { fraction: Fraction; error: number; errorText: string } | null;
+}
+
+/** Longer decimals than this are refused rather than slowly turned into huge fractions. */
+export const MAX_FRACTION_DIGITS = 1000;
+
+/**
+ * Decimal text to a fraction, exactly where the text allows it. Approximations come only from
+ * continued fractions on what can't be exact, or when asked for with `maxDen`; a terminating decimal
+ * also offers one when a much simpler fraction agrees with every digit typed (0.333333 ≈ 1/3).
+ */
+export function decimalToFraction(text: string, opts: { maxDen?: number } = {}): DecimalFraction {
+  const t = text.trim().replace(/\u2212/g, "-");
+  if (!t) throw new ExprError("Enter a number");
+  // 1,5 or 1,000: a decimal comma or a thousands separator? Refused rather than guessed.
+  if (/^[+-]?[\d,]*\.?[\d,]*$/.test(t) && t.includes(",")) throw new ExprError("Use a point for decimals and no thousands separators: 2.5, 1000");
+  if (opts.maxDen !== undefined && !(Number.isSafeInteger(opts.maxDen) && opts.maxDen >= 1)) throw new ExprError("The largest denominator must be a whole number of 1 or more");
+  const maxDen = opts.maxDen === undefined ? null : BigInt(opts.maxDen);
+  const tooLong = (digits: number) => {
+    if (digits > MAX_FRACTION_DIGITS) throw new ExprError(`That number is too long to convert exactly (at most ${MAX_FRACTION_DIGITS} digits)`);
+  };
+  const approx = (fraction: Fraction, of: Fraction) => {
+    const e = fsub(fraction, of);
+    const error = frac(babs(e.n), e.d);
+    return { fraction, error: fractionToNumber(error), errorText: formatFractionSci(error) };
+  };
+  const approxOf = (exact: Fraction, f: Fraction | null) => (f && (f.n !== exact.n || f.d !== exact.d) ? approx(f, exact) : null);
+
+  // Terminating: 0.125, -2.5, 1.5e-3, 12.
+  let m = /^([+-]?)(\d*)(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(t);
+  if (m && (m[2] || m[3])) {
+    const digits = `${m[2] ?? ""}${m[3] ?? ""}`;
+    tooLong(digits.length);
+    const e = Number(m[4] ?? 0);
+    tooLong(Math.abs(e));
+    const places = (m[3] ?? "").length - e;
+    const n = BigInt(digits || "0") * (m[1] === "-" ? -1n : 1n);
+    const exact = places >= 0 ? frac(n, 10n ** BigInt(places)) : frac(n * 10n ** BigInt(-places));
+    let near: Fraction | null = null;
+    if (maxDen !== null) near = bestApproximation(exact, maxDen);
+    else if (places > 0) {
+      // Offered only when the typed digits are it rounded or cut off (0.333333 and 0.666666 for 1/3
+      // and 2/3; not 0.12345678 for 10/81 = 0.1234567901…) and it is far simpler than chance allows:
+      // any decimal has fractions with a denominator near √(10ⁿ) that close, so those don't count.
+      const unit = frac(1n, 10n ** BigInt(places));
+      const half = frac(1n, 2n * 10n ** BigInt(places));
+      const f = exact.n < 0n ? simplestBetween(fsub(exact, unit), fadd(exact, half)) : simplestBetween(fsub(exact, half), fadd(exact, unit));
+      if (f.d > 1n && f.d < exact.d && f.d * f.d * 100n <= 10n ** BigInt(places)) near = f;
+    }
+    return { value: fractionToNumber(exact), exact, approximation: approxOf(exact, near) };
+  }
+
+  // Repeating, the repeating digits in brackets: 0.(3) = 1/3, 0.1(6) = 1/6, 2.(142857).
+  m = /^([+-]?)(\d*)\.(\d*)\((\d+)\)$/.exec(t);
+  if (m) {
+    const [whole, fixed, rep] = [m[2] || "0", m[3]!, m[4]!];
+    tooLong(whole.length + fixed.length + rep.length);
+    // x = whole + (fixed rep - fixed) / (10^|fixed| · (10^|rep| - 1))
+    const body = frac(BigInt(fixed + rep) - BigInt(fixed || "0"), 10n ** BigInt(fixed.length) * (10n ** BigInt(rep.length) - 1n));
+    const pos = fadd(frac(BigInt(whole)), body);
+    const exact = m[1] === "-" ? frac(-pos.n, pos.d) : pos;
+    return { value: fractionToNumber(exact), exact, approximation: maxDen !== null ? approxOf(exact, bestApproximation(exact, maxDen)) : null };
+  }
+
+  // Digits that trail off: 0.333... or 3.14159…: the simplest fraction that starts with these digits.
+  m = /^([+-]?)(\d*)\.(\d+)(?:\.\.\.|…)$/.exec(t);
+  if (m) {
+    const [whole, digits] = [m[2] || "0", m[3]!];
+    tooLong(whole.length + digits.length);
+    const lo = frac(BigInt(whole + digits), 10n ** BigInt(digits.length));
+    const f = maxDen !== null ? bestApproximation(lo, maxDen) : simplestBetween(lo, fadd(lo, frac(1n, 10n ** BigInt(digits.length))));
+    const sign = m[1] === "-" ? -1n : 1n;
+    const typed = frac(sign * lo.n, lo.d);
+    return { value: fractionToNumber(typed), exact: null, approximation: approx(frac(sign * f.n, f.d), typed) };
+  }
+
+  // A fraction or a mixed number, already exact: 3/4, -1 1/2.
+  try {
+    const exact = parseFraction(t);
+    return { value: fractionToNumber(exact), exact, approximation: maxDen !== null ? approxOf(exact, bestApproximation(exact, maxDen)) : null };
+  } catch {
+    /* an expression, below */
+  }
+
+  // A computed value (pi, sqrt(2), e^2): only ever an approximation.
+  const value = calc(t);
+  const fraction = toFraction(value, opts.maxDen ?? 1_000_000);
+  const error = Math.abs(value - fractionToNumber(fraction));
+  return { value, exact: null, approximation: { fraction, error, errorText: error === 0 ? "0" : String(Number(error.toPrecision(3))) } };
+}
+
+/** A fraction in scientific notation (3 significant digits, cut off), for any size: 1/(9·10⁵⁰⁰) is "1.11e-501". */
+export function formatFractionSci(f: Fraction, digits = 3): string {
+  const n = babs(f.n);
+  if (n === 0n) return "0";
+  const lead = (k: number) => (k >= 0 ? (n * 10n ** BigInt(k)) / f.d : n / (f.d * 10n ** BigInt(-k)));
+  // The exponent from the lengths, off by at most one: corrected until the mantissa has `digits` digits.
+  let e = n.toString().length - f.d.toString().length;
+  let m = lead(digits - 1 - e);
+  while (m.toString().length > digits) m = lead(digits - 1 - ++e);
+  while (m.toString().length < digits) m = lead(digits - 1 - --e);
+  const s = m.toString();
+  const mantissa = `${s[0]}${s.length > 1 ? `.${s.slice(1)}` : ""}`.replace(/\.?0+$/, "");
+  const text = e >= -4 && e < 12 ? String(Number(`${mantissa}e${e}`)) : `${mantissa}e${e}`;
+  return `${f.n < 0n ? "-" : ""}${text}`;
+}
+
+const fcmp = (a: Fraction, b: Fraction) => {
+  const d = a.n * b.d - b.n * a.d;
+  return d < 0n ? -1 : d > 0n ? 1 : 0;
+};
+
+/** The fraction with the smallest denominator in [lo, hi] (Stern–Brocot, by continued fractions). */
+export function simplestBetween(lo: Fraction, hi: Fraction): Fraction {
+  if (fcmp(lo, hi) > 0) [lo, hi] = [hi, lo];
+  if (lo.n <= 0n && hi.n >= 0n) return frac(0n);
+  if (hi.n < 0n) {
+    const f = simplestBetween(frac(-hi.n, hi.d), frac(-lo.n, lo.d));
+    return frac(-f.n, f.d);
+  }
+  const fl = lo.n / lo.d;
+  if (fl * lo.d === lo.n) return frac(fl);
+  // A whole number in (lo, hi] is the simplest.
+  if (fcmp(frac(fl + 1n), hi) <= 0) return frac(fl + 1n);
+  // Both in (fl, fl + 1): the simplest of the reciprocals of the fractional parts, flipped back.
+  const inner = simplestBetween(fdiv(frac(1n), fsub(hi, frac(fl))), fdiv(frac(1n), fsub(lo, frac(fl))));
+  return fadd(frac(fl), fdiv(frac(1n), inner));
+}
+
+/** The closest fraction to x with a denominator up to maxDen (best rational approximation). */
+export function bestApproximation(x: Fraction, maxDen: bigint): Fraction {
+  if (x.d <= maxDen) return x;
+  const neg = x.n < 0n;
+  let [n, d] = [babs(x.n), x.d];
+  // Convergents p/q of the continued fraction, then the best semiconvergent at the limit.
+  let [p0, q0, p1, q1] = [0n, 1n, 1n, 0n];
+  for (;;) {
+    const a = n / d;
+    const q2 = q0 + a * q1;
+    if (q2 > maxDen) {
+      const k = (maxDen - q0) / q1;
+      const semi = frac(p0 + k * p1, q0 + k * q1);
+      const conv = frac(p1, q1);
+      const ax = frac(babs(x.n), x.d);
+      const better = fcmp(babs2(fsub(semi, ax)), babs2(fsub(conv, ax))) < 0 ? semi : conv;
+      return neg ? frac(-better.n, better.d) : better;
+    }
+    [p0, q0, p1, q1] = [p1, q1, p0 + a * p1, q2];
+    const r = n - a * d;
+    if (r === 0n) return neg ? frac(-p1, q1) : frac(p1, q1);
+    [n, d] = [d, r];
+  }
+}
+const babs2 = (f: Fraction): Fraction => frac(babs(f.n), f.d);
 
 /* ───────────── Primes and divisibility ───────────── */
 

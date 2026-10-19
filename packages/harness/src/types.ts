@@ -56,7 +56,8 @@ export type HarnessEvent =
   | { type: "user"; id: string; text: string }
   | { type: "assistant"; id: string; text: string; toolCalls: { callId: string; name: string }[]; usage?: { inputTokens: number; outputTokens: number } }
   | { type: "tool_call"; callId: string; name: string; args: unknown }
-  | { type: "tool_result"; callId: string; text: string; isError: boolean }
+  /** `exitCode`: a shell command that exited non-zero. `notRun`: why a call was refused before it ran. */
+  | { type: "tool_result"; callId: string; text: string; isError: boolean; exitCode?: number; notRun?: string }
   | { type: "plan"; items: { content: string; status: string }[] }
   | { type: "title"; title: string }
   | { type: "turn_end"; reason: string; error?: string }

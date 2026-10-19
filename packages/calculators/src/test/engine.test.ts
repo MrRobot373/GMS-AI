@@ -198,6 +198,48 @@ describe("calculus", () => {
     near(calculus.limit("(1+1/x)^x", "inf").value!, Math.E, 1e-6);
     expect(calculus.limit("1/x", 0, { side: "right" }).value).toBe(Infinity);
   });
+  it("finds 0/0 limits exactly where 1 - cos x and friends cancel in floating point", () => {
+    // (1 - cos x)/x² read 0: near 0, 1 - cos x is all rounding error.
+    const r = calculus.limit("(1 - cos(x))/x^2", 0);
+    expect(r).toMatchObject({ value: 0.5, left: 0.5, right: 0.5, verdict: "exists", method: "symbolic" });
+    expect(r.steps.length).toBeGreaterThan(0);
+    const cases: [string, number, number][] = [
+      ["(exp(x) - 1 - x)/x^2", 0, 0.5],
+      ["(sin(x) - x)/x^3", 0, -1 / 6],
+      ["(sqrt(1 + x) - 1)/x", 0, 0.5],
+      ["(1 - cos(x))/x", 0, 0],
+      ["(tan(x) - x)/x^3", 0, 1 / 3],
+      ["(cos(x) - 1 + x^2/2)/x^4", 0, 1 / 24],
+      ["(1 - cos(x^2))/x^4", 0, 0.5],
+      ["ln(cos(x))/x^2", 0, -0.5],
+      ["(x - tan(x))/(x - sin(x))", 0, -2],
+      ["(x^(1/3) - 1)/(x - 1)", 1, 1 / 3],
+      ["(cos(x) + 1)/(x - pi)^2", Math.PI, 0.5],
+      ["(2^x - 1)/x", 0, Math.LN2],
+    ];
+    for (const [f, at, want] of cases) {
+      const l = calculus.limit(f, at);
+      expect(l.verdict, f).toBe("exists");
+      expect(Math.abs(l.value! - want), `${f}: ${l.value}`).toBeLessThanOrEqual(1e-12);
+    }
+    // One-sided and infinite limits, and no limit, still work.
+    expect(calculus.limit("(1 - cos(x))/x^2", 0, { side: "right" })).toMatchObject({ value: 0.5, verdict: "one-sided" });
+    expect(calculus.limit("1/x", 0, { side: "left" })).toMatchObject({ value: -Infinity, verdict: "infinite" });
+    expect(calculus.limit("ln(x)", 0, { side: "right" }).value).toBe(-Infinity);
+    expect(calculus.limit("exp(1/x)", 0, { side: "right" }).value).toBe(Infinity);
+    expect(calculus.limit("exp(1/x)", 0, { side: "left" }).value).toBe(0);
+    expect(calculus.limit("sqrt(x)", 0, { side: "right" }).value).toBe(0);
+    expect(calculus.limit("sqrt(x)", 0, { side: "left" }).value).toBeNull();
+    expect(calculus.limit("x^x", 0, { side: "right" }).value).toBe(1);
+    expect(calculus.limit("abs(x)/x", 0).verdict).toBe("different sides");
+    expect(calculus.limit("sin(1/x)", 0).verdict).toBe("unknown");
+    expect(calculus.limit("(exp(x) - 1)/x^2", 0).verdict).toBe("different sides");
+    near(calculus.limit("sqrt(x^2 + x) - x", "inf").value!, 0.5, 1e-9);
+    near(calculus.limit("(1 - 1/x)^x", "-inf").value!, 1 / Math.E, 1e-7);
+    expect(calculus.limit("x^3", "-inf").value).toBe(-Infinity);
+    // Away from the 0/0, plain substitution: only the digits the rounding leaves.
+    near(calculus.limit("(1 - cos(x))/x^2", 1e-3).value!, (1 - Math.cos(1e-3)) / 1e-6, 1e-8);
+  });
   it("Taylor series", () => {
     expect(calculus.taylor("exp(x)", 0, 3).coefficients).toEqual([1, 1, 0.5, 0.166666666667]);
     expect(calculus.taylor("sin(x)", 0, 5).polynomial).toBe("x - 0.1666666667x^3 + 0.008333333333x^5");
@@ -227,7 +269,44 @@ describe("algebra", () => {
     const r = algebra.polynomialRoots([1, -1e8, 1]).roots;
     near(r[0]!.re, 1e-8, 1e-9);
     expect(() => algebra.polynomialRoots([0, 0, 0])).toThrow(/every x/);
+    // Degree 60: the starting points don't underflow into NaN roots.
+    const big = algebra.polynomialRoots(Array.from({ length: 61 }, (_, k) => Math.sin(k + 1)));
+    expect(big.roots).toHaveLength(60);
+    expect(big.roots.every((z) => Number.isFinite(z.re) && Number.isFinite(z.im))).toBe(true);
     expect(() => algebra.polynomialRoots([0, 0, 5])).toThrow(/no solution/);
+  });
+  it("finds repeated roots as one real root with its multiplicity", () => {
+    const distinct = (c: number[]) => algebra.polynomialRoots(c).distinct.map((g) => `${algebra.formatComplex(g.root, 12)}${g.multiplicity > 1 ? ` ×${g.multiplicity}` : ""}`);
+    // (x - 1)³ came out as 0.999894 - 0.00000977i, 1, 1.000122 + 0.0000264i.
+    const r = algebra.polynomialRoots([1, -3, 3, -1]);
+    expect(r.roots).toEqual([algebra.cx(1), algebra.cx(1), algebra.cx(1)]);
+    expect(r.distinct).toEqual([{ root: algebra.cx(1), multiplicity: 3 }]);
+    expect(r.steps.join(" ")).toMatch(/multiplicity 3/);
+    expect(distinct([1, -1, -8, 12])).toEqual(["-3", "2 ×2"]); // (x - 2)²(x + 3)
+    expect(distinct([1, -4, 6, -4, 1])).toEqual(["1 ×4"]);
+    expect(distinct([3, -9, 9, -3])).toEqual(["1 ×3"]); // 3(x - 1)³
+    expect(distinct([1, -3000, 3e6, -1e9])).toEqual(["1000 ×3"]);
+    expect(distinct([1, -0.3, 0.03, -0.001])).toEqual(["0.1 ×3"]);
+    expect(distinct([1, -10, 45, -120, 210, -252, 210, -120, 45, -10, 1])).toEqual(["1 ×10"]);
+    expect(distinct([1, -1, 0, 0, 0])).toEqual(["0 ×3", "1"]); // x³(x - 1)
+    expect(distinct([1, -4, 1, 10, -4, -8])).toEqual(["-1 ×2", "2 ×3"]); // (x - 2)³(x + 1)²
+    // Close but different roots stay apart: 1 and 1.001, and 1, 1.001, 1.002.
+    expect(distinct([1, -2.001, 1.001])).toEqual(["1", "1.001"]);
+    expect(distinct([1, -3.003, 3.006002, -1.003002])).toEqual(["1", "1.001", "1.002"]);
+    expect(distinct([1, -3.001, 3.002, -1.001])).toEqual(["1 ×2", "1.001"]);
+    // Complex roots stay complex, repeated ones too.
+    expect(distinct([1, 0, 1])).toEqual(["-i", "i"]);
+    expect(distinct([1, -1, 1, -1])).toEqual(["-i", "i", "1"]); // (x² + 1)(x - 1)
+    expect(distinct([1, 0, 2, 0, 1])).toEqual(["-i ×2", "i ×2"]); // (x² + 1)²
+    // A complex pair 0.00002 apart is not a double real root: (x - 1)² + 10⁻¹⁰, and times (x - 3).
+    for (const c of [[1, -2, 1.0000000001], [1, -5, 7.0000000001, -3.0000000003]]) {
+      const g = algebra.polynomialRoots(c).distinct;
+      expect(g.map((x) => x.multiplicity), String(c)).toEqual(c.length === 3 ? [1, 1] : [1, 1, 1]);
+      near(g[0]!.root.re, 1, 1e-9);
+      near(g[0]!.root.im, -1e-5, 1e-11);
+      near(g[1]!.root.im, 1e-5, 1e-11);
+    }
+    expect(distinct([1, -55, 1320, -18150, 157773, -902055, 3416930, -8409500, 12753576, -10628640, 3628800])).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
   });
   it("divides polynomials", () => {
     expect(algebra.polyDivide([1, -3, 2], [1, -1])).toEqual({ quotient: [1, -2], remainder: [0] });
@@ -258,6 +337,49 @@ describe("algebra", () => {
     expect(algebra.formatFraction(algebra.toFraction(0.3333333333333333)).fraction).toBe("1/3");
     expect(algebra.formatFraction(algebra.toFraction(Math.PI, 1000)).fraction).toBe("355/113");
     expect(() => algebra.parseFraction("1/0")).toThrow(/denominator/);
+  });
+  it("turns a typed decimal into its exact fraction, and labels approximations", () => {
+    const d2f = (text: string, opts?: { maxDen?: number }) => {
+      const r = algebra.decimalToFraction(text, opts);
+      return {
+        exact: r.exact && algebra.formatFraction(r.exact).fraction,
+        approx: r.approximation && `${algebra.formatFraction(r.approximation.fraction).fraction} (error ${r.approximation.errorText})`,
+      };
+    };
+    // 0.12345678 was shown as 10/81 (0.1234567901…), as if exact.
+    expect(d2f("0.12345678")).toEqual({ exact: "6172839/50000000", approx: null });
+    expect(d2f("-0.12345678")).toEqual({ exact: "-6172839/50000000", approx: null });
+    expect(d2f("0.5")).toEqual({ exact: "1/2", approx: null });
+    expect(d2f("0.125")).toEqual({ exact: "1/8", approx: null });
+    expect(d2f("0.1")).toEqual({ exact: "1/10", approx: null }); // not 3602879701896397/36028797018963968
+    expect(d2f("-0.75")).toEqual({ exact: "-3/4", approx: null });
+    expect(d2f("−2.50")).toEqual({ exact: "-5/2", approx: null });
+    expect(d2f("1.5e-3")).toEqual({ exact: "3/2000", approx: null });
+    expect(d2f("3.14159")).toEqual({ exact: "314159/100000", approx: null });
+    // Exact, with the simple fraction the digits round or cut off to offered as an approximation.
+    expect(d2f("0.333333")).toEqual({ exact: "333333/1000000", approx: "1/3 (error 3.33e-7)" });
+    expect(d2f("0.666667")).toEqual({ exact: "666667/1000000", approx: "2/3 (error 3.33e-7)" });
+    expect(d2f("0.666666")).toEqual({ exact: "333333/500000", approx: "2/3 (error 6.66e-7)" });
+    expect(d2f("-0.142857")).toEqual({ exact: "-142857/1000000", approx: "-1/7 (error 1.42e-7)" });
+    // An approximation when asked for one, and for what can't be exact.
+    expect(d2f("0.12345678", { maxDen: 100 })).toEqual({ exact: "6172839/50000000", approx: "10/81 (error 1.01e-8)" });
+    expect(d2f("3.14159", { maxDen: 1000 }).approx).toBe("355/113 (error 2.92e-6)");
+    expect(d2f("0.333...")).toEqual({ exact: null, approx: "1/3 (error 0.000333)" });
+    expect(d2f("pi", { maxDen: 1000 })).toEqual({ exact: null, approx: "355/113 (error 2.67e-7)" });
+    expect(d2f("0.1(6)")).toEqual({ exact: "1/6", approx: null });
+    expect(d2f("2.(142857)")).toEqual({ exact: "15/7", approx: null });
+    expect(d2f("-1 1/2")).toEqual({ exact: "-3/2", approx: null });
+    // Very long decimals stay exact (BigInt), up to a clear limit.
+    const long = `0.${"1".repeat(500)}`;
+    const r = algebra.decimalToFraction(long);
+    expect(algebra.formatFraction(r.exact!).fraction).toBe(`${"1".repeat(500)}/1${"0".repeat(500)}`);
+    expect(r.approximation?.errorText).toBe("1.11e-501"); // ≈ 1/9: the error is shown even where a number would be 0
+    near(r.value, 1 / 9);
+    expect(algebra.fractionToNumber(algebra.frac(10n ** 400n, 3n * 10n ** 399n))).toBeCloseTo(10 / 3, 14);
+    expect(() => algebra.decimalToFraction(`0.${"1".repeat(1001)}`)).toThrow(/too long/);
+    expect(() => algebra.decimalToFraction("1,5")).toThrow(/point for decimals/);
+    expect(() => algebra.decimalToFraction("")).toThrow(/Enter a number/);
+    expect(() => algebra.decimalToFraction("0.5", { maxDen: 0 })).toThrow(/largest denominator/);
   });
   it("primes, gcd, lcm", () => {
     expect(algebra.primeFactors(360)).toEqual([{ prime: 2, power: 3 }, { prime: 3, power: 2 }, { prime: 5, power: 1 }]);

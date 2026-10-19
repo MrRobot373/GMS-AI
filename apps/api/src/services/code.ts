@@ -155,6 +155,8 @@ export class CodeServers {
       // Commits made in the IDE are signed with the person's Aatmiq name and email (they can change it).
       Object.assign(identity, { GIT_AUTHOR_NAME: person.name, GIT_AUTHOR_EMAIL: person.email, GIT_COMMITTER_NAME: person.name, GIT_COMMITTER_EMAIL: person.email });
     }
+    // Certificate bundles the person's user can't read are copied into their own IDE folder.
+    const network = await networkEnv({ uid: uid ?? undefined, dir: join(home, ".ide", "ca") });
     // node + server-main directly (the bin script would leave node orphaned on stop), in its own
     // process group so stopping it also ends its terminals and extension hosts.
     const proc = spawn(
@@ -181,7 +183,7 @@ export class CodeServers {
           ...identity,
           AATMIQ_CONTROL_URL: this.opts.controlUrl(),
           AATMIQ_CODE_TOKEN: token,
-          ...networkEnv(),
+          ...network,
         },
         stdio: ["ignore", "ignore", "pipe"],
         detached: true,

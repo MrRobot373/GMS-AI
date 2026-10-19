@@ -3,5 +3,7 @@ export const REMINDER_CLOSE: string;
 export const REMIND_AFTER: number;
 export const REMIND_EVERY: number;
 export function cleanArgs(name: string, args: unknown, mode: string): unknown;
+export function describeCommand(command: unknown): string;
+export function dropCallArtefacts(content: string, filePath?: string): string;
 export function planReminder(todos: { content: string; status: string }[] | null, since: number): string | null;
 export function stripReminders(text: string): string;

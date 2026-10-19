@@ -5,7 +5,7 @@
  */
 import { getCalculator } from "@aatmiq/calculators";
 import { describe, expect, it } from "vitest";
-import { acceptModelInputs, ambiguousNumber, findCalculation, readQuantities } from "./services/calc-tool";
+import { acceptModelInputs, ambiguousNumber, calcContext, findCalculation, readQuantities, saveChatCalculation } from "./services/calc-tool";
 
 const out = (r: Awaited<ReturnType<typeof findCalculation>>, key: string) => r?.outputs.find((o) => o.key === key)?.value;
 
@@ -15,6 +15,8 @@ describe("chat calculator tool: reading numbers", () => {
     expect(readQuantities("1,00,000 W").map((q) => q.value)).toEqual([100000]);
     expect(readQuantities("12,345.5 V").map((q) => q.value)).toEqual([12345.5]);
     expect(readQuantities("−5 V").map((q) => q.value)).toEqual([-5]);
+    // Units with ² as typed (m² wasn't read, so "area 1 m²" fitted no area input), and as m2.
+    expect(readQuantities("area 1 m², 2.5 mm² and 3 m2").map((q) => [q.value, q.q, q.unit])).toEqual([[1, "area", "m2"], [2.5, "area", "mm2"], [3, "area", "m2"]]);
   });
   it("calls a comma between digits that isn't a thousands group ambiguous", () => {
     for (const t of ["3,3 V", "2,5", "7,5 kW", "10,22,47"]) expect(ambiguousNumber(t), t).toBe(true);
@@ -29,6 +31,44 @@ describe("chat calculator tool: reading numbers", () => {
     // /calc with a comma inside a value doesn't run with the part before it.
     expect(await findCalculation({ text: "/calc buck-ideal Vin=1,000V D=0.5", showBeta: false })).toBeNull();
     expect(out(await findCalculation({ text: "/calc buck-ideal Vin=48V D=0.5", showBeta: false }), "Vout")).toBe(24);
+  });
+  it("reads /calc values with and without units, in any order", async () => {
+    // "Vin=48 D=0.5" read "D=0.5" as Vin's unit and didn't run.
+    expect(out(await findCalculation({ text: "/calc buck-ideal Vin=48 D=0.5", showBeta: false }), "Vout")).toBe(24);
+    expect(out(await findCalculation({ text: "/calc buck-ideal D=0.5 Vin=48 V", showBeta: false }), "Vout")).toBe(24);
+    expect(out(await findCalculation({ text: "/calc ohms-law V=12 R=4", showBeta: false }), "I")).toBe(3);
+    expect(out(await findCalculation({ text: "/calc ohms-law V=12V R=0.004kohm", showBeta: false }), "I")).toBe(3);
+  });
+});
+
+describe("chat calculator tool: inputs the formula doesn't cover", () => {
+  it("passes on the refusal, with no result, instead of leaving the model to compute one", async () => {
+    // Dwight's formula gave ≈ −305 Ω for a 0.1 m rod 1000 mm thick.
+    const rod = await findCalculation({ text: "/calc ground-rod-resistance rho=100 L=0.1m d=1000mm", showBeta: true });
+    expect(rod).toMatchObject({ calculatorId: "ground-rod-resistance", version: 2, outputs: [], refused: { field: "L" } });
+    expect(rod!.refused!.message).toMatch(/slender rod/);
+    expect(rod!.inputs.map((i) => [i.key, i.value, i.unit])).toEqual([["rho", 100, "Ω·m"], ["L", 0.1, "m"], ["d", 1000, "mm"]]);
+    const ctx = calcContext(rod!);
+    expect(ctx).toMatch(/refused the user's numbers: Dwight's formula is for a slender rod/);
+    expect(ctx).toMatch(/Don't work out a result for these numbers yourself/);
+    expect(ctx).not.toMatch(/Results:/);
+    // A question with numbers: −300 °C is below absolute zero.
+    const hot = await findCalculation({ text: "What is the net radiation heat flow for emissivity 0.9, area 1 m², surface temperature −300 °C and surroundings temperature 20 °C?", showBeta: true });
+    expect(hot).toMatchObject({ calculatorId: "heat-radiation", via: "rules", outputs: [], refused: { field: "Ts" } });
+    expect(hot!.refused!.message).toMatch(/below absolute zero/);
+    // The same question at 100 °C runs.
+    const ok = await findCalculation({ text: "What is the net radiation heat flow for emissivity 0.9, area 1 m², surface temperature 100 °C and surroundings temperature 20 °C?", showBeta: true });
+    expect(ok?.refused).toBeUndefined();
+    expect(out(ok, "Q")).toBeCloseTo(612.5474056958, 6);
+  });
+  it("still runs nothing for a command with an input missing or a unit it can't read", async () => {
+    expect(await findCalculation({ text: "/calc ground-rod-resistance rho=100 L=3m", showBeta: true })).toBeNull();
+    expect(await findCalculation({ text: "/calc heat-radiation eps=0.9 A=1 Ts=-300furlongs Tinf=20", showBeta: true })).toBeNull();
+  });
+  it("keeps a refusal out of the calculation history", async () => {
+    const rod = await findCalculation({ text: "/calc ground-rod-resistance rho=100 L=0.1m d=1000mm", showBeta: true });
+    const db = { insert: () => { throw new Error("nothing should be saved"); } } as unknown as Parameters<typeof saveChatCalculation>[0];
+    await expect(saveChatCalculation(db, "u", "w", rod!)).resolves.toBeUndefined();
   });
 });
 

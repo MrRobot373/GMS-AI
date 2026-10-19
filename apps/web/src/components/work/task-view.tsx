@@ -61,7 +61,8 @@ interface Step {
   callId: string;
   name: string;
   args: any;
-  result?: { text: string; isError: boolean };
+  /** `exitCode`: a command that exited non-zero. `notRun`: why the call was refused before it ran. */
+  result?: { text: string; isError: boolean; exitCode?: number; notRun?: string };
   approval?: Approval;
 }
 interface Approval {
@@ -104,7 +105,7 @@ function buildTimeline(events: WorkEvent[]) {
       }
       case "tool_result": {
         const step = steps.get(d.callId);
-        if (step) step.result = { text: d.text, isError: d.isError };
+        if (step) step.result = { text: d.text, isError: d.isError, exitCode: d.exitCode, notRun: d.notRun };
         break;
       }
       case "approval": {
@@ -640,17 +641,32 @@ function StepRow({ step, active, onDecide, deciding }: { step: Step; active: boo
   const { verb, params, target } = describeCall(step.name, step.args);
   const pending = !step.result && active && step.approval?.status !== "pending";
   const failed = step.result?.isError;
+  // Refused before it ran (arguments it couldn't take): it didn't "run" and fail.
+  const notRun = step.result?.notRun;
+  const exitCode = step.result?.exitCode;
   return (
-    <div data-testid="task-step" data-tool={step.name}>
+    <div data-testid="task-step" data-tool={step.name} data-state={notRun ? "not-run" : failed ? "failed" : step.result ? "done" : "pending"}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="group flex w-full min-w-0 items-center gap-2.5 rounded-md py-1 pr-1 text-left text-[13px] text-fg-muted transition-colors hover:text-fg"
       >
-        {pending ? <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" /> : <Icon className={cn("size-3.5 shrink-0", failed ? "text-danger" : "text-fg-subtle")} />}
-        <span className="shrink-0">{t(verb, params)}</span>
-        {target && <span className="min-w-0 truncate font-mono text-[12px] text-fg-subtle">{target}</span>}
-        {failed && step.approval?.status !== "rejected" && <span className="shrink-0 text-[11.5px] text-danger">{t("failed")}</span>}
+        {pending ? <Loader2 className="size-3.5 shrink-0 animate-spin text-fg-subtle" /> : <Icon className={cn("size-3.5 shrink-0", notRun ? "text-warning" : failed ? "text-danger" : "text-fg-subtle")} />}
+        {notRun ? (
+          <span className="min-w-0 truncate" title={notRun} data-testid="step-not-run">
+            {t("Not run: {reason}", { reason: notRun })}
+          </span>
+        ) : (
+          <>
+            <span className="shrink-0">{t(verb, params)}</span>
+            {target && <span className="min-w-0 truncate font-mono text-[12px] text-fg-subtle">{target}</span>}
+          </>
+        )}
+        {failed && !notRun && step.approval?.status !== "rejected" && (
+          <span className="shrink-0 text-[11.5px] text-danger" data-testid="step-failed">
+            {exitCode !== undefined ? t("failed, exit code {code}", { code: String(exitCode) }) : t("failed")}
+          </span>
+        )}
         <ChevronRight className={cn("ml-auto size-3.5 shrink-0 text-fg-subtle opacity-0 transition-all group-hover:opacity-100", open && "rotate-90 opacity-100")} />
       </button>
       {step.approval && (step.approval.status === "pending" ? <ApprovalCard approval={step.approval} onDecide={onDecide} deciding={deciding} /> : <ApprovalNote approval={step.approval} />)}
@@ -659,7 +675,11 @@ function StepRow({ step, active, onDecide, deciding }: { step: Step; active: boo
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="my-1.5 ml-6 overflow-hidden rounded-lg border border-border bg-surface">
               <Pre label={step.name === "bash" ? t("Command") : t("Input")}>{step.name === "bash" ? String(step.args?.command ?? "") : JSON.stringify(step.args, null, 2)}</Pre>
-              {step.result && <Pre label={step.result.isError ? t("Error") : t("Output")} danger={step.result.isError}>{step.result.text || t("(no output)")}</Pre>}
+              {step.result && (
+                <Pre label={notRun ? t("Not run") : exitCode !== undefined ? t("Output (exit code {code})", { code: String(exitCode) }) : step.result.isError ? t("Error") : t("Output")} danger={step.result.isError}>
+                  {step.result.text || t("(no output)")}
+                </Pre>
+              )}
             </div>
           </motion.div>
         )}

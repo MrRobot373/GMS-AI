@@ -3,7 +3,7 @@
  * Tasks are private to the person who started them; a task in a project can be shared to it,
  * which lets the project's people read (not change) it.
  */
-import { and, asc, desc, document, eq, ilike, isNull, project, projectSource, user, workApproval, workEvent, workTask } from "@aatmiq/db";
+import { and, asc, codeWorkspace, desc, document, eq, ilike, project, projectSource, user, workApproval, workEvent, workTask } from "@aatmiq/db";
 import { isOrgAdmin, workMessageSchema, workTaskCreateSchema } from "@aatmiq/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { createReadStream } from "node:fs";
@@ -83,12 +83,17 @@ export async function safePath(root: string, rel: string) {
   return real;
 }
 
+/** Where the agent keeps work it only needed along the way (docs/06-work-ai.md): listed last. */
+export const SCRATCH_FOLDER = "scratch";
+
 async function listFiles(root: string) {
   const out: { path: string; size: number; modifiedAt: string }[] = [];
   let truncated = false;
   const walk = async (dir: string) => {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    // By name; the scratch folder after everything else, so what the person asked for comes first.
+    const last = (e: { name: string; isDirectory(): boolean }) => dir === root && e.name === SCRATCH_FOLDER && e.isDirectory();
+    for (const e of entries.sort((a, b) => Number(last(a)) - Number(last(b)) || a.name.localeCompare(b.name))) {
       if (out.length >= MAX_FILES) {
         truncated = true;
         return;
@@ -108,6 +113,22 @@ async function listFiles(root: string) {
 
 export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db, box, work } = ctx;
+
+  /**
+   * Where a task's files are: its own folder, or for a Code task the person's Code workspace (read
+   * only here: they change it in the IDE). Null when that workspace is gone.
+   */
+  const filesRoot = async (t: typeof workTask.$inferSelect): Promise<string | null> => {
+    if (!t.codeWorkspaceId) return work.filesDir(t.id);
+    const [w] = await db.select({ userId: codeWorkspace.userId, slug: codeWorkspace.slug }).from(codeWorkspace).where(eq(codeWorkspace.id, t.codeWorkspaceId));
+    return w ? ctx.code.workspacePath(w.userId, w.slug) : null;
+  };
+  /** A Code task's workspace, for the task page (its name, and that the files are there). */
+  const codeOf = async (id: string | null) => {
+    if (!id) return null;
+    const [w] = await db.select({ id: codeWorkspace.id, name: codeWorkspace.name }).from(codeWorkspace).where(eq(codeWorkspace.id, id));
+    return w ?? null;
+  };
 
   /** What Work AI can do here (for the UI). */
   app.get<{ Querystring: { workspaceId?: string } }>("/api/work/info", async (req) => {
@@ -135,6 +156,9 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
         projectId: workTask.projectId,
         projectName: project.name,
         sharedToProject: workTask.sharedToProject,
+        // Code tasks are listed too, marked with their Code workspace.
+        codeWorkspaceId: workTask.codeWorkspaceId,
+        codeWorkspaceName: codeWorkspace.name,
         inputTokens: workTask.inputTokens,
         outputTokens: workTask.outputTokens,
         createdAt: workTask.createdAt,
@@ -143,7 +167,8 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       })
       .from(workTask)
       .leftJoin(project, eq(project.id, workTask.projectId))
-      .where(and(eq(workTask.workspaceId, wsId), eq(workTask.userId, u.id), isNull(workTask.codeWorkspaceId), q ? ilike(workTask.title, `%${q.replace(/[%_\\]/g, "\\$&")}%`) : undefined))
+      .leftJoin(codeWorkspace, eq(codeWorkspace.id, workTask.codeWorkspaceId))
+      .where(and(eq(workTask.workspaceId, wsId), eq(workTask.userId, u.id), q ? ilike(workTask.title, `%${q.replace(/[%_\\]/g, "\\$&")}%`) : undefined))
       .orderBy(desc(workTask.pinned), desc(workTask.updatedAt))
       .limit(200);
   });
@@ -194,6 +219,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       own,
       ownerName: owner?.name ?? null,
       project: access ? { id: access.project.id, name: access.project.name, color: access.project.color, canEdit: access.canEdit } : null,
+      code: await codeOf(t.codeWorkspaceId),
     };
   });
 
@@ -310,13 +336,16 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get<{ Params: { id: string } }>("/api/work/tasks/:id/files", async (req) => {
     const u = await requireUser(ctx, req);
     const { task: t } = await loadReadableTask(ctx, u, req.params.id);
-    return listFiles(work.filesDir(t.id));
+    const root = await filesRoot(t);
+    return root ? listFiles(root) : { files: [], truncated: false };
   });
 
   app.get<{ Params: { id: string }; Querystring: { path?: string; download?: string } }>("/api/work/tasks/:id/files/content", async (req, reply) => {
     const u = await requireUser(ctx, req);
     const { task: t } = await loadReadableTask(ctx, u, req.params.id);
-    const full = await safePath(work.filesDir(t.id), req.query.path ?? "");
+    const root = await filesRoot(t);
+    if (!root) throw notFound("File not found");
+    const full = await safePath(root, req.query.path ?? "");
     const s = await stat(full).catch(() => null);
     if (!s?.isFile()) throw notFound("File not found");
     const name = basename(full);
@@ -334,6 +363,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     const t = await loadOwnTask(ctx, u, req.params.id);
     await requireWorkSection(ctx, u, t.workspaceId);
+    if (t.codeWorkspaceId) throw badRequest("This task works in a Code workspace: add files there, in the editor.");
     if (!req.isMultipart()) throw badRequest("Send the file as multipart/form-data");
     let saved: string | null = null;
     for await (const part of req.parts({ limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })) {

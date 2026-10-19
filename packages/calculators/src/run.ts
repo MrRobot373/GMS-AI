@@ -4,7 +4,7 @@
  */
 import { CALCULATORS } from "./defs";
 import { CalcError, type CalculatorDef } from "./registry";
-import { unitOf, UnitError } from "./units";
+import { quantity, unitOf, UnitError } from "./units";
 
 export interface InputValue {
   value: number | number[] | null | undefined;
@@ -52,11 +52,14 @@ export function runCalculator(id: string, given: Record<string, InputValue | num
     } catch (e) {
       throw new CalcError(e instanceof UnitError ? `${inp.label}: ${e.message}` : String(e), inp.key);
     }
+    const floor = quantity(inp.quantity).floor;
     const check = (v: unknown): number => {
       if (typeof v !== "number" || !Number.isFinite(v)) throw new CalcError(`${inp.label} must be a number.`, inp.key);
       if (inp.options && !inp.options.some((o) => o.value === v)) throw new CalcError(`${inp.label}: pick one of the options.`, inp.key);
       const b = unit.toBase(v);
       if (!Number.isFinite(b)) throw new CalcError(`${inp.label} is out of range for this unit.`, inp.key);
+      // Every temperature, whatever its unit: −300 °C is 0 K minus 26.85, not a temperature.
+      if (floor && b < floor.value) throw new CalcError(`${inp.label} is ${floor.reason}.`, inp.key);
       if (inp.integer && !Number.isInteger(b)) throw new CalcError(`${inp.label} must be a whole number.`, inp.key);
       if (inp.min !== undefined && (inp.exclusiveMin ? b <= inp.min : b < inp.min)) {
         throw new CalcError(`${inp.label} must be ${inp.exclusiveMin ? "greater than" : "at least"} ${fmtLimit(inp.min, inp.quantity, unit.id)}.`, inp.key);
@@ -103,6 +106,8 @@ export function runCalculator(id: string, given: Record<string, InputValue | num
     }
     // A non-finite number is an error, never an answer.
     if (!Number.isFinite(v)) throw new CalcError(`${out.label} isn't a finite number for these inputs (division by zero or overflow).`);
+    const floor = quantity(out.quantity).floor;
+    if (floor && v < floor.value) throw new CalcError(`${out.label} would be ${floor.reason}: these inputs are outside the formula's range.`);
     let unit;
     try {
       unit = unitOf(out.quantity, outputUnits[out.key] ?? out.unit);

@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { dirname, relative } from "node:path";
 import type { TaskSpec } from "../types";
-import type { Launcher } from "./engine";
+import { NETWORK_ENV, type Launcher } from "./engine";
 
 export interface ContainerLimits {
   cpus: number;
@@ -89,7 +89,8 @@ export function containerArgs(o: ContainerOptions, a: { cli: string; argv: strin
 /** The environment inside the container: the runtime's own, with the network settings for this mode. */
 export function containerEnv(o: ContainerOptions, env: NodeJS.ProcessEnv, spec?: TaskSpec): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...env };
-  for (const k of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE"]) delete out[k];
+  // The egress proxy doesn't inspect TLS: the deployment's proxy and certificate settings don't apply.
+  for (const k of NETWORK_ENV) delete out[k];
   if ((spec?.container ?? o.limits).network === "proxy" && o.proxyUrl) {
     // The proxy knows the task by it (and refuses tasks without internet).
     const u = new URL(o.proxyUrl);

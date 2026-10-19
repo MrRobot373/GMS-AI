@@ -98,142 +98,357 @@ const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 /*
  * Tags are found by scanning forward, never by a pattern that can run back over the page: a page of
  * a million "<" (or of tags and comments left open) takes no longer than any other page its size.
- * Each search for a ">" or a closing tag is remembered, so none is made twice over the same text.
+ * Each search for a ">" or a tag is remembered, so none is made twice over the same text.
  */
 
 // Inline tags join their text (V<sub>in</sub> is "Vin"); any other tag separates words.
 const INLINE = new Set("a abbr b bdi bdo cite code data dfn em font i kbd mark q s samp small span strong sub sup time u var wbr".split(" "));
 const BLOCK = new Set("p div li ul ol dl dt dd h1 h2 h3 h4 h5 h6 tr table section article main blockquote pre figure figcaption header".split(" "));
 /** Dropped with what's in them. */
-const SKIPPED = new Set("script style noscript template svg nav footer head iframe select".split(" "));
+const SKIPPED = new Set("script style noscript template svg nav footer head iframe select aside".split(" "));
 /** Their content is never text: one left open runs to the end of the page. */
 const RAW = new Set(["script", "style"]);
-/** More than any page read (1.5 MB) holds; a longer text is cut here before it's scanned. */
+/** Elements that never have content (no closing tag to look for). */
+const VOID = new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
+/** Where a page's main text may be (see mainRegion). */
+const CONTAINERS = new Set("body main article section div td".split(" "));
+/** More than any page read holds; a longer text is cut here before it's scanned. */
 const HTML_MAX = 2_000_000;
+/** How deep containers are followed when looking for the main text (real pages nest a few dozen). */
+const MAX_DEPTH = 256;
+/** How many elements nested in a skipped one (a menu in a menu) are counted to find its end. */
+const MAX_NESTED = 32;
 
 const isNameStart = (c: number) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 const isNameChar = (c: number) => isNameStart(c) || (c >= 48 && c <= 57) || c === 45 || c === 58 || c === 95;
 
-/** Where `find(from)` is next found at or after `pos`, searched again only when `pos` has passed it. */
+/**
+ * Where `find(from)` is next found at or after `pos`. What a search learned (nothing between where
+ * it started and what it found) is kept, so it's searched again only for a `pos` outside that.
+ */
 function remembered(find: (from: number) => number) {
   let from = -1;
   let at = -1;
   return (pos: number) => {
-    if (from === -1 || pos < from || (at !== -1 && at < pos)) {
-      from = pos;
-      at = find(pos);
-    }
+    if (from !== -1 && pos >= from && (at === -1 || pos <= at)) return at;
+    const found = find(pos);
+    // Started earlier and found the same: nothing in between either.
+    if (!(found === at && from !== -1 && pos < from)) at = found;
+    from = pos;
     return at;
   };
 }
 
-/** What a tag becomes in the text: a line break, a bullet, a cell separator, a space, or nothing. */
-function tagText(name: string, closing: boolean, lines: boolean): string {
-  if (INLINE.has(name)) return "";
-  if (!lines) return " ";
-  if (name === "br" || name === "hr") return "\n";
-  if (closing && BLOCK.has(name)) return "\n";
-  if (!closing && name === "li") return "\n• ";
-  if (closing && (name === "td" || name === "th")) return " | ";
-  return " ";
+interface Tag {
+  name: string;
+  closing: boolean;
+  /** Where the tag starts ("<") and ends (after ">"). */
+  start: number;
+  end: number;
+  /** Its attributes' text. */
+  attrs: string;
+  selfClosing: boolean;
+}
+
+/** A forward-only walk over a page's text and tags, with the remembered searches it needs. */
+class Scanner {
+  private readonly nextLt: (pos: number) => number;
+  readonly nextGt: (pos: number) => number;
+  private readonly finders = new Map<string, (pos: number) => number>();
+  constructor(readonly s: string) {
+    this.nextLt = remembered((p) => s.indexOf("<", p));
+    this.nextGt = remembered((p) => s.indexOf(">", p));
+  }
+
+  /** Where `re` (a global pattern, named by `key`) next matches at or after `pos`; -1 if never. */
+  find(key: string, re: () => RegExp, pos: number): number {
+    let f = this.finders.get(key);
+    if (!f) {
+      const r = re();
+      f = remembered((p) => {
+        r.lastIndex = p;
+        return r.exec(this.s)?.index ?? -1;
+      });
+      this.finders.set(key, f);
+    }
+    return f(pos);
+  }
+
+  /**
+   * Where the `</name` that closes an element whose content starts at `pos` is (nested ones
+   * counted); -1 if it's never closed. Only the first few nested elements are counted: past them
+   * it's the next closing tag, so a page of a million nested tags isn't walked once per tag.
+   */
+  closeOf(name: string, pos: number, nested = true): number {
+    const close = (p: number) => this.find(`/${name}`, () => new RegExp(`</${name}(?=[\\s/>])`, "gi"), p);
+    const first = close(pos);
+    if (!nested || first < 0) return first;
+    const open = (p: number) => this.find(name, () => new RegExp(`<${name}(?=[\\s/>])`, "gi"), p);
+    let depth = 1;
+    let p = pos;
+    for (let step = 0; step < MAX_NESTED; step++) {
+      const c = close(p);
+      if (c < 0) return -1;
+      const o = open(p);
+      if (o >= 0 && o < c) {
+        depth++;
+        p = o + 1;
+        continue;
+      }
+      if (--depth === 0) return c;
+      p = c + 1;
+    }
+    return first;
+  }
+
+  /**
+   * Calls `text` with the text between tags and `tag` with each tag. A tag handler can return where
+   * to go on from (to skip an element's content), or -1 to stop. A "<" that starts no tag ("5 < 6")
+   * is text; a comment left open hides the rest, as it does in a browser.
+   */
+  run(text: (t: string) => void, tag: (t: Tag) => number | void) {
+    const s = this.s;
+    let i = 0;
+    while (i < s.length) {
+      const lt = this.nextLt(i);
+      if (lt < 0) {
+        text(s.slice(i));
+        break;
+      }
+      if (lt > i) text(s.slice(i, lt));
+      i = lt + 1;
+      if (s.startsWith("<!--", lt)) {
+        const end = s.indexOf("-->", lt + 2);
+        if (end < 0) break;
+        text(" ");
+        i = end + 3;
+        continue;
+      }
+      const c1 = s.charCodeAt(lt + 1);
+      const closing = c1 === 47;
+      // <!doctype …>, <?xml …?>, and "</" without a name: dropped up to their ">".
+      const other = c1 === 33 || c1 === 63 || (closing && !isNameStart(s.charCodeAt(lt + 2)));
+      if (!other && !isNameStart(c1) && !closing) {
+        text("<");
+        continue;
+      }
+      let e = closing ? lt + 2 : lt + 1;
+      if (!other) while (e < s.length && isNameChar(s.charCodeAt(e))) e++;
+      const gt = this.nextGt(other ? lt + 2 : e);
+      const lt2 = this.nextLt(lt + 1);
+      if (gt < 0 || (lt2 >= 0 && lt2 < gt)) {
+        text("<");
+        continue;
+      }
+      i = gt + 1;
+      if (other) {
+        text(" ");
+        continue;
+      }
+      const name = s.slice(closing ? lt + 2 : lt + 1, e).toLowerCase();
+      const next = tag({ name, closing, start: lt, end: gt + 1, attrs: s.slice(e, gt), selfClosing: s.charCodeAt(gt - 1) === 47 });
+      if (next === -1) break;
+      if (typeof next === "number") i = next;
+    }
+  }
 }
 
 /**
- * The text between the tags. `lines`: a page (blocks on their own lines, scripts, styles,
- * navigation and footers dropped); otherwise one line (a title or a snippet). A "<" that starts no
- * tag ("5 < 6") is text; a comment left open hides the rest, as it does in a browser.
+ * For a page (not a title or snippet): where to go on after an element that isn't read (scripts,
+ * styles, navigation, headers, footers, sidebars, forms), -1 to stop, or undefined to read it. A
+ * header with the page's title in it is read; so is a form that holds the page's content (some
+ * sites wrap everything in one). Hidden parts are read: tabs of specifications often start hidden.
  */
-function stripTags(html: string, lines: boolean): string {
+function skipped(sc: Scanner, t: Tag): number | undefined {
+  if (t.closing || VOID.has(t.name)) return undefined;
+  // "<svg/>" holds nothing; "<script/>" is still open, as a browser reads it.
+  if (t.selfClosing && !RAW.has(t.name)) return undefined;
+  const conditional = t.name === "header" || t.name === "form";
+  if (!SKIPPED.has(t.name) && !conditional) return undefined;
+  // Scripts and styles end at their first closing tag, and so do headers and forms (which don't
+  // nest, and are read on when they hold content); other elements count the ones nested in them.
+  const close = sc.closeOf(t.name, t.end, !RAW.has(t.name) && !conditional);
+  if (close < 0) return RAW.has(t.name) ? -1 : undefined;
+  const holds = (key: string, re: () => RegExp) => {
+    const at = sc.find(key, re, t.end);
+    return at !== -1 && at < close;
+  };
+  if (t.name === "header" && holds("title", () => /<h[12](?=[\s/>])/gi)) return undefined;
+  if (t.name === "form" && holds("content", () => /<(p|table|article|main|h[1-3])(?=[\s/>])/gi)) return undefined;
+  const end = sc.nextGt(close + 2 + t.name.length);
+  return end < 0 ? -1 : end + 1;
+}
+
+/** One line of a title or snippet: tags dropped, words kept apart. */
+function stripInline(html: string): string {
   const s = html.length > HTML_MAX ? html.slice(0, HTML_MAX) : html;
   const out: string[] = [];
-  const nextLt = remembered((p) => s.indexOf("<", p));
-  const nextGt = remembered((p) => s.indexOf(">", p));
-  const closes = new Map<string, (pos: number) => number>();
-  const closeOf = (name: string, pos: number) => {
-    let f = closes.get(name);
-    if (!f) {
-      const re = new RegExp(`</${name}(?=[\\s/>])`, "gi");
-      f = remembered((p) => {
-        re.lastIndex = p;
-        return re.exec(s)?.index ?? -1;
-      });
-      closes.set(name, f);
-    }
-    return f(pos);
-  };
-  let i = 0;
-  while (i < s.length) {
-    const lt = nextLt(i);
-    if (lt < 0) {
-      out.push(s.slice(i));
-      break;
-    }
-    if (lt > i) out.push(s.slice(i, lt));
-    i = lt + 1;
-    if (s.startsWith("<!--", lt)) {
-      const end = s.indexOf("-->", lt + 2);
-      if (end < 0) break;
-      out.push(" ");
-      i = end + 3;
-      continue;
-    }
-    const c1 = s.charCodeAt(lt + 1);
-    const closing = c1 === 47;
-    // <!doctype …>, <?xml …?>, and "</" without a name: dropped up to their ">".
-    const other = c1 === 33 || c1 === 63 || (closing && !isNameStart(s.charCodeAt(lt + 2)));
-    if (!other && !isNameStart(c1) && !closing) {
-      out.push("<");
-      continue;
-    }
-    let e = closing ? lt + 2 : lt + 1;
-    if (!other) while (e < s.length && isNameChar(s.charCodeAt(e))) e++;
-    const gt = nextGt(other ? lt + 2 : e);
-    const lt2 = nextLt(lt + 1);
-    if (gt < 0 || (lt2 >= 0 && lt2 < gt)) {
-      out.push("<");
-      continue;
-    }
-    i = gt + 1;
-    if (other) {
-      out.push(" ");
-      continue;
-    }
-    const name = s.slice(closing ? lt + 2 : lt + 1, e).toLowerCase();
-    // "<svg/>" holds nothing; "<script/>" is still open, as a browser reads it.
-    if (lines && !closing && SKIPPED.has(name) && (RAW.has(name) || s.charCodeAt(gt - 1) !== 47)) {
-      const close = closeOf(name, i);
-      if (close >= 0) {
-        const end = nextGt(close + 2 + name.length);
-        if (end < 0) break;
-        out.push(" ");
-        i = end + 1;
-      } else if (RAW.has(name)) break;
-      else out.push(" ");
-      continue;
-    }
-    out.push(tagText(name, closing, lines));
-  }
+  new Scanner(s).run(
+    (t) => out.push(t),
+    (t) => void out.push(INLINE.has(t.name) ? "" : " "),
+  );
   return out.join("");
 }
 
+/**
+ * A page's text: blocks on their own lines, headings marked (`## Heading`), list items as bullets,
+ * table rows as `a | b | c`, and what isn't read (see `skipped`) dropped.
+ */
+function stripPage(html: string): string {
+  const sc = new Scanner(html);
+  const out: string[] = [];
+  let rowCells = 0;
+  let inCell = false;
+  let pre = 0;
+  sc.run(
+    // Line breaks in the page's source are spaces, as in a browser; inside <pre> they're kept.
+    (t) => out.push(pre > 0 ? t : t.replace(/\s+/g, " ")),
+    (t) => {
+      const skip = skipped(sc, t);
+      if (skip !== undefined) {
+        if (skip !== -1) out.push(" ");
+        return skip;
+      }
+      const { name, closing } = t;
+      if (name === "pre" && !t.selfClosing) pre = Math.max(0, pre + (closing ? -1 : 1));
+      if (name === "td" || name === "th") {
+        if (closing) inCell = false;
+        else {
+          out.push(rowCells++ > 0 ? " | " : " ");
+          inCell = true;
+        }
+        return;
+      }
+      // Each row starts a line; a table is a block of its own.
+      if (name === "tr" || name === "table") {
+        rowCells = 0;
+        inCell = false;
+        if (name === "table" || !closing) out.push("\n");
+        return;
+      }
+      if (INLINE.has(name)) return;
+      // Inside a table cell everything stays on the row's line.
+      if (inCell) return void out.push(" ");
+      const level = /^h([1-6])$/.exec(name)?.[1];
+      if (level) return void out.push(closing ? "\n" : `\n${"#".repeat(Number(level))} `);
+      if (name === "br" || name === "hr") return void out.push("\n");
+      if (closing && BLOCK.has(name)) return void out.push("\n");
+      if (!closing && name === "li") return void out.push("\n• ");
+      out.push(" ");
+    },
+  );
+  return out.join("");
+}
+
+interface Region {
+  start: number;
+  end: number;
+  /** Characters of text in it, links not counted. */
+  total: number;
+}
+
+/**
+ * Where a page's main text is: its `<main>` (or role="main"), else the article that holds most of
+ * the articles' text, else the block whose own text is the largest (paragraphs count for their
+ * block and half for the one around it, links don't count). A block that leaves out much of the
+ * page's text isn't trusted: null, read the whole page.
+ */
+function mainRegion(html: string): Region | null {
+  const sc = new Scanner(html);
+  interface Box {
+    name: string;
+    start: number;
+    main: boolean;
+    direct: number;
+    total: number;
+    childDirect: number;
+  }
+  const root: Box = { name: "", start: 0, main: false, direct: 0, total: 0, childDirect: 0 };
+  const stack: Box[] = [root];
+  const mains: Region[] = [];
+  const articles: Region[] = [];
+  let best: (Region & { score: number }) | null = null;
+  let inLink = 0;
+  const finish = (b: Box, end: number) => {
+    b.total += b.direct;
+    const parent = stack.at(-1)!;
+    parent.total += b.total;
+    parent.childDirect += b.direct;
+    const r = { start: b.start, end, total: b.total };
+    if (b.main) mains.push(r);
+    if (b.name === "article") articles.push(r);
+    const score = b.direct + b.childDirect / 2;
+    if (!best || score > best.score) best = { ...r, score };
+  };
+  sc.run(
+    (t) => {
+      if (inLink) return;
+      let n = 0;
+      for (let k = 0; k < t.length; k++) if (t.charCodeAt(k) > 32) n++;
+      stack.at(-1)!.direct += n;
+    },
+    (t) => {
+      const skip = skipped(sc, t);
+      if (skip !== undefined) return skip;
+      if (t.name === "a" && !t.selfClosing) inLink = Math.max(0, inLink + (t.closing ? -1 : 1));
+      const container = CONTAINERS.has(t.name) || (!t.closing && /\brole\s*=\s*["']?main\b/i.test(t.attrs));
+      if (!container) return;
+      if (!t.closing) {
+        if (t.selfClosing || stack.length > MAX_DEPTH) return;
+        stack.push({ name: t.name, start: t.end, main: t.name === "main" || /\brole\s*=\s*["']?main\b/i.test(t.attrs), direct: 0, total: 0, childDirect: 0 });
+        return;
+      }
+      // Close the element and any left open inside it.
+      const at = stack.findLastIndex((b) => b.name === t.name);
+      if (at < 1) return;
+      while (stack.length > at) finish(stack.pop()!, t.start);
+    },
+  );
+  while (stack.length > 1) finish(stack.pop()!, html.length);
+  const page = root.total + root.direct;
+  if (page === 0) return null;
+  const main = mains.sort((a, b) => b.total - a.total)[0];
+  if (main && (main.total >= 200 || main.total >= page * 0.5)) return main;
+  const article = articles.sort((a, b) => b.total - a.total)[0];
+  const inArticles = articles.reduce((n, a) => n + a.total, 0);
+  if (article && article.total >= 200 && article.total >= inArticles * 0.5 && article.total >= page * 0.25) return article;
+  const block = best as (Region & { score: number }) | null;
+  return block && block.total >= page * 0.6 ? block : null;
+}
+
 /** One line of plain text: tags dropped, entities decoded, whitespace collapsed. */
-const plain = (s: string) => decodeEntities(stripTags(s.slice(0, 20_000), false)).replace(CONTROL, "").replace(/\s+/g, " ").trim();
+const plain = (s: string) => decodeEntities(stripInline(s.slice(0, 20_000))).replace(CONTROL, "").replace(/\s+/g, " ").trim();
 
 /** Whitespace collapsed, paragraph breaks kept. */
 const tidy = (s: string) =>
   s
     .replace(CONTROL, "")
     .replace(/\r\n?/g, "\n")
-    .replace(/[ \t\f\v ]+/g, " ")
+    .replace(/[ \t\f\v\u00a0]+/g, " ")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
-/** A page's readable text: scripts, styles, navigation and footers dropped; blocks become lines. */
+/**
+ * A page's readable text: its main part (see mainRegion) with headings (`## …`), paragraphs, lists
+ * and table rows (`a | b | c`); scripts, styles, navigation, headers, footers, sidebars and forms
+ * dropped.
+ */
 export function htmlToText(html: string): string {
-  return tidy(decodeEntities(stripTags(html, true)));
+  const s = html.length > HTML_MAX ? html.slice(0, HTML_MAX) : html;
+  const region = mainRegion(s);
+  return tidy(decodeEntities(stripPage(region ? s.slice(region.start, region.end) : s)));
+}
+
+/** The page's `<title>`, as one line (empty when it has none). */
+export function pageTitle(html: string): string {
+  const head = html.slice(0, 200_000);
+  const open = /<title(\s[^>]*)?>/i.exec(head);
+  if (!open) return "";
+  const close = head.indexOf("</", open.index + open[0].length);
+  return clip(plain(head.slice(open.index + open[0].length, close < 0 ? undefined : close)), TITLE_MAX);
 }
 
 /* ───────────── Search ───────────── */
@@ -452,6 +667,8 @@ interface Page {
   location: string | null;
   type: string;
   body: Buffer;
+  /** The whole body arrived (it wasn't cut at the size cap). */
+  full: boolean;
 }
 
 const PAGE_HEADERS = {
@@ -484,7 +701,7 @@ function collect(stream: NodeJS.ReadableStream & { destroy(): void }, cap: numbe
  * GET with the connection made to `address`, the one that was checked (TLS still checks the name).
  * Exported for tests.
  */
-export function pinnedGet(url: URL, address: string, signal: AbortSignal): Promise<Page> {
+export function pinnedGet(url: URL, address: string, signal: AbortSignal, capFor: (type: string) => number = () => PAGE_MAX_BYTES): Promise<Page> {
   const family = isIP(address);
   const pinned: LookupFunction = (_host, opts, cb) => ((opts as { all?: boolean }).all ? cb(null, [{ address, family }]) : cb(null, address, family));
   return new Promise((resolve, reject) => {
@@ -497,16 +714,17 @@ export function pinnedGet(url: URL, address: string, signal: AbortSignal): Promi
         const type = String(res.headers["content-type"] ?? "");
         if (status !== 200) {
           res.resume();
-          return resolve({ status, location, type, body: Buffer.alloc(0) });
+          return resolve({ status, location, type, body: Buffer.alloc(0), full: true });
         }
         // The cap counts what comes out of decompression, so a small gzip bomb can't fill memory.
         const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
         const unzip = enc === "gzip" || enc === "x-gzip" ? createGunzip() : enc === "deflate" ? createInflate() : enc === "br" ? createBrotliDecompress() : null;
         const stream = unzip ? res.pipe(unzip) : res;
         if (unzip) res.on("error", (e) => unzip.destroy(e));
-        collect(stream, PAGE_MAX_BYTES).then((body) => {
+        const cap = capFor(type);
+        collect(stream, cap).then((body) => {
           res.destroy();
-          resolve({ status, location, type, body });
+          resolve({ status, location, type, body, full: body.length < cap });
         }, reject);
       },
     );
@@ -516,24 +734,26 @@ export function pinnedGet(url: URL, address: string, signal: AbortSignal): Promi
 }
 
 /** GET through the given fetch (tests): the address was checked the same way. */
-async function fetchGet(f: typeof fetch, url: URL, signal: AbortSignal): Promise<Page> {
+async function fetchGet(f: typeof fetch, url: URL, signal: AbortSignal, capFor: (type: string) => number): Promise<Page> {
   const res = await f(url.href, { redirect: "manual", signal, headers: PAGE_HEADERS });
   const page = { status: res.status, location: res.headers.get("location"), type: res.headers.get("content-type") ?? "" };
   if (res.status !== 200 || !res.body) {
     await res.body?.cancel().catch(() => undefined);
-    return { ...page, body: Buffer.alloc(0) };
+    return { ...page, body: Buffer.alloc(0), full: true };
   }
+  const cap = capFor(page.type);
   const reader = res.body.getReader();
   const parts: Uint8Array[] = [];
   let n = 0;
-  while (n < PAGE_MAX_BYTES) {
+  while (n < cap) {
     const { done, value } = await reader.read();
     if (done) break;
     parts.push(value);
     n += value.length;
   }
   await reader.cancel().catch(() => undefined);
-  return { ...page, body: Buffer.concat(parts).subarray(0, PAGE_MAX_BYTES) };
+  const body = Buffer.concat(parts).subarray(0, cap);
+  return { ...page, body, full: body.length < cap };
 }
 
 function decode(body: Buffer, type: string, html: boolean): string {
@@ -546,18 +766,45 @@ function decode(body: Buffer, type: string, html: boolean): string {
   }
 }
 
+/** A page's text as `loadPage` read it. */
+interface Loaded {
+  /** Where the page was in the end (after redirects). */
+  url: string;
+  kind: "html" | "pdf" | "text";
+  title: string;
+  text: string;
+  /** The page is longer than was read (the size cap, or a PDF's page limit). */
+  cut: boolean;
+}
+
+interface LoadOptions {
+  maxChars: number;
+  timeoutMs: number;
+  /** Largest PDF read (a PDF cut at the cap is seldom readable, so a bigger one is refused). */
+  pdfMaxBytes: number;
+  pdfMaxPages: number;
+  /** Also read JSON, XML, CSV and Markdown as text (the agent's web_fetch). */
+  anyText: boolean;
+}
+
+const isPdf = (type: string) => /^application\/(x-)?pdf/.test(type);
+const isHtml = (type: string) => /^(text\/html|application\/xhtml\+xml)/.test(type);
+const isText = (type: string, any: boolean) =>
+  /^text\/plain/.test(type) || (any && /^(text\/(csv|markdown|x-markdown|xml|tab-separated-values)|application\/(json|xml|[\w.+-]+\+(json|xml)))/.test(type));
+
 /**
- * One page's text, following at most 3 redirects, each to a public address. The 8 seconds cover
+ * One page's text, following at most 3 redirects, each to a public address. The time covers
  * everything: the name lookups, every hop and the download. HTML, plain text, and the text a PDF
- * carries (datasheets, application notes, standards), without OCR: a scanned PDF is skipped.
+ * carries (datasheets, application notes, standards), without OCR: a scanned PDF has none.
  */
-export async function readPage(deps: WebSearchDeps, href: string, maxChars = CONTENT_MAX, timeoutMs = PAGE_TIMEOUT_MS): Promise<string> {
-  const signal = AbortSignal.timeout(timeoutMs);
+async function loadPage(deps: WebSearchDeps, href: string, o: LoadOptions): Promise<Loaded> {
+  const signal = AbortSignal.timeout(o.timeoutMs);
+  const capFor = (type: string) => (isPdf(type.toLowerCase()) ? o.pdfMaxBytes : PAGE_MAX_BYTES);
   let url = safeUrl(href);
   for (let hop = 0; url && hop <= MAX_REDIRECTS; hop++) {
     signal.throwIfAborted();
     const address = await publicAddress(deps, url.hostname, signal);
-    const page = deps.fetch ? await fetchGet(deps.fetch, url, signal) : await pinnedGet(url, address, signal);
+    const page = deps.fetch ? await fetchGet(deps.fetch, url, signal, capFor) : await pinnedGet(url, address, signal, capFor);
     if (page.status >= 300 && page.status < 400 && page.location) {
       let next: URL | null = null;
       try {
@@ -571,17 +818,105 @@ export async function readPage(deps: WebSearchDeps, href: string, maxChars = CON
     }
     if (page.status !== 200) throw new Error(`the page answered ${page.status}`);
     const type = page.type.toLowerCase();
-    const html = /^(text\/html|application\/xhtml\+xml)/.test(type);
-    if (/^application\/(x-)?pdf/.test(type)) {
+    if (isPdf(type)) {
       // A PDF's index is at its end: one cut at the size cap is seldom readable, so it isn't parsed.
-      if (page.body.length >= PAGE_MAX_BYTES) throw new PageRefused("a PDF over 1.5 MB");
-      return clip(tidy(await pdfText(page.body, { maxChars, signal })), maxChars);
+      if (!page.full) throw new PageRefused(`a PDF over ${Math.round(o.pdfMaxBytes / 1024 / 1024)} MB`);
+      const text = tidy(await pdfText(page.body, { maxChars: o.maxChars, maxPages: o.pdfMaxPages, signal }));
+      return { url: url.href, kind: "pdf", title: "", text: clip(text, o.maxChars), cut: text.length > o.maxChars };
     }
-    if (!html && !/^text\/plain/.test(type)) throw new PageRefused(`${type || "no content type"} isn't read`);
-    const text = html ? htmlToText(decode(page.body, page.type, true)) : tidy(decode(page.body, page.type, false));
-    return clip(text, maxChars);
+    const html = isHtml(type);
+    if (!html && !isText(type, o.anyText)) throw new PageRefused(`${type || "no content type"} isn't read`);
+    const raw = decode(page.body, page.type, html);
+    const text = html ? htmlToText(raw) : tidy(raw);
+    return { url: url.href, kind: html ? "html" : "text", title: html ? pageTitle(raw) : "", text: clip(text, o.maxChars), cut: !page.full || text.length > o.maxChars };
   }
   throw new PageRefused(url ? "too many redirects" : "not an http(s) link");
+}
+
+/** One page's text for a search result (see loadPage), at most `maxChars` of it. */
+export async function readPage(deps: WebSearchDeps, href: string, maxChars = CONTENT_MAX, timeoutMs = PAGE_TIMEOUT_MS): Promise<string> {
+  const page = await loadPage(deps, href, { maxChars, timeoutMs, pdfMaxBytes: PAGE_MAX_BYTES, pdfMaxPages: 30, anyText: false });
+  return page.text;
+}
+
+/** A part of a page, as the agent's web_fetch reads it. */
+export interface FetchedPage {
+  url: string;
+  status: number;
+  title: string | null;
+  kind: "html" | "pdf" | "text";
+  text: string;
+  /** Where this part starts, where the next one would (null: this is the last), and the text's length. */
+  offset: number;
+  next: number | null;
+  total: number;
+  /** The page is longer than is read at all (`total` is what can be read). */
+  cut: boolean;
+}
+
+/** The agent reads a page in parts this long (about 5,000 tokens). */
+export const FETCH_PART_CHARS = 20_000;
+/** At most this much of one page is read (a 1.5 MB page, a 60-page PDF). */
+const FETCH_MAX_CHARS = 300_000;
+const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_PDF_MAX_BYTES = 10 * 1024 * 1024;
+const FETCH_CACHE_MS = 10 * 60_000;
+const FETCH_CACHE_MAX = 30;
+/** Pages read lately, so reading on (`offset`) doesn't download the page again. */
+const fetched = new Map<string, { at: number; page: Loaded }>();
+
+/** Forget pages read lately (tests). */
+export function clearFetchCache() {
+  fetched.clear();
+}
+
+/**
+ * A page for the agent's web_fetch: its main text (see htmlToText), or a PDF's text, from `offset`
+ * on, `chars` at a time. Public addresses only, each redirect checked; at most 1.5 MB of a page or
+ * 10 MB of a PDF (60 pages), 30 seconds. A page read in the last 10 minutes isn't downloaded again.
+ */
+export async function fetchPage(deps: WebSearchDeps, href: string, opts: { offset?: number; chars?: number } = {}): Promise<FetchedPage> {
+  const key = safeUrl(href.trim())?.href;
+  if (!key) throw new PageRefused("not an http(s) link");
+  let hit = fetched.get(key);
+  if (!hit || Date.now() - hit.at > FETCH_CACHE_MS) {
+    const page = await loadPage(deps, key, { maxChars: FETCH_MAX_CHARS, timeoutMs: FETCH_TIMEOUT_MS, pdfMaxBytes: FETCH_PDF_MAX_BYTES, pdfMaxPages: 60, anyText: true });
+    hit = { at: Date.now(), page };
+    fetched.delete(key);
+    fetched.set(key, hit);
+    for (const k of fetched.keys()) {
+      if (fetched.size <= FETCH_CACHE_MAX) break;
+      fetched.delete(k);
+    }
+  }
+  const { page } = hit;
+  const total = page.text.length;
+  const chars = Math.max(1000, Math.min(FETCH_PART_CHARS, Math.round(opts.chars ?? FETCH_PART_CHARS)));
+  let offset = Math.max(0, Math.min(total, Math.floor(opts.offset ?? 0)));
+  let end = Math.min(total, offset + chars);
+  // A part ends at a line break (or a space) where there is one near the end, so no line is split.
+  if (end < total) {
+    const nl = page.text.lastIndexOf("\n", end);
+    const sp = page.text.lastIndexOf(" ", end);
+    const at = nl > offset + chars * 0.7 ? nl + 1 : sp > offset + chars * 0.7 ? sp + 1 : end;
+    end = at;
+  }
+  // An offset in the middle of a word starts at the next one.
+  if (offset > 0 && offset < total && !/\s/.test(page.text[offset - 1]!)) {
+    const sp = page.text.slice(offset, offset + 200).search(/\s/);
+    if (sp >= 0) offset += sp + 1;
+  }
+  return {
+    url: page.url,
+    status: 200,
+    title: page.title || null,
+    kind: page.kind,
+    text: page.text.slice(offset, end),
+    offset,
+    next: end < total ? end : null,
+    total,
+    cut: page.cut,
+  };
 }
 
 /**

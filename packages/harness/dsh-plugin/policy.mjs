@@ -15,6 +15,9 @@ const RISKY_COMMANDS = [
   [/\bgit\s+(push|reset\s+--hard|clean\s+-[a-z]*f|branch\s+-D|tag\s+-d)\b/, "Changes a git repository's history or its remote"],
   [/(^|[\s;&|(])(sudo|su|doas|kill|pkill|killall|shutdown|reboot|mkfs[.\w]*|dd|mount|umount|systemctl|crontab)\b/, "Runs a system-level command"],
   [/(^|[\s;&|(])(sendmail|mail|mailx|mutt)\b/, "Sends an email"],
+  // Certificate checks switched off: a download from anywhere could pass for the real site.
+  [/--trusted-host\b|--no-check-certificates?\b|\bcurl\b[^\n;&|]*\s(--insecure\b|-[a-zA-JL-Z]*k[a-zA-JL-Z]*(\s|$))/, "Turns off certificate checks"],
+  [/\bverify\s*=\s*False\b|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0|GIT_SSL_NO_VERIFY\b|\bsslVerify\s*=?\s*false\b|\bstrict-ssl\s*(=\s*)?false\b|PYTHONHTTPSVERIFY\s*=\s*['"]?0/i, "Turns off certificate checks"],
 ];
 
 const NETWORK_COMMANDS = [

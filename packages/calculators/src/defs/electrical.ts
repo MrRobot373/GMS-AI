@@ -503,14 +503,28 @@ export const ELECTRICAL: CalculatorDef[] = [
     name: "Ground rod resistance",
     category: "electrical",
     description: "Earth resistance of a single vertical rod (Dwight's formula).",
-    formula: ["R = ρ / (2π·L)·(ln(4L / d) - 1)"],
-    assumptions: ["Uniform soil resistivity ρ", "Rod driven fully, top at ground level", "Single rod; rods closer than their length interfere"],
+    // Dwight writes ln(4L/a) - 1 with a the radius; with the diameter that's ln(8L/d) - 1 (version 1 used 4L/d, about 10 % low).
+    version: 2,
+    formula: ["R = ρ / (2π·L)·(ln(8L / d) - 1)", "Dwight: ln(4L / a) - 1 with a = d / 2, the rod's radius"],
+    assumptions: [
+      "Uniform soil resistivity ρ",
+      "Rod driven fully, top at ground level",
+      "Single rod; rods closer than their length interfere",
+      "Valid for a slender rod: L at least 10 × d (the formula assumes L ≫ d); shorter or thicker rods are refused",
+    ],
     inputs: [inp("rho", "Soil resistivity", "resistivity", "ohm·m", { ...pos }), inp("L", "Rod length", "length", "m", { ...pos }), inp("d", "Rod diameter", "length", "mm", { ...pos })],
     outputs: [out("R", "Earth resistance", "resistance", "ohm")],
-    compute: ({ rho, L, d }) => ({ values: { R: (rho! / (2 * Math.PI * L!)) * (Math.log((4 * L!) / d!) - 1) } }),
+    compute: ({ rho, L, d }) => {
+      // Below L/d = 10 the formula drifts from the true value, and below L/d ≈ 0.34 it turns negative.
+      if (L! < 10 * d!) fail(`Dwight's formula is for a slender rod: the rod length (L) must be at least 10 times the rod diameter (d). Here L/d = ${Number((L! / d!).toPrecision(3))}.`, "L");
+      return { values: { R: (rho! / (2 * Math.PI * L!)) * (Math.log((8 * L!) / d!) - 1) } };
+    },
     refs: [
-      { inputs: { rho: 100, L: 3, d: 16 }, expect: { R: 29.81541437859 }, note: "3 m × 16 mm rod in 100 Ω·m soil" },
-      { inputs: { rho: 50, L: 2.4, d: 12.7 }, expect: { R: 18.66063982959 }, note: "8 ft × ½ in rod" },
+      { inputs: { rho: 100, L: 3.05, d: 15.9 }, expect: { R: 33.1 }, tol: 2e-3, note: "IEEE Std 142 (Green Book): 10 ft × 5/8 in rod in 100 Ω·m soil ≈ 33.1 Ω" },
+      { inputs: { rho: 100, L: [10, "ft"], d: [0.625, "in"] }, expect: { R: 33.08906935295 }, note: "The same rod in exact feet and inches: 100/(2π·3.048)·(ln(8·3.048/0.015875) - 1)" },
+      { inputs: { rho: 100, L: 3, d: 16 }, expect: { R: 33.49267438113 }, note: "3 m × 16 mm rod in 100 Ω·m soil: 100/(6π)·(ln 1500 - 1)" },
+      { inputs: { rho: 50, L: 2.4, d: 12.7 }, expect: { R: 20.95892733118 }, note: "8 ft × ½ in rod in 50 Ω·m soil: 50/(4.8π)·(ln(19.2/0.0127) - 1)" },
+      { inputs: { rho: 30, L: 1.5, d: 20 }, expect: { R: 17.17896064294 }, note: "1.5 m × 20 mm rod in 30 Ω·m soil: 30/(3π)·(ln 600 - 1)" },
     ],
   }),
   def({

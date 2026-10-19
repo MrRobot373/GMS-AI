@@ -65,6 +65,29 @@ describe("rules", () => {
     expect(level("मुझे छुट्टी के लिए आवेदन लिखना है")).toBe("medium");
   });
 
+  it("agents: web research and long jobs with several parts are hard; short jobs aren't", () => {
+    const agent = (text: string) => judgeByRules({ text, agent: true });
+    // From the Work AI test: searching the web for figures to cite, and comparing what's sold today.
+    for (const t of [
+      "Search the web to find the minimum efficiency that IEC 60034-30-1 requires for a 7.5 kW, 4-pole, 50 Hz motor in efficiency class IE3, and in IE4. Write the answer in ie-classes.md with links to the pages you used.",
+      "Compare three 48 V (51.2 V) LiFePO4 battery models sold today that would suit a roughly 5 kWh off-grid solar system. Use web search. For each give capacity (kWh), rated cycle life, warranty and price if published, with a source link for every row. Put the table and your recommendation, with reasons, in batteries.md.",
+      "Look up today's LME copper price and estimate the value of the copper in our cable stock",
+      "Find the current edition of IEC 61439-1 and list what changed",
+      "Compare the datasheets from three sources and tell me which inverter is cheapest",
+    ])
+      expect(agent(t), t).toEqual({ difficulty: "hard", reason: "web research to read, compare and cite" });
+    // Long engineering jobs: many steps, files and quantities.
+    for (const t of ["A 3-phase 415 V, 50 Hz, 30 kW motor (power factor 0.86, efficiency 92 %) is fed by a 120 m copper PVC cable clipped direct in air. Choose the smallest standard cable size that keeps the voltage drop at or below 3 % at full load, stating the mV/A/m values you use and their source, and write a short calculation note cable.md.", "Write motor_summary.py, a command-line tool that reads a CSV of motors (columns tag, kw, voltage, quantity) and prints a table with the total installed kW per voltage and a grand total. Create a sample motors.csv with at least 6 rows across 2 or more voltages, add unittest tests, and run both the tool and the tests.", "Build a small JSON HTTP API in Python using only the standard library: POST /ohms takes any two of volts, amps and ohms and returns the third; POST /power takes volts and amps and returns watts. Return 400 with a clear error for bad input. Write tests that start the server on a free port and call it, run them, and show one example request and response."])
+      expect(agent(t), t).toEqual({ difficulty: "hard", reason: "a long task with several parts" });
+    // Already hard for its own reason.
+    expect(agent("Simulate the closed-loop setpoint step response of a first-order-plus-dead-time process with gain K = 2, time constant 60 s and dead time 10 s under a PI controller tuned with the SIMC rule using tau_c equal to the dead time. Report the controller gain Kc and integral time Ti, the overshoot and the 2 % settling time, save the plot as step.png and keep the Python script as simc.py.").difficulty).toBe("hard");
+    // Short or single-part jobs stay as the rules see them (the agent floor comes later).
+    for (const t of ["Make a CSV file named e12.csv that lists every E12 standard resistor value from 10 ohms up to and including 1 megohm, one value in ohms per row, with the header 'ohms'. Then tell me how many values it has.", "Create primes.py that prints the first 20 prime numbers on one line, separated by spaces, and run it.", "Write resistor.py with a function color_code_to_ohms(bands) for 4-band resistors that returns (ohms, tolerance_percent); for example ['brown', 'black', 'red', 'gold'] gives (1000, 5). Raise ValueError for unknown colours. Add tests with the standard library unittest in test_resistor.py and run them.", "The tests in test_units.py are failing. Find and fix the bugs in units.py (don't change the tests), then run the tests until they pass and tell me what was wrong."]) expect(agent(t).difficulty, t).not.toBe("hard");
+    // In chat, the same words don't count: chat's own web search decides there.
+    expect(level("Search the web to find the minimum efficiency that IEC 60034-30-1 requires for a 7.5 kW, 4-pole, 50 Hz motor in efficiency class IE3, and in IE4. Write the answer in ie-classes.md with links to the pages you used.")).not.toBe("hard");
+    expect(level("Search the web for the latest price of copper")).not.toBe("hard");
+  });
+
   it("unclear requests are left to the judge; short follow-ups keep the conversation's level", () => {
     expect(level("What do you think about the board's view on our numbers this quarter")).toBeNull();
     expect(level("Help me with the weekly update for the operations team")).toBeNull();
@@ -296,7 +319,14 @@ describe("rules", () => {
     const models = (await call("GET", `/api/workspaces/${workspaceId}/models?section=work`)).json as { id: string }[];
     expect(models[0]!.id).toBe("auto");
     const easy = await call("POST", "/api/work/tasks", { workspaceId, prompt: "hi", modelId: "auto", start: false });
-    expect(easy.json).toMatchObject({ modelId: ids["nano-30b"], routing: { difficulty: "medium", tier: "standard", thinking: false } });
+    // Raised on purpose, and it says so.
+    expect(easy.json).toMatchObject({ modelId: ids["nano-30b"], routing: { difficulty: "medium", tier: "standard", thinking: false, reason: "agent tasks use at least the standard tier" } });
+    const short = await call("POST", "/api/work/tasks", { workspaceId, prompt: "Create primes.py that prints the first 20 primes", modelId: "auto", start: false });
+    expect(short.json.routing).toMatchObject({ difficulty: "medium", tier: "standard" });
+    expect(short.json.routing.reason).not.toBe("a short, simple question");
+    // Web research gets the advanced model, thinking on.
+    const research = await call("POST", "/api/work/tasks", { workspaceId, prompt: "Search the web for the IE3 minimum efficiency of a 7.5 kW 4-pole motor and cite the pages", modelId: "auto", start: false });
+    expect(research.json).toMatchObject({ modelId: ids["super-120b"], routing: { difficulty: "hard", tier: "advanced", thinking: true, reason: "web research to read, compare and cite" } });
     const hard = await call("POST", "/api/work/tasks", { workspaceId, prompt: "Design a system architecture for our warehouse sensors and compare two databases", modelId: "auto", start: false });
     expect(hard.json).toMatchObject({ modelId: ids["super-120b"], routing: { difficulty: "hard", tier: "advanced", thinking: true } });
     const [t] = await db.select().from(workTask).where(eq(workTask.id, hard.json.id));

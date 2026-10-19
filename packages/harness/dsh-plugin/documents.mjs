@@ -63,7 +63,7 @@ export function documentTools(defineTool, call) {
     ),
     tool(
       "documents_save",
-      "Save a file from your working folder to the person's documents in Aatmiq (their private library), so it can be searched and used in chats later. Supported: PDF, Word (.docx), Excel (.xlsx), text, Markdown, CSV, HTML, JSON, code and images (up to 25 MB).",
+      "Save a file from your working folder to the person's documents in Aatmiq (their private library), so it can be searched and used in chats later. Use it only when the person asks to save something to their Documents; otherwise leave results in the working folder, where they can download them. Supported: PDF, Word (.docx), Excel (.xlsx), text, Markdown, CSV, HTML, JSON, code and images (up to 25 MB).",
       {
         path: { type: "string", required: true, description: "The file, relative to the working folder (e.g. report.docx)." },
         name: { type: "string", description: "The name to show in Documents (default: the file's name)." },

@@ -6,6 +6,7 @@
  *  - tools/post-execute: reminds the agent to keep its plan current
  *  - approval/request:  the answerer: the question goes to Aatmiq, where a person approves or rejects it
  *  - web search:        a "aatmiq" provider that searches through Aatmiq (self-hosted SearXNG)
+ *  - web_fetch:         a page's main text, read by Aatmiq (public addresses only), in parts
  *  - browser_* tools:   a browser run by Aatmiq for pages that need JavaScript, clicks or forms
  *  - documents_* tools: search, read and save the organization's documents in Aatmiq
  *
@@ -18,6 +19,7 @@ import { browserTools } from "./browser.mjs";
 import { documentTools } from "./documents.mjs";
 import { classifyRisk } from "./policy.mjs";
 import { cleanArgs, planReminder } from "./tooling.mjs";
+import { SEARCH_CITE_LINE, SEARCH_READ_LINE, WEB_GUIDANCE, webTools } from "./web.mjs";
 
 /**
  * DSH's defineTool, from the runtime's own install (this file is loaded from Aatmiq's folder, so
@@ -34,7 +36,7 @@ async function loadDefineTool() {
 const defineTool = await loadDefineTool();
 
 export const name = "aatmiq";
-export const inject = ["tools", "approval", "web"];
+export const inject = ["tools", "approval", "web", "systemPrompt"];
 
 const POLL_SECONDS = 25;
 const SANDBOX_MODE = process.env.DSH_PERMISSION_MODE || "workspace-write";
@@ -57,16 +59,18 @@ export function apply(ctx, config) {
   const call = client(config);
   const policy = { approvals: config.approvals ?? "risky", askForNetwork: !!config.askForNetwork, connectors: config.connectors ?? [] };
 
-  // 1. Policy: decide which calls need a person.
+  // 1. Policy: decide which calls need a person. It judges the call as it will run, after the
+  //    cleanup below (a command recovered from a garbled argument name is checked too).
   ctx.on("tools/pre-execute", async (exec, next) => {
     const decision = await next();
     if (decision.kind !== "allow") return decision;
-    const reason = classifyRisk({ name: exec.name, args: exec.arguments }, policy);
+    const reason = classifyRisk({ name: exec.name, args: cleanArgs(exec.name, exec.arguments, SANDBOX_MODE) }, policy);
     return reason ? { kind: "ask", reason } : decision;
   });
 
-  // 2. Arguments: models add `sandbox_permissions` to every call (often with made-up values) and
-  //    misname todo fields. Fix what's unambiguous; the tool still checks the result.
+  // 2. Arguments: models add `sandbox_permissions` to every call (often with made-up values),
+  //    misname todo fields, leave out display-only labels and leak chat-template markers. Fix
+  //    what's unambiguous; the tool still checks the result.
   ctx.on("tools/execute", (exec, next) => {
     const args = cleanArgs(exec.name, exec.arguments, SANDBOX_MODE);
     if (args !== exec.arguments) exec.arguments = Object.freeze(args);
@@ -87,7 +91,13 @@ export function apply(ctx, config) {
     return next();
   });
   ctx.on("tools/post-execute", async (exec, result, next) => {
-    const decision = await next();
+    let decision = await next();
+    // Search results end with "cite the URLs above"; a snippet isn't a source, the page is.
+    if (exec.name === "web_search" && !result.isError && decision.kind === "accept" && !Object.hasOwn(decision, "value")) {
+      const blocks = decision.content ?? result.content ?? [];
+      if (blocks.some((b) => b.type === "text" && b.text?.includes(SEARCH_CITE_LINE)))
+        decision = { ...decision, content: blocks.map((b) => (b.type === "text" && b.text ? { ...b, text: b.text.replace(SEARCH_CITE_LINE, SEARCH_READ_LINE) } : b)) };
+    }
     const p = planOf(exec.agent);
     if (exec.name === "todo_write") {
       if (!result.isError) Object.assign(p, { todos: exec.arguments?.todos ?? null, since: 0, due: null });
@@ -132,7 +142,17 @@ export function apply(ctx, config) {
   // 6. The organization's documents in Aatmiq.
   if (config.documents !== false && defineTool) for (const t of documentTools(defineTool, call)) ctx.tools.register(t);
 
-  // 7. Private web search through Aatmiq.
+  // 7. Web pages, read by Aatmiq (public addresses only), and what the agent is told about them.
+  if (defineTool) {
+    for (const t of webTools(defineTool, call)) ctx.tools.register(t);
+    ctx.systemPrompt.section({
+      name: "tool:web_fetch",
+      order: ctx.systemPrompt.getSectionOrder("TOOL_WEB_FETCH"),
+      text: ({ scope }) => (ctx.tools.get("web_fetch", scope) === undefined ? "" : WEB_GUIDANCE),
+    });
+  }
+
+  // 8. Private web search through Aatmiq.
   ctx.effect(() => ctx.web.registerSearchProvider({
     id: "aatmiq",
     available: () => !!config.webSearch,

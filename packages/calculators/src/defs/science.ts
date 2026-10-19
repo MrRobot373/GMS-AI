@@ -383,11 +383,13 @@ export const SCIENCE: CalculatorDef[] = [
     description: "Vapour pressure of a liquid by the Antoine equation (mmHg and °C constants).",
     formula: ["log₁₀ P[mmHg] = A - B / (C + T[°C])"],
     assumptions: ["Constants valid only in their fitted range; defaults are water, 1–100 °C (A 8.07131, B 1730.63, C 233.426)"],
-    inputs: [inp("A", "A", "dimensionless", undefined, { default: 8.07131 }), inp("B", "B", "dimensionless", undefined, { default: 1730.63 }), inp("C", "C", "dimensionless", undefined, { default: 233.426 }), inp("T", "Temperature (°C)", "dimensionless")],
+    // A temperature (so it's read in any unit and never below absolute zero); the constants take °C.
+    inputs: [inp("A", "A", "dimensionless", undefined, { default: 8.07131 }), inp("B", "B", "dimensionless", undefined, { default: 1730.63 }), inp("C", "C", "dimensionless", undefined, { default: 233.426 }), inp("T", "Temperature", "temperature", "C")],
     outputs: [out("P", "Vapour pressure", "pressure", "mmHg")],
     compute: ({ A, B, C, T }) => {
-      if (C! + T! === 0) fail("C + T can't be zero.");
-      return { values: { P: 10 ** (A! - B! / (C! + T!)) * 133.322387415 } };
+      const t = T! - 273.15;
+      if (C! + t === 0) fail("C + T can't be zero.", "T");
+      return { values: { P: 10 ** (A! - B! / (C! + t)) * 133.322387415 } };
     },
     refs: [{ inputs: { A: 8.07131, B: 1730.63, C: 233.426, T: 100 }, expect: { P: 760.0863691649 }, note: "Water boils at 760 mmHg" }],
   }),
@@ -672,9 +674,10 @@ export const SCIENCE: CalculatorDef[] = [
     assumptions: ["β model: accurate near T₀ (±1 °C over about 50 K); use Steinhart–Hart beyond"],
     inputs: [
       inp("R0", "R₀ at T₀", "resistance", "kohm", { ...pos, default: 10 }),
-      inp("T0", "T₀", "temperature", "C", { default: 25 }),
+      // 1/T: absolute temperatures above 0 K.
+      inp("T0", "T₀", "temperature", "C", { default: 25, min: 0, exclusiveMin: true }),
       inp("beta", "β (K)", "dimensionless", undefined, { ...pos, default: 3950 }),
-      inp("T", "Temperature", "temperature", "C", { optional: true }),
+      inp("T", "Temperature", "temperature", "C", { optional: true, min: 0, exclusiveMin: true }),
       inp("R", "Resistance", "resistance", "kohm", { optional: true, ...pos }),
     ],
     outputs: [out("R", "Resistance", "resistance", "kohm"), out("T", "Temperature", "temperature", "C")],

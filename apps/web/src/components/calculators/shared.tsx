@@ -109,8 +109,9 @@ export function ResultRow({ label, value, unit, big }: { label: ReactNode; value
   return (
     <div className="flex items-baseline justify-between gap-3 border-b border-border py-2 last:border-0">
       <span className="text-[13px] text-fg-muted">{label}</span>
-      <span className="flex items-baseline gap-1.5">
-        <span className={cn("font-mono text-fg tabular-nums", big ? "text-[20px]" : "text-[14px]")}>{value}</span>
+      <span className="flex min-w-0 items-baseline gap-1.5">
+        {/* break-all: an exact fraction can have hundreds of digits. */}
+        <span className={cn("break-all text-right font-mono text-fg tabular-nums", big ? "text-[20px]" : "text-[14px]")}>{value}</span>
         {unit && <span className="text-[12.5px] text-fg-subtle">{unit}</span>}
         <CopyButton text={value} />
       </span>
