@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleCheck,
   Circle,
+  Code2,
   Download,
   Eye,
   FilePen,
@@ -253,6 +254,8 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const own = detail.data?.own ?? true;
   const proj = detail.data?.project ?? null;
+  // A Code task works in the person's Code workspace: its files are there (changed in the editor).
+  const code = detail.data?.code ?? null;
 
   const send = useMutation({
     mutationFn: (prompt: string) => post(`/api/work/tasks/${taskId}/messages`, { prompt }),
@@ -399,7 +402,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   <MenuItem icon={task?.pinned ? <PinOff /> : <Pin />} onSelect={() => update.mutate({ pinned: !task?.pinned })}>
                     {task?.pinned ? t("Unpin") : t("Pin")}
                   </MenuItem>
-                  <MenuItem icon={<Upload />} onSelect={() => uploadRef.current?.click()}>{t("Add files")}</MenuItem>
+                  {!code && <MenuItem icon={<Upload />} onSelect={() => uploadRef.current?.click()}>{t("Add files")}</MenuItem>}
                   {task?.projectId && proj && (
                     <MenuItem icon={<Share2 />} onSelect={() => update.mutate({ sharedToProject: !task.sharedToProject })}>
                       {task.sharedToProject ? t("Stop sharing to project") : t("Share to project")}
@@ -478,11 +481,11 @@ export function TaskView({ taskId }: { taskId: string }) {
                   busy={active}
                   onStop={() => stop.mutate()}
                   sending={send.isPending}
-                  onFiles={(list) => void upload(list)}
+                  onFiles={code ? undefined : (list) => void upload(list)}
                 />
               )}
-              <div className="mt-2 flex flex-wrap justify-center gap-x-3 text-[11.5px] text-fg-subtle">
-                <span>{t("Runs in a private folder on your organization's servers.")}</span>
+              <div className="mt-2 flex flex-wrap justify-center gap-x-3 text-[11.5px] text-fg-subtle" data-testid="task-footer">
+                <span>{code ? t("Works in your Code workspace {workspace}.", { workspace: code.name }) : t("Runs in a private folder on your organization's servers.")}</span>
                 {task && task.inputTokens + task.outputTokens > 0 && <span className="tabular-nums">{t("{count} tokens", { count: formatTokens(task.inputTokens + task.outputTokens) })}</span>}
               </div>
             </div>
@@ -519,9 +522,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                     files={files.data?.files}
                     truncated={files.data?.truncated}
                     onPreview={setPreview}
-                    onUpload={own ? () => uploadRef.current?.click() : undefined}
+                    onUpload={own && !code ? () => uploadRef.current?.click() : undefined}
                     onSave={proj?.canEdit ? (f) => saveFile.mutate(f.path) : undefined}
                     projectName={proj?.name}
+                    code={code}
                   />
                 )}
               </div>
@@ -557,7 +561,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={t("Delete this task?")}
-        description={t("Its timeline and every file in its folder are deleted. This can't be undone.")}
+        description={code ? t("Its timeline is deleted. The files in the Code workspace {workspace} stay. This can't be undone.", { workspace: code.name }) : t("Its timeline and every file in its folder are deleted. This can't be undone.")}
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button>
@@ -599,7 +603,7 @@ function TimelineItem({
             <AppLogo className="size-4" />
           </div>
           <div className="pl-6">
-            <Markdown content={item.text} />
+            <Markdown content={item.text} lineBreaks />
             {onSaveAnswer && (
               <Button variant="ghost" size="sm" className="mt-1 -ml-2 text-fg-subtle" onClick={() => onSaveAnswer(item.text)} data-testid="save-answer">
                 <BookmarkPlus className="size-3.5" /> {t("Save to project")}
@@ -763,7 +767,7 @@ function Working({ status, draft, thinking }: { status: TaskStatus; draft: strin
       )}
       {draft && (
         <div className="pl-6">
-          <Markdown content={draft} />
+          <Markdown content={draft} lineBreaks />
         </div>
       )}
     </div>
@@ -832,6 +836,7 @@ function FilesPanel({
   onUpload,
   onSave,
   projectName,
+  code,
 }: {
   taskId: string;
   files?: WorkFile[];
@@ -840,13 +845,27 @@ function FilesPanel({
   onUpload?: () => void;
   onSave?: (f: WorkFile) => void;
   projectName?: string;
+  /** A Code task's workspace: listed read only (people change it in the editor). */
+  code?: { id: string; name: string } | null;
 }) {
   const t = useT();
   if (!files) return <Skeleton className="h-24 rounded-lg" />;
   return (
     <div>
-      <div className="flex h-8 items-center justify-between">
-        <span className="text-[12px] text-fg-subtle">{t("Task folder")}</span>
+      <div className="flex h-8 items-center justify-between gap-2">
+        {code ? (
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg-subtle" data-testid="files-code-workspace">
+            <Code2 className="size-3.5 shrink-0" />
+            <span className="truncate">{t("Code workspace · {workspace}", { workspace: code.name })}</span>
+          </span>
+        ) : (
+          <span className="text-[12px] text-fg-subtle">{t("Task folder")}</span>
+        )}
+        {code && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={`/app/code/${code.id}`}>{t("Open in Code")}</Link>
+          </Button>
+        )}
         {onUpload && (
           <Button variant="ghost" size="sm" onClick={onUpload}>
             <Upload className="size-3.5" /> {t("Add")}
@@ -854,7 +873,9 @@ function FilesPanel({
         )}
       </div>
       {files.length === 0 ? (
-        <p className="mt-2 text-[12.5px] leading-relaxed text-fg-subtle">{t("Files the agent creates appear here. You can also add files for it to work on.")}</p>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-fg-subtle">
+          {code ? t("Files in this Code workspace appear here. Change them in the editor.") : t("Files the agent creates appear here. You can also add files for it to work on.")}
+        </p>
       ) : (
         <ul className="mt-1 space-y-px" data-testid="files">
           {files.map((f) => (

@@ -1,6 +1,7 @@
 {
   "//": "Machine-level defaults for every Aatmiq Code server. People can still change them in their own settings.",
   "workbench.colorTheme": "Aatmiq Dark",
+  "window.autoDetectColorScheme": true,
   "workbench.preferredDarkColorTheme": "Aatmiq Dark",
   "workbench.preferredLightColorTheme": "Aatmiq Light",
   "workbench.startupEditor": "none",

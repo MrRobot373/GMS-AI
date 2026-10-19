@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, CalendarClock, FileSearch, FileSpreadsheet, Globe, Pin, ShieldAlert, Workflow, X } from "lucide-react";
+import { BarChart3, CalendarClock, Code2, FileSearch, FileSpreadsheet, Globe, Pin, ShieldAlert, Workflow, X } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -235,6 +235,12 @@ function TaskRow({ t: task }: { t: WorkTaskSummary }) {
           {task.pinned && <Pin className="size-3 shrink-0 text-fg-subtle" />}
           {task.scheduleId && <CalendarClock className="size-3 shrink-0 text-fg-subtle" aria-label={t("Scheduled")} />}
           {task.projectName && <span className="shrink-0 truncate rounded border border-border px-1.5 text-[11px] text-fg-subtle">{task.projectName}</span>}
+          {task.codeWorkspaceId && (
+            <span className="inline-flex shrink-0 items-center gap-1 truncate rounded border border-border px-1.5 text-[11px] text-fg-subtle" data-testid="task-code-mark">
+              <Code2 className="size-3" />
+              {task.codeWorkspaceName ? t("Code · {workspace}", { workspace: task.codeWorkspaceName }) : t("Code")}
+            </span>
+          )}
         </div>
         {sub && <div className={cn("truncate text-[12px]", task.status === "failed" ? "text-danger" : "text-fg-subtle")}>{sub.replace(/[*_`#>|]+/g, "").replace(/\s+/g, " ")}</div>}
       </div>

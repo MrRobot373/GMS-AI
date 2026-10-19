@@ -2,12 +2,12 @@
  * Work AI end to end through the API: a real DeepSeek Harness runtime, a scripted OpenAI-compatible
  * model and a fake SearXNG, against the test database (TEST_DATABASE_URL).
  */
-import { connectorAccount, createDb, organization, sql, type DB } from "@aatmiq/db";
+import { connectorAccount, createDb, eq, organization, sql, user, workTask, type DB } from "@aatmiq/db";
 import { APPROVAL_PRESETS } from "@aatmiq/shared";
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { createServer, type Server } from "node:http";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -245,6 +245,7 @@ d("Work AI", () => {
       port: 0,
       storageDir: (storageDir = await mkdtemp(join(tmpdir(), "aatmiq-files-"))),
       workDir: (workDir = await mkdtemp(join(tmpdir(), "aatmiq-work-"))),
+      codeDir: await mkdtemp(join(tmpdir(), "aatmiq-code-")),
     };
     app = await buildApp(db, cfg, { fetch: pagesFetch, resolve: pagesResolve });
     apiUrl = await app.listen({ port: 0, host: "127.0.0.1" });
@@ -382,6 +383,47 @@ d("Work AI", () => {
     const t3 = await waitStatus(r3.json.id, "completed", "failed");
     expect(t3.events.find((e) => e.kind === "tool_result")!.data).toMatchObject({ isError: true, notRun: 'missing required property "file_path"' });
   }, 60_000);
+
+  it("lists the files the person asked for first: the agent's scratch folder comes last", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "Chart the sales", start: false });
+    const dir = join(workDir, r.json.id, "files");
+    await mkdir(join(dir, "scratch"), { recursive: true });
+    await mkdir(join(dir, "data"), { recursive: true });
+    for (const [p, text] of [["scratch/check_totals.py", "print(1)\n"], ["report.md", "# Sales\n"], ["zeta.csv", "a\n"], ["data/raw.csv", "a\n"], ["scratches.txt", "kept in order\n"]]) await writeFile(join(dir, p!), text!);
+    const files = (await call("GET", `/api/work/tasks/${r.json.id}/files`)).json.files.map((f: { path: string }) => f.path);
+    expect(files).toEqual(["data/raw.csv", "report.md", "scratches.txt", "zeta.csv", "scratch/check_totals.py"]);
+  });
+
+  it("Code tasks: listed and marked, their Files are the Code workspace's (read only, same checks)", async () => {
+    const w = await call("POST", "/api/code/workspaces", { workspaceId, name: "Motor tools" });
+    expect(w.status).toBe(200);
+    await mkdir(join(w.json.path, "scratch"), { recursive: true });
+    await mkdir(join(w.json.path, "node_modules", "x"), { recursive: true });
+    await writeFile(join(w.json.path, "motor_summary.py"), "print('kW')\n");
+    await writeFile(join(w.json.path, "scratch", "debug.py"), "print(2)\n");
+    await writeFile(join(w.json.path, "node_modules", "x", "index.js"), "module.exports = 1;\n");
+    await symlink("/etc/passwd", join(w.json.path, "passwd"));
+    const [me] = await db.select({ id: user.id }).from(user).where(eq(user.email, "owner@acme.test"));
+    const [t] = await db.insert(workTask).values({ workspaceId, userId: me!.id, title: "Write motor_summary.py", codeWorkspaceId: w.json.id, status: "completed" }).returning();
+    // In the task list (the sidebar's), marked with its Code workspace; Work AI tasks aren't.
+    const list = (await call("GET", `/api/work/tasks?workspaceId=${workspaceId}`)).json as { id: string; codeWorkspaceId: string | null; codeWorkspaceName: string | null }[];
+    expect(list.find((x) => x.id === t!.id)).toMatchObject({ codeWorkspaceId: w.json.id, codeWorkspaceName: "Motor tools" });
+    expect(list.find((x) => x.id === taskId)).toMatchObject({ codeWorkspaceId: null, codeWorkspaceName: null });
+    expect((await call("GET", `/api/work/tasks/${t!.id}`)).json.code).toEqual({ id: w.json.id, name: "Motor tools" });
+    expect((await call("GET", `/api/work/tasks/${taskId}`)).json.code).toBeNull();
+    // Files: the workspace's, dependencies left out, scratch last; nothing outside it (a link out isn't listed or read).
+    const files = (await call("GET", `/api/work/tasks/${t!.id}/files`)).json.files.map((f: { path: string }) => f.path);
+    expect(files).toEqual(["motor_summary.py", "scratch/debug.py"]);
+    expect((await call("GET", `/api/work/tasks/${t!.id}/files/content?path=motor_summary.py`)).body).toBe("print('kW')\n");
+    expect((await call("GET", `/api/work/tasks/${t!.id}/files/content?path=passwd`)).status).toBe(404);
+    expect((await call("GET", `/api/work/tasks/${t!.id}/files/content?path=../../etc/passwd`)).status).toBe(404);
+    // Read only here: files go in through the editor.
+    const b = "----aatmiq-code";
+    const payload = `--${b}\r\nContent-Disposition: form-data; name="file"; filename="added.txt"\r\nContent-Type: text/plain\r\n\r\nx\r\n--${b}--\r\n`;
+    const up = await app.inject({ method: "POST", url: `/api/work/tasks/${t!.id}/files`, headers: { origin: APP_URL, cookie: owner.cookie, "content-type": `multipart/form-data; boundary=${b}` }, payload });
+    expect(up.statusCode).toBe(400);
+    expect(up.json().error).toContain("Code workspace");
+  });
 
   it("survives binary command output (an image printed to the terminal)", async () => {
     const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: head -c 3000 /bin/ls; printf 'tail\\0end'" });

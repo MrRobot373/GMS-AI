@@ -178,6 +178,28 @@ await step("Panel", "Steps open their file in the editor", async () => {
   await ide().locator(".view-lines", { hasText: "Billing notes" }).waitFor();
 });
 
+await step("Panel", "The task is in Work AI's list marked Code; its page lists the workspace's files and says where it works", async () => {
+  await page.goto(`${APP}/app/work`);
+  const row = page.getByTestId("task-row").filter({ hasText: "write notes.md" });
+  await row.getByTestId("task-code-mark").filter({ hasText: "Billing service" }).waitFor();
+  await row.click();
+  await page.waitForURL(/\/app\/work\/[\w-]+$/);
+  await page.locator("aside").getByTestId("task-code-mark").first().waitFor();
+  await page.getByTestId("task-footer").getByText("Works in your Code workspace Billing service.").waitFor();
+  await page.getByTestId("files-toggle").click();
+  await page.getByTestId("files-code-workspace").filter({ hasText: "Billing service" }).waitFor();
+  await page.getByTestId("files").getByText("notes.md").waitFor();
+});
+await step("Code", "The IDE follows the browser's light or dark mode", async () => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto(`${APP}/app/code`);
+  await page.getByTestId("code-workspace").filter({ hasText: "Billing service" }).click();
+  await ide().locator(".monaco-workbench.vs").waitFor({ timeout: 40000 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await ide().locator(".monaco-workbench.vs-dark").waitFor();
+  await page.emulateMedia({ colorScheme: "light" });
+});
+
 /* ═════════════ Git ═════════════ */
 await step("Git", "Clone a repository into a new workspace and open it", async () => {
   await page.goto(`${APP}/app/code`);

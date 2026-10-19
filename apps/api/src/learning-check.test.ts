@@ -278,7 +278,7 @@ d("checked lessons", () => {
     const research = web.searches.filter((s) => s.stage === "researching").map((s) => s.q);
     expect(research).toEqual(["Current resistor basics", "Resistor basics Voltage current resistance", "Current resistor worked example"]);
     expect(web.pages.sort()).toEqual(["docs.example.org/r1", "docs.example.org/r2", "docs.example.org/r3"]);
-    expect(writer.user).toContain("<sources>\n[1] Ohm's law explained (docs.example.org)\nPage /r1\nText of /r1");
+    expect(writer.user).toContain("<sources>\n[1] Ohm's law explained (docs.example.org)\n# Page /r1\nText of /r1");
     expect(writer.user).toContain("[3] Inner notes (inner.example.org)\nSnippet for Inner notes");
     expect(writer.system).toMatch(/Don't copy their text/);
     expect(writer.stage).toBe("writing");

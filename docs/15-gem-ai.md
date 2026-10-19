@@ -65,8 +65,10 @@ search* (`services/web-search.ts`):
   to 600. Searches are cached in memory for 10 minutes per provider and query. A link always comes
   from a search result, never from what a model wrote.
 - **Reading pages**: when a result has no page text (SearXNG, Brave, Serper), the server reads the
-  page itself: HTML and plain text, up to 1.5 MB, scripts, styles, navigation and footers dropped,
-  and PDFs (datasheets, application notes, standards) for the text they carry, from their first
+  page itself: HTML and plain text, up to 1.5 MB, its main text only (scripts, styles, navigation,
+  headers, footers, sidebars and forms dropped; `<main>`, the article or the block holding most of
+  the text kept, headings marked `#`, tables as `a | b | c` rows; the same reading as Work AI's
+  `web_fetch`, [06-work-ai.md](06-work-ai.md#reading-web-pages)), and PDFs (datasheets, application notes, standards) for the text they carry, from their first
   pages until there's enough. PDFs are never read with OCR here, even when OCR is on for uploads, so
   a scanned one keeps only its snippet, and so does one over 1.5 MB (its index is at the end). A
   page's 8 seconds cover everything, name lookups included: names are looked up from the DNS
@@ -299,12 +301,29 @@ Every number comes from `packages/calculators`, plain TypeScript with tests, nev
   and are labelled so. Admins can hide beta calculators.
 - **Inputs are validated**: a missing, non-numeric or out-of-range input is an error naming the
   field. A result that isn't a finite number is an error, never a number.
+- **Outside a formula's range is refused, never a number.** A temperature below absolute zero
+  (0 K = −273.15 °C = −459.67 °F) is refused for every temperature input and result, in whatever
+  unit it's typed, and in the unit converter (a quantity's `floor` in `units.ts`, checked after
+  conversion). A formula with a stated validity checks it and names the fields: Dwight's
+  ground-rod formula needs a slender rod, L at least 10 × d.
 - **Keypads and tools**: basic and scientific calculators (Casio-style precedence: `1/2πf` means
   `1/(2πf)`; DEG/RAD/GRAD, memories, variables, constants), unit converter, equation and linear
   system solvers, matrices, vectors, calculus (symbolic derivatives, integrals, limits, Taylor
   series), statistics and distributions, fractions, primes, complex numbers, sequences, number
   bases and bitwise, IEEE 754, subnets, resistor colour codes, molar mass, physical constants,
   loan/EMI, NPV/IRR, dates and times, random numbers.
+  - **Limits** of a smooth expression at a point are exact where substitution or L'Hôpital's rule
+    on symbolic derivatives decides them (the steps are shown), and kept only when the numbers
+    agree. Otherwise they're estimated by approaching the point while tracking rounding error, so
+    cancellation (1 − cos x near 0) is caught, with Richardson extrapolation; only the digits the
+    error bound vouches for are shown.
+  - **Polynomial roots** are polished with Newton's method on the polynomial; a repeated root is
+    found by checking that p, p′, … vanish there and is shown once with its multiplicity (1,
+    triple root). Close but different roots (1 and 1.001) and complex pairs stay apart.
+  - **Decimal to fraction** converts what was typed exactly, with big integers (0.12345678 =
+    6172839/50000000, up to 1000 digits); repeating digits go in brackets (0.1(6) = 1/6). A simpler
+    fraction (0.333333 ≈ 1/3), a largest denominator, or a value like `pi` give an approximation,
+    always labelled with its error.
 - **History and favorites** are each person's own. The server recomputes every result it stores:
   what the browser sends is never trusted.
 
@@ -313,6 +332,9 @@ Every number comes from `packages/calculators`, plain TypeScript with tests, nev
 When a chat message asks for a calculation, the tested function runs and the model is told the
 exact results, to explain and not to change. The answer shows a result card (calculator, inputs,
 outputs, formula version, verified or beta), saved with the message and in the person's history.
+When every input is there but the calculator refuses the values (a rod too thick for Dwight's
+formula, a temperature below absolute zero), the card says why and marks the input, the model is
+told to explain the refusal and not to work out a number of its own, and nothing goes to history.
 
 The calculation is found, in order:
 

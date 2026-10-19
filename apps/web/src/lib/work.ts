@@ -21,6 +21,9 @@ export interface WorkTaskSummary {
   projectId?: string | null;
   projectName?: string | null;
   sharedToProject?: boolean;
+  /** A Code task: the Code workspace it works in. */
+  codeWorkspaceId?: string | null;
+  codeWorkspaceName?: string | null;
   inputTokens: number;
   outputTokens: number;
   createdAt: string;
@@ -44,6 +47,8 @@ export interface WorkTaskDetail {
   ownerName: string | null;
   /** Its project, when the reader can open it. */
   project: { id: string; name: string; color: string; canEdit: boolean } | null;
+  /** A Code task's workspace: its files are the Files panel's, read only here. */
+  code: { id: string; name: string } | null;
 }
 
 export interface PendingApproval {

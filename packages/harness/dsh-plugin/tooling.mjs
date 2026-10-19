@@ -7,7 +7,8 @@
  *                   or a value that isn't a mode) and an empty search `path` (meaning the working
  *                   folder), fixes todo_write items (`task` → `content`, missing or loosely
  *                   spelled `status`), fills in the display-only `description` of bash and helper
- *                   calls, reads a single search query as a list of one, takes chat-template markers
+ *                   calls, reads a single search query or plan step (or a plan written as lines)
+ *                   as a list and a number written as text as a number, takes chat-template markers
  *                   (`<|channel|>`…) out of argument names and values, and drops the stray last
  *                   line (`"""`, `">`, a heredoc's `EOF`) that the way a call was written left in a file
  *  - planReminder:  a short nudge to keep the plan current, after a few steps without updating it
@@ -60,6 +61,9 @@ function isRecord(v) {
 /** Tools whose `description` only labels the call for people; a missing one is made from the call. */
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
 const HELPER_TOOLS = new Set(["subagent", "subagent_fork"]);
+/** Aatmiq's tools' whole-number arguments, which models often send as text ("20000"). */
+const INTEGER_ARGS = { web_fetch: ["offset"], documents_read: ["offset"], documents_search: ["limit"] };
+
 /** File tools take `file_path`; models often call it `path` or `filename`. */
 const FILE_TOOLS = new Set(["read", "write", "edit", "read_image"]);
 const FILE_ALIASES = ["path", "filepath", "filename", "file_name", "file"];
@@ -235,6 +239,10 @@ export function cleanArgs(name, args, mode) {
       delete out.q;
     }
   }
+  for (const key of INTEGER_ARGS[name] ?? []) {
+    const v = out[key];
+    if (typeof v === "string" && /^\s*\d{1,9}\s*$/.test(v)) out = { ...out, [key]: Number(v) };
+  }
   if (FILE_TOOLS.has(name) && out.file_path === undefined) {
     const alias = FILE_ALIASES.find((k) => typeof out[k] === "string" && out[k].trim());
     if (alias) {
@@ -260,12 +268,23 @@ export function cleanArgs(name, args, mode) {
       try {
         todos = JSON.parse(todos); // the list sent as a JSON string
       } catch {
-        /* left for the tool to reject */
+        todos = planLines(todos); // the plan written out, one step a line
       }
     }
+    // One step on its own: a list of one.
+    if (isRecord(todos)) todos = [todos];
     if (Array.isArray(todos)) out = { todos: todos.map(cleanTodo) };
   }
   return out;
+}
+
+/** A plan written as text: a step per line, list markers and checkboxes read (`- [x] Done` is completed). */
+function planLines(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => /^\s*(?:[-*•]|\d+[.)])?\s*(?:\[([ xX])\]\s*)?(.*?)\s*$/.exec(line))
+    .filter((m) => m && m[2])
+    .map((m) => ({ content: m[2], status: m[1] && m[1] !== " " ? "completed" : "pending" }));
 }
 
 /**

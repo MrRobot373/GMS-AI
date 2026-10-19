@@ -308,6 +308,23 @@ describe("algebra", () => {
     }
     expect(distinct([1, -55, 1320, -18150, 157773, -902055, 3416930, -8409500, 12753576, -10628640, 3628800])).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
   });
+  it("keeps a simple root next to a repeated one apart from it", () => {
+    const distinct = (c: number[]) => algebra.polynomialRoots(c).distinct.map((g) => `${algebra.formatComplex(g.root, 9)}${g.multiplicity > 1 ? ` ×${g.multiplicity}` : ""}`);
+    // -3(x + 3)²(x - 3)³(x - 4) lost the root 4: it and one copy of 3 passed as a double root at 3.
+    expect(distinct([-3, 21, 18, -378, 405, 1701, -2916])).toEqual(["-3 ×2", "3 ×3", "4"]);
+    expect(distinct([2, -6, -24, 72, 96, -288, -128, 384])).toEqual(["-2 ×3", "2 ×3", "3"]); // 2(x + 2)³(x - 2)³(x - 3)
+    expect(distinct([-3, 39, -207, 585, -954, 900, -456, 96])).toEqual(["1 ×3", "2 ×3", "4"]); // -3(x - 1)³(x - 2)³(x - 4)
+    // Every product of (x - r)^m for r in -2, 0, 1, 3 and m up to 3 (degree 3 to 7), times -3.
+    const fromRoots = (rs: number[]) => rs.reduce<number[]>((p, r) => algebra.polyMul(p, [1, -r]), [1]);
+    const roots = [-2, 0, 1, 3];
+    for (let code = 0; code < 4 ** roots.length; code++) {
+      const ms = roots.map((_, k) => Math.floor(code / 4 ** k) % 4);
+      const rs = roots.flatMap((r, k) => Array<number>(ms[k]!).fill(r));
+      if (rs.length < 3 || rs.length > 7) continue;
+      const want = roots.flatMap((r, k) => (ms[k] ? [`${r}${ms[k]! > 1 ? ` ×${ms[k]}` : ""}`] : []));
+      expect(distinct(fromRoots(rs).map((v) => -3 * v)), `-3·∏(x - r) for ${rs}`).toEqual(want);
+    }
+  });
   it("divides polynomials", () => {
     expect(algebra.polyDivide([1, -3, 2], [1, -1])).toEqual({ quotient: [1, -2], remainder: [0] });
     expect(algebra.polyDivide([1, 0, 1], [1, 1])).toEqual({ quotient: [1, -1], remainder: [2] });

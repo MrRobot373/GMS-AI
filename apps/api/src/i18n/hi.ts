@@ -175,6 +175,7 @@ export const HI: Record<string, string> = {
   "The model sent back an empty answer, so nothing was done. Send the task again, or pick another model.": "मॉडल ने खाली जवाब भेजा, इसलिए कुछ नहीं हुआ। टास्क फिर से भेजें, या कोई दूसरा मॉडल चुनें।",
   "Pick a file": "एक फ़ाइल चुनें",
   "File not found": "फ़ाइल नहीं मिली",
+  "This task works in a Code workspace: add files there, in the editor.": "यह टास्क कोड वर्कस्पेस में काम करता है: फ़ाइलें वहीं, एडिटर में जोड़ें।",
   "Only tasks in a project can be shared to it.": "सिर्फ़ प्रोजेक्ट के टास्क ही उसमें शेयर किए जा सकते हैं।",
   "This request was already approved.": "यह अनुरोध पहले ही मंज़ूर हो चुका है।",
   "This request was already declined.": "यह अनुरोध पहले ही अस्वीकार हो चुका है।",

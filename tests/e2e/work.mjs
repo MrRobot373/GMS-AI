@@ -160,6 +160,20 @@ await step("Approvals", "Approve from the Work home inbox; the file is deleted",
   expect((await page.getByTestId("files").getByText("sales.csv").count()) === 0, "sales.csv still listed");
 });
 
+await step("Tasks", "Steps say what happened: a failed command shows its exit code, a call that couldn't run says so; answers keep their line breaks", page, async () => {
+  await send(page, "run: echo half-done; exit 3");
+  await page.getByTestId("step-failed").filter({ hasText: "exit code 3" }).waitFor();
+  await waitStatus(page, "completed");
+  await send(page, 'use write {"content":"no file name"}');
+  await page.getByTestId("step-not-run").filter({ hasText: 'Not run: missing required property "file_path"' }).waitFor();
+  await waitStatus(page, "completed");
+  await send(page, "lines: Total: 42 kW\nFiles: report.md");
+  const answer = page.getByTestId("task-answer").filter({ hasText: "Files: report.md" });
+  await answer.waitFor();
+  expect(/42 kW<br>/.test(await answer.innerHTML()), "the line break in the answer was joined");
+  await waitStatus(page, "completed");
+});
+
 /* ═════════════ Web search, files in, stop ═════════════ */
 await step("Search", "Private web search through SearXNG", page, async () => {
   await send(page, "search: travel policy");

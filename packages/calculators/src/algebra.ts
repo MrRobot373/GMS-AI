@@ -239,7 +239,11 @@ export function polynomialRoots(coefficients: number[]): PolyRoots {
       const members = near.slice(0, m);
       const mean = cx(members.reduce((s, x) => s + x.z.re, 0) / m, members.reduce((s, x) => s + x.z.im, 0) / m);
       const z = multipleRootNear(c, mean, m, radius);
-      if (z) {
+      if (!z) continue;
+      // The members must be the m roots nearest z, the copies rounding scattered about it, not a
+      // different root nearby: in (x + 3)²(x - 3)³(x - 4), 4 and one copy of 3 aren't a double root at 3.
+      const farthest = Math.max(...members.map((x) => cabs(csub(x.z, z))));
+      if (left.every((x) => members.some((y) => y.i === x.i) || cabs(csub(x.z, z)) >= farthest)) {
         group = { root: z, members: members.map((x) => x.i) };
         break;
       }

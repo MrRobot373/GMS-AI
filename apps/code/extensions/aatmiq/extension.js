@@ -10,6 +10,7 @@ const vscode = require("vscode");
 const { execFile } = require("node:child_process");
 const { randomBytes } = require("node:crypto");
 const path = require("node:path");
+const { keepChosenTheme } = require("./theme");
 
 const CONTROL = (process.env.AATMIQ_CONTROL_URL || "").replace(/\/$/, "");
 const TOKEN = process.env.AATMIQ_CODE_TOKEN || "";
@@ -258,6 +259,8 @@ function activate(ctx) {
   );
   // The secondary side bar otherwise opens on the built-in (disabled) Chat view: show ours.
   setTimeout(() => void vscode.commands.executeCommand("workbench.view.extension.aatmiq"), 300);
+  // The IDE follows the browser's light or dark mode, unless the person picked a theme before.
+  void keepChosenTheme(vscode.workspace.getConfiguration()).catch(() => undefined);
 }
 
 module.exports = { activate, deactivate() {} };

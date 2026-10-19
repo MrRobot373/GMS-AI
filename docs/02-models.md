@@ -51,8 +51,13 @@ Two more rules keep it steady:
 
 - A short follow-up ("and for Pune?", "in Python?") keeps the level of the answer before it, so the
   conversation doesn't drop to a weaker model halfway.
-- Work AI and Code start at the standard tier: agents need reliable tool use, which small models
-  don't have. A task keeps the model (and thinking) Auto chose when it started.
+- Work AI and Code start at the standard tier, on purpose: agents need reliable tool use, which
+  small models don't have. The task's reason says so ("agent tasks use at least the standard
+  tier"). Agent tasks that research the web ("search the web", "compare … sources", "latest",
+  "today's price", "current edition", "sold today") or that are long jobs with several parts (50+
+  words, four or more different actions, and several files, quantities, code or tests) count as
+  hard: the advanced model with thinking on. In chat the same words don't count; there, its own web
+  search decides. A task keeps the model (and thinking) Auto chose when it started.
 
 ### How well it works
 

@@ -50,8 +50,8 @@ const textOf = (content: unknown) =>
         .join("")
     : "";
 
-/** A shell command's ending marker (DSH's bash tool): the exit code, or how it was stopped. */
-const SHELL_END = /\n?\[(?:exit code: (-?\d+)|killed by signal: [^\]\n]+|timed out after \d+ms)\]\s*$/;
+/** A shell command's ending marker (DSH's bash tool, on a line of its own): the exit code, or how it was stopped. */
+const SHELL_END = /(?:^|\n)\[(?:exit code: (-?\d+)|killed by signal: [^\]\n]+|timed out after \d+ms)\]\s*$/;
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
 
 /**

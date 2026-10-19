@@ -185,9 +185,15 @@ describe("risk policy", () => {
       "NODE_TLS_REJECT_UNAUTHORIZED=0 node fetch.js",
       "git -c http.sslVerify=false clone https://x.test/r.git",
       "npm config set strict-ssl false",
+      "PIP_TRUSTED_HOST=pypi.org pip install scipy",
+      "pip config set global.trusted-host pypi.org",
+      "python3 -c \"import ssl, urllib.request; ssl._create_default_https_context = ssl._create_unverified_context; urllib.request.urlopen('https://x.test')\"",
+      "node -e \"require('https').get({host: 'x.test', rejectUnauthorized: false})\"",
+      "aws s3 ls --no-verify-ssl",
+      "conda config --set ssl_verify false",
     ])
       expect(classifyRisk({ name: "bash", args: { command } }, open), command).toBe("Turns off certificate checks");
-    for (const command of ["curl -sSL https://x.test", "curl -o k.txt https://x.test", "python3 check.py --verify", "ls -k"]) expect(classifyRisk({ name: "bash", args: { command } }, open), command).toBeNull();
+    for (const command of ["curl -sSL https://x.test", "curl -o k.txt https://x.test", "python3 check.py --verify", "ls -k", "conda config --set ssl_verify true", "pip install --cert /etc/ssl/certs/ca.pem scipy"]) expect(classifyRisk({ name: "bash", args: { command } }, open), command).toBeNull();
   });
   it("browser: reading never asks; a confirmed form submission does; under always every action does", () => {
     expect(classifyRisk({ name: "browser_open", args: { url: "https://x.test" } }, p)).toBeNull();
@@ -262,7 +268,7 @@ describe("tool-call cleanup", () => {
     // No command at all is still the tool's to reject.
     expect(cleanArgs("bash", { description: "x" }, mode)).toEqual({ description: "x" });
   });
-  it("reads one search query as a list of one, also as `query` or a JSON list", () => {
+  it("reads one search query as a list of one, also as `query` or a JSON list; a number sent as text is a number", () => {
     const mode = "workspace-write";
     expect(cleanArgs("web_search", { queries: "IE3 efficiency 7.5 kW" }, mode)).toEqual({ queries: ["IE3 efficiency 7.5 kW"] });
     expect(cleanArgs("web_search", { query: "LiFePO4 48 V" }, mode)).toEqual({ queries: ["LiFePO4 48 V"] });
@@ -270,6 +276,9 @@ describe("tool-call cleanup", () => {
     expect(cleanArgs("web_search", { queries: "[draft] notes" }, mode)).toEqual({ queries: ["[draft] notes"] });
     const ok = { queries: ["x"] };
     expect(cleanArgs("web_search", ok, mode)).toBe(ok);
+    expect(cleanArgs("web_fetch", { url: "https://x.test", offset: "20000" }, mode)).toEqual({ url: "https://x.test", offset: 20000 });
+    expect(cleanArgs("documents_search", { query: "travel", limit: " 4 " }, mode)).toEqual({ query: "travel", limit: 4 });
+    expect(cleanArgs("web_fetch", { url: "https://x.test", offset: "next" }, mode)).toEqual({ url: "https://x.test", offset: "next" });
     expect(cleanArgs("read", { path: "notes.md" }, mode)).toEqual({ file_path: "notes.md" });
     expect(cleanArgs("write", { filename: "a.txt", content: "x" }, mode)).toEqual({ file_path: "a.txt", content: "x" });
   });
@@ -320,6 +329,19 @@ describe("tool-call cleanup", () => {
     });
     expect(cleanArgs("todo_write", { todos: JSON.stringify([{ content: "A", status: "pending" }]) }, "workspace-write")).toEqual({ todos: [{ content: "A", status: "pending" }] });
   });
+  it("reads one plan step, or a plan written as lines, as a list", () => {
+    const mode = "workspace-write";
+    expect(cleanArgs("todo_write", { todos: "Write the report" }, mode)).toEqual({ todos: [{ content: "Write the report", status: "pending" }] });
+    expect(cleanArgs("todo_write", { todos: { task: "Check the totals", status: "done" } }, mode)).toEqual({ todos: [{ content: "Check the totals", status: "completed" }] });
+    expect(cleanArgs("todo_write", { todos: "- [x] Read the CSV\n- [ ] Chart sales\n\n3. Write report.md\n[draft] notes" }, mode)).toEqual({
+      todos: [
+        { content: "Read the CSV", status: "completed" },
+        { content: "Chart sales", status: "pending" },
+        { content: "Write report.md", status: "pending" },
+        { content: "[draft] notes", status: "pending" },
+      ],
+    });
+  });
   it("reminds after a few steps without a plan update, and only while steps are open", () => {
     const todos = [
       { content: "Write CSS", status: "completed" },
@@ -356,6 +378,9 @@ describe("step results", () => {
     expect(shellFailure("ok")).toBeNull();
     expect(shellFailure("partial\n[killed by signal: SIGKILL]")).toEqual({ exitCode: null });
     expect(shellFailure("partial\n[timed out after 120000ms]")).toEqual({ exitCode: null });
+    expect(shellFailure("[exit code: 2]")).toEqual({ exitCode: 2 });
+    // Only DSH's own marker line counts, not text that ends the same way.
+    expect(shellFailure("echo said done[exit code: 1]")).toBeNull();
     const calls = new Map<string, string>();
     mapEvent({ type: "tool/call", data: { callId: "c1", name: "bash", args: { command: "python3 x.py" } } }, calls);
     const r = mapEvent({ type: "tool/result", data: { message: { toolCallId: "c1", content: [{ type: "text", text: "[stderr] No module named numpy\n[exit code: 1]" }], isError: false } } }, calls);

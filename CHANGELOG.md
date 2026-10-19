@@ -57,9 +57,46 @@ without one.
     the ratings, the most disliked and most liked, and blocks or unblocks a video for everyone.
     Ratings are in the data export. Migration `0026_video_feedback.sql` adds `video_feedback` and
     `video_block`.
+- **Work AI and Code, from a 14-task test:**
+  - Web research states only what it read: `web_fetch` (now Aatmiq's) gives a page's main text
+    without menus, headers and footers, tables as rows, long pages in parts with the offset to
+    continue, and the text of PDFs, at public addresses only. The agent is told that figures, dates,
+    prices and specifications come only from pages it read in the task, to cite only pages that say
+    what it cites them for, and to say so when a page couldn't be read instead of writing an
+    estimate as a fact. It closes with the key results, the files it made and what's unresolved.
+  - Calls that slipped on a technicality run: a missing `description` on a command, one search
+    query or plan step as text, `path` for `file_path`, chat-template markers in an argument, a
+    stray `"""`, `EOF` or `">` left at the end of a written file.
+  - Honest steps: a command that exits non-zero is a failed step with its exit code; a call that
+    never ran says "Not run" and why.
+  - Tasks no longer get certificate variables pointing at files they can't read (a readable copy, or
+    the system's certificates); turning certificate checks off (`pip --trusted-host`, `curl -k`,
+    `verify=False`…) asks first. The image adds numpy and scipy.
+  - Auto: agent tasks say why they start at the standard tier; web research and long many-part jobs
+    get the advanced model with thinking on.
+  - Results stay in the task folder (`documents_save` only when asked); scratch work goes in
+    `scratch/`, listed last.
+  - Code tasks are in Work AI's task list, marked Code, with the workspace's files in their Files
+    panel; their page no longer says they run in a private folder. Answers keep single line breaks.
+    The IDE follows the browser's light or dark mode unless you picked a theme.
 - Chat renders maths (KaTeX), whichever way the model writes it ($…$, \(…\), \[…\]).
 - **Fixed:** `nPr` and `nCr` of huge numbers (`1e15 nPr 1e15`) answer *too large* at once instead
   of counting for hours.
+- **Fixed:** calculator answers that were wrong or shouldn't have been given:
+  - Limits of 0/0 forms are worked out with L'Hôpital's rule on symbolic derivatives and checked
+    against the numbers: (1 − cos x)/x² at 0 is 0.5, not 0. A numerical estimate shows only the
+    digits it can vouch for.
+  - The equation solver shows a repeated root once with its multiplicity: (x − 1)³ has the triple
+    root 1, not 0.999894 − 0.00000977i and two more. Close but different roots stay apart.
+  - *Decimal to fraction* converts what was typed exactly (0.12345678 is 6172839/50000000, not
+    10/81); a simpler fraction is offered only as an approximation, with its error.
+  - Ground-rod resistance uses Dwight's formula with the rod's radius, as published: results were
+    about 10 % low (formula version 2). A rod that isn't slender (L under 10 × d) is refused
+    instead of giving a negative resistance.
+  - A temperature below absolute zero is refused for every calculator input and result and in the
+    unit converter, in any unit (heat radiation at −300 °C gave a number).
+  - In chat, a calculation the calculator refuses shows why, and the model is told not to work out
+    a number of its own.
 - **Fixed:** a Work AI task whose model sent back nothing (or only its thinking) showed as done; the
   model is now asked again, and a task that still gets nothing says so and fails.
 - **Fixed:** the chat composer and the custom-instructions hint use your organization's product name.

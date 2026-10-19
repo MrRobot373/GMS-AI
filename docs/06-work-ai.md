@@ -14,9 +14,10 @@ beyond that package.
 | Where | What |
 |---|---|
 | **Work AI** (sidebar) | Describe a task, optionally add files and pick a model, or leave it on **Auto**: it picks the standard model, or the advanced one with thinking on for hard tasks, and the task keeps it ([how](02-models.md#auto)). Starter prompts help with common jobs. |
-| Task page | The live timeline: your messages, the agent's text as it writes, each step (command, file, search, browser action, connector call) with its input and output, approvals, errors. |
+| Task page | The live timeline: your messages, the agent's text as it writes, each step (command, file, search, browser action, connector call) with its input and output, approvals, errors. A command that exits non-zero shows as failed with its exit code; a call the agent got wrong and that never ran says **Not run** and why. The agent ends with the key results, the files it made and anything unresolved (pages it couldn't read, approximations, parts it didn't do). |
 | Progress panel | The agent's plan with items checked off, status, steps, tokens and timing. |
-| Files panel | The task folder: preview text and images, download anything, add files for the agent. |
+| Files panel | The task folder: preview text and images, download anything, add files for the agent. Work the agent only needed along the way (checking scripts, temporary data) goes in `scratch/`, listed last. Results stay here; the agent saves to your Documents only when you ask it to. |
+| Code tasks | Tasks started from the Aatmiq panel in Aatmiq Code are in the task list too, marked **Code**. Their Files panel lists the Code workspace's files (read only here: change them in the editor). |
 | Approvals | Risky steps stop and wait. Approve or reject inline, from the Work AI home ("Waiting for you"), or from the notification. The sidebar shows a badge while anything waits. |
 | **Scheduled** | A prompt on a schedule (weekdays at 9:00, every Monday, monthly, hourly or any cron) in your time zone. Each run is a new task. "Run now" for a test. |
 | **Skills** | Reusable instructions ("how we write the weekly report"). The agent reads each skill's description and follows it when it fits. Personal skills are yours; organization skills are shared by admins; the **Library** has 59 built-in skills for software, data, documents and business work ([08-skills.md](08-skills.md)). |
@@ -36,7 +37,9 @@ Chat (section `work` in usage reports).
 
 - **Approvals**: *before risky actions* (default), *before every change*, or *never*.
   "Risky" means deleting or moving files, system-level commands (`sudo`, `kill`, `chmod`…),
-  `git push`/`reset --hard`, sending mail, and (unless network use is allowed) commands that use the
+  `git push`/`reset --hard`, sending mail, commands that switch certificate checks off
+  (`pip --trusted-host`, `curl -k`/`--insecure`, `wget --no-check-certificate`, `verify=False`,
+  `NODE_TLS_REJECT_UNAUTHORIZED=0`…), and (unless network use is allowed) commands that use the
   network or install packages, plus connector tools that match the connector's rule.
 - **Web search**: the URL of your SearXNG server, with a test button. Empty turns web search off.
   Searches go only to that server (D27).
@@ -122,13 +125,35 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   cut and retried. A failure the runtime then retries past doesn't fail the task.
 - **Our DSH plugin** (packages/harness/dsh-plugin/aatmiq.mjs) adds the approval policy
   (`tools/pre-execute` → *ask*), the approval answerer (a person decides in Aatmiq; long-poll; any
-  failure counts as *no*), and the `aatmiq` web search provider. It also smooths over common
-  tool-call slips before a tool checks its arguments (`tools/execute`, `dsh-plugin/tooling.mjs`):
-  a `sandbox_permissions` that asks for nothing (the call's own mode, or a value that isn't a mode)
-  is dropped, while a real request to widen still goes to a person; an empty `path` on `glob`/`grep`
-  means the working folder; `todo_write` items get `task`
-  (or `title`, `text`…) read as `content`, a missing status as `pending`, and loose statuses
-  (`done`, `in-progress`) normalized.
+  failure counts as *no*), the `aatmiq` web search provider and Aatmiq's `web_fetch`. It also
+  smooths over common tool-call slips before a tool checks its arguments (`tools/execute`,
+  `dsh-plugin/tooling.mjs`), and the approval policy judges the call as it will run:
+  - a `sandbox_permissions` that asks for nothing (the call's own mode, or a value that isn't a
+    mode) is dropped, while a real request to widen still goes to a person; an empty `path` on
+    `glob`/`grep` means the working folder;
+  - a missing `description` on `bash`, `pwsh` and helper calls (a label for people) is made from the
+    command or the request; `path`/`filename` on the file tools is read as `file_path`;
+  - one search query or plan step sent as text is a list of one (a plan written as lines, `- [x]`
+    checkboxes included, is a list), and a number sent as text (`offset: "20000"`) is a number;
+    `todo_write` items get `task` (or `title`, `text`…) read as
+    `content`, a missing status as `pending`, and loose statuses (`done`, `in-progress`) normalized;
+  - chat-template markers that leak into a call (`<|channel|>`, `<|call|>`, `<｜tool▁call▁end｜>`…)
+    are taken out of argument names and values (a command loses everything from the first one; a
+    file only trailing ones);
+  - a file written with a stray last line from the way the call was made (`"""` that closes nothing,
+    a heredoc's `EOF` with no heredoc, `">` outside markup) loses that line; a file name written after
+    such a `"""` instead of in `file_path` is used as the name.
+- **What the agent is told.** Besides the task, the agent's instructions say: on the web, every
+  figure, date, price or specification must come from page text it read with `web_fetch` in this
+  task (search results are leads, not sources), it cites a page only if it read it and the page says
+  what it's cited for, and when a page can't be read or lacks the figure it says so instead of
+  writing an estimate as if it were published; work needed only along the way goes in `scratch/`;
+  `documents_save` only when the person asks; and the answer closes with the key results, the files
+  made and anything unresolved.
+- **Honest steps.** A shell command that exits non-zero is a failed step (`isError`, with its
+  `exitCode`), as is one stopped by a signal or its timeout. A call the runtime refused before it ran
+  (arguments it couldn't take, an unknown tool) is stored with `notRun` and its reason and shows as
+  "Not run: …".
 - **The plan stays true.** After 3 steps without a plan update (then every 4), the agent gets a short
   reminder appended to the tool result; it's stripped from what people see. When a turn ends
   normally, steps the agent left open are ticked off, so a finished task never shows "0 of 9".
@@ -153,7 +178,7 @@ Every task gets these (tested one by one and in chains in `apps/api/src/tools.te
 | `read`, `write`, `edit`, `glob`, `grep` | Files in the task folder. |
 | `read_image` | Look at an image or screenshot (models that see images; others are told plainly). |
 | `todo_write` | The plan in the progress panel. |
-| `web_search`, `web_fetch` | Private web search through Aatmiq's SearXNG; fetch a public page (private and internal addresses refused). |
+| `web_search`, `web_fetch` | Private web search through Aatmiq's SearXNG; read a public page or PDF ([Reading web pages](#reading-web-pages)). |
 | `browser_open`, `browser_click`, `browser_type`, `browser_select`, `browser_back`, `browser_read`, `browser_screenshot` | A real browser for pages that need JavaScript, clicks or forms ([Browser](#browser)). |
 | `documents_search`, `documents_read`, `documents_save` | The organization's documents in Aatmiq ([Documents](#documents)). |
 | `skill` | Load a skill (organization, personal or library) and follow it. |
@@ -187,6 +212,13 @@ Limits, to know when deploying:
   world-readable.
 - **Resources**: per-task CPU, memory and process limits only in container mode; otherwise only the
   API container's own.
+- **Certificates**: the deployment's proxy settings pass to tasks as they are; certificate bundle
+  variables (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `NODE_EXTRA_CA_CERTS`, `PIP_CERT`,
+  `CURL_CA_BUNDLE`) only in a form the task's user can read: a file it can't read (under `/root`, say)
+  is copied into the task's own home and the variable names the copy, and a folder (`SSL_CERT_DIR`)
+  it can't read is left out, so tools fall back to the system's certificates instead of failing every
+  download. Aatmiq Code's IDE gets the same treatment. Task containers get none of them (the egress
+  proxy doesn't inspect TLS).
 - **Connectors**: the agent runtime never holds connector credentials. Its MCP traffic goes to
   Aatmiq's proxy (`/api/internal/work/mcp/:name`, per-task token), which adds the person's own OAuth
   token (refreshing it) or the shared headers and forwards the request. OAuth connectors are only
@@ -218,6 +250,26 @@ agent.
   under *before every change* every page action asks; *never* asks nothing.
 - The Docker image includes Chromium (about 1 GB more). Elsewhere, set `BROWSER_PATH`; without a
   browser the setting is greyed out and the tools aren't offered.
+
+### Reading web pages
+
+`web_fetch` is Aatmiq's (DSH's own is switched off): the runtime asks `/api/internal/work/fetch`
+with the task token and Aatmiq reads the page (`fetchPage` in `apps/api/src/services/web-search.ts`).
+
+- **Main text**: scripts, styles, navigation, headers, footers, sidebars and forms are dropped;
+  `<main>`, the article that holds the page or the block with the most text is kept, with headings
+  (`## …`), lists and tables as rows (`a | b | c`). A header holding the page's title, and a form
+  wrapping the whole page, are read.
+- **In parts**: 20,000 characters at a time, each ending at a line break; the result says which
+  characters it holds and the `offset` to continue from. Up to 300,000 characters of a page are
+  read (the result says when a page is longer); a page read in the last 10 minutes isn't
+  downloaded again.
+- **PDFs**: their text (datasheets, standards, application notes) without OCR, up to 10 MB and 60
+  pages; a scanned PDF says it has no text. JSON, XML, CSV and Markdown are read as text.
+- **Checks**: public addresses only (every address a name resolves to, the connection made to the
+  checked one, each of up to 3 redirects checked again), 1.5 MB per page, 30 seconds. A task in a
+  container without internet gets none here either. A page that can't be read is a failed step
+  that says why.
 
 ### Documents
 
@@ -287,7 +339,8 @@ whatever honours `HTTPS_PROXY` (other protocols get no network at all).
 ## Running it
 
 **Docker** (deploy/docker-compose.yml): the API image includes the agent runtime and common tools
-(bash, git, curl, jq, Python 3 with pandas, openpyxl and matplotlib). Task folders live in the
+(bash, git, curl, jq, Python 3 with numpy, scipy, pandas, openpyxl, matplotlib, python-docx,
+python-pptx, reportlab, pypdf, lxml and PyYAML). Task folders live in the
 `/data/work` volume. For private web search:
 
 ```bash
@@ -320,12 +373,12 @@ People (cookie session):
 | Method | Path | |
 |---|---|---|
 | GET | `/api/work/info?workspaceId=` | What's on (web search, approval mode, limits) |
-| GET/POST | `/api/work/tasks` | List (`workspaceId`, `q`) / start `{workspaceId, prompt, modelId?, projectId?, start?}` (`modelId: "auto"`: Auto picks; the task gets `routing`). `start: false` creates the task so files can be added first |
-| GET/PATCH/DELETE | `/api/work/tasks/:id` | Task + timeline / rename, pin / delete (folder too) |
+| GET/POST | `/api/work/tasks` | List (`workspaceId`, `q`; Code tasks too, with `codeWorkspaceId` and `codeWorkspaceName`) / start `{workspaceId, prompt, modelId?, projectId?, start?}` (`modelId: "auto"`: Auto picks; the task gets `routing`). `start: false` creates the task so files can be added first |
+| GET/PATCH/DELETE | `/api/work/tasks/:id` | Task + timeline (`code: {id, name}` for a Code task) / rename, pin / delete (folder too; a Code task's workspace stays) |
 | GET | `/api/work/tasks/:id/stream?after=` | SSE: `event` (stored), `delta` (live text), `files`, `ready` |
 | POST | `/api/work/tasks/:id/messages` | Follow-up `{prompt}` |
 | POST | `/api/work/tasks/:id/cancel` | Stop |
-| GET/POST | `/api/work/tasks/:id/files` | List / upload (multipart) |
+| GET/POST | `/api/work/tasks/:id/files` | List (`scratch/` last; a Code task: its workspace's files) / upload (multipart; not into a Code workspace) |
 | GET | `/api/work/tasks/:id/files/content?path=&download=1` | Preview or download (HTML/SVG served as text) |
 | GET | `/api/work/approvals` · POST `/api/work/approvals/:id` | Pending approvals · `{decision: approve\|reject}` (audited) |
 | GET/POST/PATCH/DELETE | `/api/work/skills[/:id]` | Skills (org skills need `org.work.manage`) |
@@ -340,14 +393,19 @@ People: `GET /api/connectors`, `POST /api/connectors/:id/connect` → `{url}`,
 `GET /api/connectors/oauth/client.json` (client metadata document).
 
 Runtime only (task token): `/api/internal/work/llm/v1/chat/completions`, `/approvals`,
-`/approvals/:id?wait=`, `/search`, `/browser`, `/documents/search`, `/documents/:id?offset=`,
-`/documents/save`, `/mcp/:name` (MCP proxy).
+`/approvals/:id?wait=`, `/search`, `/fetch` (`{url, offset?}`: a page's main text, in parts),
+`/browser`, `/documents/search`, `/documents/:id?offset=`, `/documents/save`, `/mcp/:name` (MCP proxy).
 
 ## Tests
 
 - `packages/harness`: the real DSH runtime against a fake control server (commands, approvals,
-  rejection keeps files, confinement, per-task user, web search, browser and documents tools and
-  their approvals).
+  rejection keeps files, confinement, per-task user, web search, `web_fetch` in parts, browser and
+  documents tools and their approvals; calls with a missing label, one query as text, a garbled
+  argument name or a stray last line still run; a command that exits non-zero is a failed step with
+  its exit code, a call that couldn't run is "not run"; certificate commands that need approval;
+  certificate variables only in a form the task's user can read; what the agent is told).
+- `apps/api/src/web-search.test.ts`: page reading: main text of a page full of menus with a spec
+  table, long pages in parts, PDFs, and every address check (private addresses, redirects, names).
 - `apps/api/src/tools.test.ts`: every tool the agent has, alone and in the chains people use, on
   the real runtime: files (write → read → edit → grep → glob → bash), plan and shell, web search and
   fetch (private addresses refused), documents (search → read → write → save, then searchable; only
@@ -361,7 +419,9 @@ Runtime only (task token): `/api/internal/work/llm/v1/chat/completions`, `/appro
   submissions, JavaScript pages, long pages, downloads, screenshots, the private-network rules, the
   corporate proxy, running as the task's user from a deep folder).
 - `apps/api/src/work.test.ts`: the whole flow through the API with the real runtime: metering,
-  follow-ups, approvals, SSE, restart from history, skills, MCP connector with approval, schedules,
+  follow-ups, approvals, SSE, restart from history, web pages read for the agent, exit codes and
+  "not run", `scratch/` listed last, Code tasks (listed, marked, their workspace's files read only),
+  skills, MCP connector with approval, schedules,
   project tasks (instructions, files, sharing, saving results, connector choice, project schedules),
   isolation, cancel.
 - `tests/load/run-team.sh`: 25 people at once for 5 minutes (chat, agent tasks, pages, 5 open
@@ -370,7 +430,7 @@ Runtime only (task token): `/api/internal/work/llm/v1/chat/completions`, `/appro
   folder from inside its container, a read-only system, the network (an allowed internal host through
   the proxy, the database refused, nothing direct, *none* refused even by hand), new limits for the
   next task, and clean-up on stop and after an API restart.
-- `tests/e2e/run-work.sh`: 32 browser checks (task timeline, plan, files, the notification, approvals, search, the
+- `tests/e2e/run-work.sh`: 33 browser checks (task timeline, plan, files, the notification, approvals, exit codes, "not run" and line breaks in answers, search, the
   agent's browser on an internal site before and after the admin allows it, uploads, stop and
   continue, isolation, skills, schedules, connectors, project tasks with a colleague reading a shared
   one, light theme, phone layout).

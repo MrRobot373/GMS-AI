@@ -11,6 +11,7 @@ import remarkMath from "remark-math";
 import { normalizeMath } from "@/components/learning/math-markdown";
 import type { Citation } from "@/lib/types";
 import { CitationChip, linkCitations } from "./citations";
+import { remarkLineBreaks } from "./line-breaks";
 import { useT } from "@/i18n";
 
 function textOf(node: ReactNode): string {
@@ -52,6 +53,7 @@ export const Markdown = memo(function Markdown({
   citations,
   onCite,
   plainLinks,
+  lineBreaks,
 }: {
   content: string;
   citations?: Citation[] | null;
@@ -62,11 +64,13 @@ export const Markdown = memo(function Markdown({
    * sources got the model to put in its address.
    */
   plainLinks?: boolean;
+  /** Keep single line breaks (a Work AI answer); in chat, Markdown's own rule joins them. */
+  lineBreaks?: boolean;
 }) {
   return (
     <div className="prose-chat">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: true }]]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: true }], ...(lineBreaks ? [remarkLineBreaks] : [])]}
         rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore" }], [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={{
           pre: ({ children }) => <>{children}</>,

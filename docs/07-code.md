@@ -43,8 +43,11 @@ added from the terminal (`~/.ssh`), since each person's home persists.
   style patch set:
   - product rebrand ("Aatmiq Code", data folders, Open VSX gallery, no telemetry), including the copies
     inlined into the bundles
-  - workbench defaults (Aatmiq Dark/Light theme, AI chat features off, no walkthrough) passed as
-    workbench options, so they apply before any extension and people can still change them
+  - workbench defaults (the theme follows the browser's light or dark mode: Aatmiq Light or Aatmiq
+    Dark; AI chat features off, no walkthrough) passed as workbench options, so they apply before any
+    extension and people can still change them. Choosing a theme while it follows the browser sets the
+    one for that mode; someone who picked a theme before this default keeps it (the panel extension
+    turns detection off for them, `extensions/aatmiq/theme.js`)
   - webviews served by Aatmiq itself instead of Microsoft's `vscode-cdn.net` (webview endpoint,
     same-origin frame check with its CSP hash recomputed)
   - Aatmiq icons and watermark, built-in `aatmiq-theme` and `aatmiq` (panel) extensions
@@ -63,8 +66,11 @@ added from the terminal (`~/.ssh`), since each person's home persists.
   served straight from the build, with long-lived caching.
 - **The Aatmiq panel** calls `/api/internal/code` with the IDE's per-person token. Its tasks are Work AI
   tasks with a `code_workspace_id`: the runtime runs in the workspace folder, as the person, with
-  commands confined to that folder, Code-section models and a coding brief. They don't appear in the
-  Work AI task list, but their approvals do appear in Work AI's inbox and notifications.
+  commands confined to that folder, Code-section models and a coding brief. They appear in the Work
+  AI task list marked **Code** (with the workspace's name), and their approvals in Work AI's inbox and
+  notifications. On their task page the **Files** panel lists the Code workspace's files (preview and
+  download, the same checks as a task folder; dependencies and `.git` left out); files are added and
+  changed in the editor, not there.
 
 ## Security notes
 
@@ -174,7 +180,9 @@ IDE only (per-person token): `/api/internal/code/context`, `/tasks`, `/tasks/:id
   allowed and location/camera refused, the IDE in its own window with the panel and a terminal,
   `Ctrl+N`/`Ctrl+W` reaching the IDE, remembering the server and sign-in, Switch Server, the offline
   page.
-- `tests/e2e/code.mjs` (13 checks, run with `E2E_SCRIPT=tests/e2e/code.mjs tests/e2e/run-work.sh`):
+- `tests/e2e/code.mjs` (15 checks, run with `E2E_SCRIPT=tests/e2e/code.mjs tests/e2e/run-work.sh`):
   the IDE inside Aatmiq, terminal identity, the panel creating a file, an approval-gated delete, steps
-  opening files, cloning over HTTP, diffs of agent changes, a failed clone, rename/delete, signed-out
-  access refused.
+  opening files, the task in Work AI's list (marked Code, its Files the workspace's), the IDE
+  following the browser's light or dark mode, cloning over HTTP, diffs of agent changes, a failed
+  clone, rename/delete, signed-out access refused. `apps/code/scripts/theme.test.mjs`: the theme
+  defaults, and a theme the person chose before staying theirs.

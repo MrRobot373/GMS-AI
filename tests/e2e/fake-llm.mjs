@@ -161,6 +161,8 @@ async function agentReply(j, res) {
     const out = textOf(last.content).replace(/\s+/g, " ").trim().slice(0, 300);
     return say(`Done. The tool returned: ${out}`);
   }
+  // "lines: …" answers with exactly that text, line breaks and all.
+  if ((m0 = /^lines: (.+)/s.exec(ask))) return say(m0[1]);
   let call = null;
   let m;
   if ((m = /run: (.+?)(?:\n\n|$)/s.exec(ask)) && has("bash")) call = ["bash", { description: "Run the requested command", command: m[1].trim() }];

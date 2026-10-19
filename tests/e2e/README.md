@@ -32,7 +32,7 @@ SMOKE_ONLY=chat,knowledge …   # a subset: chat, learning, knowledge, work, cod
 ## Work AI
 
 `run-work.sh` starts the fake model (which also plays SearXNG and an MCP server) on :11500, a fresh
-API on :4000 and the built web app on :3300, then runs `work.mjs` (32 checks) against the real agent
+API on :4000 and the built web app on :3300, then runs `work.mjs` (33 checks) against the real agent
 runtime: a multi-step task with a plan and files, the notification that opens it, approvals (reject, approve from the inbox), web
 search, the agent's browser (an internal sign-up page refused, then allowed by the admin, with the
 form submission approved), uploads, stop and continue, isolation (own Unix user, no writes outside
@@ -47,7 +47,7 @@ docker build -f deploy/Dockerfile.api -t aatmiq-api . && API_IMAGE=aatmiq-api te
 
 ## Code
 
-`code.mjs` (13 checks) runs on the same stack as Work AI and needs the IDE build
+`code.mjs` (15 checks) runs on the same stack as Work AI and needs the IDE build
 (`pnpm --filter @aatmiq/code build`): workspaces, the IDE inside Aatmiq, terminal identity, the
 Aatmiq panel (file creation, approval-gated delete, opening files, diffs), cloning from a local HTTP
 Git server, and access rules.

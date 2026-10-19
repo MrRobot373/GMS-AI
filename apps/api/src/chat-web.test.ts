@@ -225,7 +225,7 @@ d("chat web search", () => {
     // The fast model wrote the queries (the repeated one only once); the standard one answered.
     expect(r.writer?.model).toBe("fast-1");
     expect(web.searches).toEqual(["ohm's law", "resistor colour code"]);
-    expect(r.answer.system).toContain("[1] Ohm's law (docs.example.org)\nPage /a1\nText of /a1");
+    expect(r.answer.system).toContain("[1] Ohm's law (docs.example.org)\n# Page /a1\nText of /a1");
     expect(r.answer.system).toMatch(/Never write URLs/);
     // The private page wasn't read: only its snippet went to the model.
     expect(web.pages).not.toContain("inner.example.org/secret");

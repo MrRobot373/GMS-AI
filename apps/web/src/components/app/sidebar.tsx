@@ -390,19 +390,26 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
           <div className="mb-3">
             <SectionLabel>{t("Tasks")}</SectionLabel>
             <div className="space-y-px">
-              {(workTasks.data ?? []).slice(0, 30).map((t) => {
-                const active = pathname === `/app/work/${t.id}`;
+              {(workTasks.data ?? []).slice(0, 30).map((task) => {
+                const active = pathname === `/app/work/${task.id}`;
                 return (
                   <Link
-                    key={t.id}
-                    href={`/app/work/${t.id}`}
+                    key={task.id}
+                    href={`/app/work/${task.id}`}
                     className={cn(
                       "flex h-8 items-center gap-2 rounded-md px-2 text-[13px] transition-colors",
                       active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2/70 hover:text-fg",
                     )}
                   >
-                    <StatusIcon status={t.status} className="size-3" />
-                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                    <StatusIcon status={task.status} className="size-3" />
+                    <span className="min-w-0 flex-1 truncate">{task.title}</span>
+                    {/* Started in Aatmiq Code: it works in that Code workspace. */}
+                    {task.codeWorkspaceId && (
+                      <span className="flex shrink-0 items-center gap-1 text-[11px] text-fg-subtle" title={task.codeWorkspaceName ?? undefined} data-testid="task-code-mark">
+                        <Code2 className="size-3" />
+                        {t("Code")}
+                      </span>
+                    )}
                   </Link>
                 );
               })}

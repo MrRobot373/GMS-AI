@@ -120,7 +120,8 @@
         else items.push({ kind: "steps", steps: [s] });
       } else if (e.kind === "tool_result") {
         const s = steps.get(d.callId);
-        if (s) s.result = { text: d.text, isError: d.isError };
+        // exitCode: a command that exited non-zero; notRun: why a call was refused before it ran.
+        if (s) s.result = { text: d.text, isError: d.isError, exitCode: d.exitCode, notRun: d.notRun };
       } else if (e.kind === "approval") {
         const a = approvals.get(d.id);
         if (a) a.status = d.status;
@@ -161,8 +162,12 @@
     const file = ["write", "edit", "read", "str_replace_editor"].includes(s.name) ? (s.args && (s.args.file_path || s.args.path)) : null;
     const spinning = !s.result && isActive && !(s.approval && s.approval.status === "pending");
     const failed = s.result && s.result.isError;
-    return `<details class="step ${failed ? "failed" : ""}">
-      <summary>${spinning ? '<span class="spinner"></span>' : icon(toolIcon(s.name))}<span>${esc(verb)}</span>${target ? `<code class="target">${esc(target)}</code>` : ""}${file ? `<a href="#" class="open" data-open="${esc(file)}">Open</a>` : ""}</summary>
+    const notRun = s.result && s.result.notRun;
+    const exitCode = s.result && s.result.exitCode;
+    const what = notRun ? `<span class="not-run">Not run: ${esc(notRun)}</span>` : `<span>${esc(verb)}</span>${target ? `<code class="target">${esc(target)}</code>` : ""}`;
+    const fail = failed && !notRun && exitCode !== undefined ? `<span class="fail">exit code ${esc(String(exitCode))}</span>` : "";
+    return `<details class="step ${notRun ? "not-run" : failed ? "failed" : ""}">
+      <summary>${spinning ? '<span class="spinner"></span>' : icon(toolIcon(s.name))}${what}${fail}${file && !notRun ? `<a href="#" class="open" data-open="${esc(file)}">Open</a>` : ""}</summary>
       <pre><code>${esc(s.name === "bash" ? (s.args && s.args.command) || "" : JSON.stringify(s.args, null, 2))}</code></pre>
       ${s.result ? `<pre class="${failed ? "err" : ""}"><code>${esc(s.result.text || "(no output)")}</code></pre>` : ""}
     </details>${s.approval ? approvalCard(s.approval) : ""}`;

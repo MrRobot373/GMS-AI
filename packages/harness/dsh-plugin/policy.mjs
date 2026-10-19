@@ -18,6 +18,7 @@ const RISKY_COMMANDS = [
   // Certificate checks switched off: a download from anywhere could pass for the real site.
   [/--trusted-host\b|--no-check-certificates?\b|\bcurl\b[^\n;&|]*\s(--insecure\b|-[a-zA-JL-Z]*k[a-zA-JL-Z]*(\s|$))/, "Turns off certificate checks"],
   [/\bverify\s*=\s*False\b|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0|GIT_SSL_NO_VERIFY\b|\bsslVerify\s*=?\s*false\b|\bstrict-ssl\s*(=\s*)?false\b|PYTHONHTTPSVERIFY\s*=\s*['"]?0/i, "Turns off certificate checks"],
+  [/\bPIP_TRUSTED_HOST\s*=|\bglobal\.trusted-host\b|_create_unverified_context\b|\brejectUnauthorized\s*:\s*false\b|--no-verify-ssl\b|\bssl_verify\s*(=\s*|\s+)(false|no|0)\b/i, "Turns off certificate checks"],
 ];
 
 const NETWORK_COMMANDS = [
