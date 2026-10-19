@@ -256,8 +256,9 @@ agent.
 `web_fetch` is Aatmiq's (DSH's own is switched off): the runtime asks `/api/internal/work/fetch`
 with the task token and Aatmiq reads the page (`fetchPage` in `apps/api/src/services/web-search.ts`).
 
-- **Main text**: scripts, styles, navigation, headers, footers, sidebars and forms are dropped;
-  `<main>`, the article that holds the page or the block with the most text is kept, with headings
+- **Main text**: scripts, styles, navigation (also `role="navigation"`), language pickers, headers,
+  footers, sidebars and forms are dropped; `<main>` (when it holds at least 30% of the page's
+  text), the article that holds the page or the block with the most text is kept, with headings
   (`## …`), lists and tables as rows (`a | b | c`). A header holding the page's title, and a form
   wrapping the whole page, are read.
 - **In parts**: 20,000 characters at a time, each ending at a line break; the result says which
@@ -266,10 +267,17 @@ with the task token and Aatmiq reads the page (`fetchPage` in `apps/api/src/serv
   downloaded again.
 - **PDFs**: their text (datasheets, standards, application notes) without OCR, up to 10 MB and 60
   pages; a scanned PDF says it has no text. JSON, XML, CSV and Markdown are read as text.
+- **PDFs longer than 60 pages** (or with more text than is read) say so: "This PDF has 150 pages
+  and only pages 1–60 could be read", so the agent doesn't take a missing figure as absent.
 - **Checks**: public addresses only (every address a name resolves to, the connection made to the
   checked one, each of up to 3 redirects checked again), 1.5 MB per page, 30 seconds. A task in a
   container without internet gets none here either. A page that can't be read is a failed step
   that says why.
+- **Internal sites and the corporate proxy**, as for the browser's egress proxy: hosts listed under
+  *Internal sites it may open* are read although they're internal, connecting to them directly.
+  Behind a corporate proxy (`HTTPS_PROXY`, else `HTTP_PROXY`) public pages are read through it:
+  `https` through a `CONNECT` tunnel to the checked address (TLS still checks the page's name),
+  `http` by its whole URL; a public name the local DNS can't find is left to the proxy to resolve.
 
 ### Documents
 

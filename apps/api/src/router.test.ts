@@ -84,9 +84,32 @@ describe("rules", () => {
     // Short or single-part jobs stay as the rules see them (the agent floor comes later).
     for (const t of ["Make a CSV file named e12.csv that lists every E12 standard resistor value from 10 ohms up to and including 1 megohm, one value in ohms per row, with the header 'ohms'. Then tell me how many values it has.", "Create primes.py that prints the first 20 prime numbers on one line, separated by spaces, and run it.", "Write resistor.py with a function color_code_to_ohms(bands) for 4-band resistors that returns (ohms, tolerance_percent); for example ['brown', 'black', 'red', 'gold'] gives (1000, 5). Raise ValueError for unknown colours. Add tests with the standard library unittest in test_resistor.py and run them.", "The tests in test_units.py are failing. Find and fix the bugs in units.py (don't change the tests), then run the tests until they pass and tell me what was wrong."]) expect(agent(t).difficulty, t).not.toBe("hard");
     // The person's own work isn't research, however it's worded.
-    for (const t of ["Pull the latest changes and run the tests", "Print the current values of the sensor readings to the log", "Set the current sample rate to 48 kHz in config.py", "Show the latest log entries from app.log", "Bump the current version in package.json to 2.1.0"])
+    for (const t of [
+      "Pull the latest changes and run the tests",
+      "Print the current values of the sensor readings to the log",
+      "Set the current sample rate to 48 kHz in config.py",
+      "Show the latest log entries from app.log",
+      "Bump the current version in package.json to 2.1.0",
+      // Electric current, and what's latest or current in the person's own files.
+      "Calculate the full-load current of each motor and the price of the cable",
+      "Find the rated current and price of each breaker in breakers.csv",
+      "Work out the 16 A current price per metre of cable from our rate card",
+      "Compute the current standard deviation of each column in data.csv",
+      "Read sales.csv and plot the latest month",
+      "Chart the latest quarter from the attached report.xlsx",
+      "Print the current exchange rates stored in rates.json",
+      "Write a summary of the latest version of report.docx",
+      "Add a page to show the results on the web",
+    ])
       expect(agent(t).reason, t).not.toBe("web research to read, compare and cite");
-    expect(agent("Upgrade the project to the latest release of Django and tell me what breaks").reason).toBe("web research to read, compare and cite");
+    for (const t of [
+      "Upgrade the project to the latest release of Django and tell me what breaks",
+      "Find the current price of copper and save it in copper.md",
+      "What is the current tariff for commercial electricity in Pune? Put it in tariff.md",
+      "Check the latest edition of IEC 60364 and write what changed to changes.md",
+      "Find datasheets on the web for three 10 kW inverters",
+    ])
+      expect(agent(t).reason, t).toBe("web research to read, compare and cite");
     // In chat, the same words don't count: chat's own web search decides there.
     expect(level("Search the web to find the minimum efficiency that IEC 60034-30-1 requires for a 7.5 kW, 4-pole, 50 Hz motor in efficiency class IE3, and in IE4. Write the answer in ie-classes.md with links to the pages you used.")).not.toBe("hard");
     expect(level("Search the web for the latest price of copper")).not.toBe("hard");

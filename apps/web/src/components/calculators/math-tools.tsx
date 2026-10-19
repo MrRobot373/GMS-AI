@@ -4,7 +4,7 @@ import { algebra, calculus, compileFn, matrix as M, stats } from "@aatmiq/calcul
 import { Play, Plus, Minus } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { useT } from "@/i18n";
+import { msg, useT } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { attempt, ErrorLine, fmt, Panel, ResultRow, TextField, useSaveHistory } from "./shared";
 
@@ -641,6 +641,9 @@ export function DistributionsTool() {
 
 /* ───────────── Fractions, primes, complex, sequences, Roman ───────────── */
 
+/** Messages algebra.decimalToFraction gives as they are (the too-long one has a number in it). */
+const D2F_ERRORS: string[] = [msg("Enter a number"), msg("Use a point for decimals and no thousands separators: 2.5, 1000."), msg("The largest denominator must be a whole number of 1 or more")];
+
 export function FractionsTool() {
   const t = useT();
   const [a, setA] = useState("1/3");
@@ -655,10 +658,19 @@ export function FractionsTool() {
     return algebra.formatFraction(f);
   });
   // What was typed, converted exactly; an approximation only when asked for or when it can't be exact.
-  const [d2f, d2fErr] = attempt(() => {
+  const [d2f, d2fError] = attempt(() => {
     const den = maxDen.trim() ? Number(maxDen) : undefined;
     return algebra.decimalToFraction(dec, { maxDen: den });
   });
+  // The converter's own messages, in the reader's language.
+  const d2fErr =
+    d2fError === null
+      ? null
+      : D2F_ERRORS.includes(d2fError)
+        ? t(d2fError)
+        : d2fError.startsWith("That number is too long to convert exactly")
+          ? t("That number is too long to convert exactly (at most {n} digits)", { n: algebra.MAX_FRACTION_DIGITS })
+          : d2fError;
   return (
     <div className="space-y-4">
       <Panel title={t("Fraction arithmetic")}>

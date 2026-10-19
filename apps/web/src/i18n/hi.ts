@@ -1754,6 +1754,8 @@ export const HI: Record<string, string> = {
   "Use a point for decimals and no thousands separators: 2.5, 1000.": "दशमलव के लिए पॉइंट लिखें और हज़ार के लिए कॉमा न लगाएँ: 2.5, 1000।",
   "This source is no longer available to you.": "यह स्रोत अब आपके लिए उपलब्ध नहीं है।",
   "Enter a number": "कोई संख्या लिखें",
+  "The largest denominator must be a whole number of 1 or more": "सबसे बड़ा हर 1 या उससे बड़ी पूर्ण संख्या होनी चाहिए",
+  "That number is too long to convert exactly (at most {n} digits)": "यह संख्या ठीक-ठीक बदलने के लिए बहुत लंबी है (अधिक से अधिक {n} अंक)",
   "That value can't be converted (division by zero).": "यह मान बदला नहीं जा सकता (शून्य से भाग)।",
   "Category": "श्रेणी",
   "From": "से",

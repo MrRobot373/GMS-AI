@@ -330,16 +330,19 @@ d("Work AI tools", () => {
     expect(await fileOf(t.id, "count.txt")).toMatch(/^files: \d+/);
   }, 90_000);
 
-  it("web: search → fetch a page (never a private address) → write what it found", async () => {
+  it("web: search → fetch a page (a private address only when an admin allows it) → write what it found", async () => {
     const t = await run(workspaceId, [
       ["web_search", { queries: ["travel policy"] }],
       ["web_fetch", { url: `${fakeUrl}/site/rates.txt` }],
+      ["web_fetch", { url: `${fakeUrl.replace("127.0.0.1", "localhost")}/site/rates.txt` }],
       ["write", { file_path: "travel.md", content: "Economy under 6 hours. Hotel cap 9,000." }],
     ]);
     expect(t.task.status).toBe("completed");
     expect(t.results[0]).toContain("intranet.example/travel");
-    // The test site is on this machine; web_fetch (read by Aatmiq) refuses private and internal addresses.
-    expect(t.results[1]).toMatch(/127\.0\.0\.1 is a private address/);
+    // The test site is on this machine: 127.0.0.1 is under *Internal sites it may open*, so web_fetch
+    // (read by Aatmiq) reads it; any other private or internal address is refused.
+    expect(t.results[1]).toContain("Hotel rate cap: 9,000 rupees a night.");
+    expect(t.results[2]).toMatch(/localhost is an internal name/);
     expect(await t.files()).toContain("travel.md");
   }, 90_000);
 

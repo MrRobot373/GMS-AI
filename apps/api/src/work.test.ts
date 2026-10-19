@@ -371,6 +371,31 @@ d("Work AI", () => {
     expect((await app.inject({ method: "POST", url: "/api/internal/work/fetch", payload: { url: "https://pages.example/x" } })).statusCode).toBe(401);
   }, 60_000);
 
+  it("a task in a container without internet reads no web page either; one with internet does", async () => {
+    // Container mode with this test's engine: the task starts down the container path (no Docker here).
+    const runner = app.workRunner as unknown as { containerEngine: unknown; engine: unknown };
+    runner.containerEngine = runner.engine;
+    try {
+      const fetchIn = async (network: "none" | "proxy") => {
+        await db.update(organization).set({ workSettings: { searxngUrl: `${fakeUrl}/searx`, approvals: "risky", containerNetwork: network } });
+        pageReads.length = 0;
+        const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'use web_fetch {"url":"https://pages.example/ie-classes"}' });
+        const t = await waitStatus(r.json.id, "completed", "failed");
+        return t.events.find((e) => e.kind === "tool_result")!.data;
+      };
+      const none = await fetchIn("none");
+      expect(none.isError).toBe(true);
+      expect(none.text).toContain("This task has no internet access");
+      expect(pageReads).toEqual([]);
+      const proxy = await fetchIn("proxy");
+      expect(proxy.isError).toBe(false);
+      expect(proxy.text).toContain("# IEC 60034-30-1");
+    } finally {
+      runner.containerEngine = null;
+      await db.update(organization).set({ workSettings: { searxngUrl: `${fakeUrl}/searx`, approvals: "risky" } });
+    }
+  }, 90_000);
+
   it("reports a command that exits non-zero as failed, with its exit code; a call without a label still runs", async () => {
     const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo half-done; exit 4" });
     const t = await waitStatus(r.json.id, "completed", "failed");

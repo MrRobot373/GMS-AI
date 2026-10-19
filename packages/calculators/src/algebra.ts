@@ -93,44 +93,108 @@ function horner(c: number[], z: Complex): { v: Complex; err: number } {
 
 const derivative = (c: number[]) => c.slice(0, -1).map((a, i) => a * (c.length - 1 - i));
 
-/** Newton's method on p from z, keeping the best point; it stops at the rounding floor. */
-function newton(c: number[], z: Complex, maxIt = 100): Complex {
-  const dc = derivative(c);
+/*
+ * Double-double arithmetic (a value as hi + lo, about 32 significant digits). Near a repeated root
+ * p's value is all cancellation: in double precision a triple root and three roots 10⁻⁴ apart look the
+ * same, so the root finder's last steps and the multiplicity checks evaluate p this way.
+ */
+type DD = [number, number];
+const SPLIT = 134217729; // 2^27 + 1
+function twoSum(a: number, b: number): DD {
+  const s = a + b;
+  const bb = s - a;
+  return [s, a - (s - bb) + (b - bb)];
+}
+const fastTwoSum = (a: number, b: number): DD => {
+  const s = a + b;
+  return [s, b - (s - a)];
+};
+function twoProd(a: number, b: number): DD {
+  const p = a * b;
+  let t = SPLIT * a;
+  const ah = t - (t - a);
+  const al = a - ah;
+  t = SPLIT * b;
+  const bh = t - (t - b);
+  const bl = b - bh;
+  return [p, ah * bh - p + ah * bl + al * bh + al * bl];
+}
+function ddAdd(a: DD, b: DD): DD {
+  const [s, e] = twoSum(a[0], b[0]);
+  const [t, f] = twoSum(a[1], b[1]);
+  const [s2, e2] = fastTwoSum(s, e + t);
+  return fastTwoSum(s2, e2 + f);
+}
+function ddMul(a: DD, d: number): DD {
+  const [p, e] = twoProd(a[0], d);
+  return fastTwoSum(p, e + a[1] * d);
+}
+
+/** p's Taylor coefficients at z, p⁽ᵏ⁾(z)/k! for k = 0…upto (repeated synthetic division in double-double). */
+function taylor(c: number[], z: Complex, upto: number): Complex[] {
+  let re: DD[] = c.map((a) => [a, 0]);
+  let im: DD[] = c.map(() => [0, 0]);
+  const out: Complex[] = [];
+  for (let k = 0; k <= upto && re.length; k++) {
+    const qr: DD[] = [re[0]!];
+    const qi: DD[] = [im[0]!];
+    for (let j = 1; j < re.length; j++) {
+      const vr = qr[j - 1]!;
+      const vi = qi[j - 1]!;
+      qr.push(ddAdd(ddAdd(ddMul(vr, z.re), ddMul(vi, -z.im)), re[j]!));
+      qi.push(ddAdd(ddAdd(ddMul(vr, z.im), ddMul(vi, z.re)), im[j]!));
+    }
+    const last = qr.length - 1;
+    out.push(cx(qr[last]![0] + qr[last]![1], qi[last]![0] + qi[last]![1]));
+    re = qr.slice(0, last);
+    im = qi.slice(0, last);
+  }
+  while (out.length <= upto) out.push(cx(0));
+  return out;
+}
+
+/**
+ * How much the Taylor coefficients at a point r away from 0 can move when every coefficient of p moves
+ * by its own size: Σ |cⱼ|·C(j, k)·rʲ⁻ᵏ for k = 0…upto. A coefficient below τ times this is 0 to rounding.
+ */
+function taylorSize(c: number[], r: number, upto: number): number[] {
+  let b = c.map(Math.abs);
+  const out: number[] = [];
+  for (let k = 0; k <= upto && b.length; k++) {
+    const q = [b[0]!];
+    for (let j = 1; j < b.length; j++) q.push(q[j - 1]! * r + b[j]!);
+    out.push(q[q.length - 1]!);
+    b = q.slice(0, -1);
+  }
+  while (out.length <= upto) out.push(0);
+  return out;
+}
+
+/** A root of p⁽ᵏ⁾ near z (k = 0: of p) by Newton's method on double-double values, keeping the best point. */
+function newtonAt(c: number[], z: Complex, k: number, maxIt = 100): Complex {
   let best = z;
-  let bestAbs = cabs(horner(c, z).v);
-  for (let it = 0; it < maxIt && bestAbs > 0; it++) {
-    const { v, err } = horner(c, z);
-    if (cabs(v) <= err) break;
-    const d = horner(dc, z).v;
-    if (d.re === 0 && d.im === 0) break;
-    const next = csub(z, cdiv(v, d));
-    const nextAbs = cabs(horner(c, next).v);
-    if (!Number.isFinite(nextAbs)) break;
-    z = next;
-    if (nextAbs < bestAbs) {
+  let bestAbs = Infinity;
+  for (let it = 0; it < maxIt; it++) {
+    const t = taylor(c, z, k + 1);
+    const v = t[k]!;
+    const a = cabs(v);
+    if (!Number.isFinite(a)) break;
+    if (a < bestAbs) {
       best = z;
-      bestAbs = nextAbs;
+      bestAbs = a;
     } else if (it > 10) break;
+    // d/dz of p⁽ᵏ⁾(z)/k! is (k + 1)·p⁽ᵏ⁺¹⁾(z)/(k + 1)!.
+    const d = cmul(cx(k + 1), t[k + 1]!);
+    if (a === 0 || (d.re === 0 && d.im === 0)) break;
+    const next = csub(z, cdiv(v, d));
+    if (!Number.isFinite(next.re) || !Number.isFinite(next.im) || (next.re === z.re && next.im === z.im)) break;
+    z = next;
   }
   return best;
 }
 
-/**
- * Is there a root of multiplicity m near z0? Then p^(m-1) has a simple root there: find it with
- * Newton's method and check that p, p′, …, p^(m-1) all vanish there, to rounding. Two roots that are
- * close but different fail the check (p isn't zero halfway between them), so they stay apart.
- */
-function multipleRootNear(c: number[], z0: Complex, m: number, radius: number): Complex | null {
-  const ds = [c];
-  for (let k = 1; k < m; k++) ds.push(derivative(ds[k - 1]!));
-  const z = m > 1 ? newton(ds[m - 1]!, z0) : newton(c, z0);
-  if (!(cabs(csub(z, z0)) <= radius)) return null;
-  for (const d of ds) {
-    const { v, err } = horner(d, z);
-    if (cabs(v) > 4 * err) return null;
-  }
-  return z;
-}
+/** Rounding allowed in each of p's coefficients when deciding that a Taylor coefficient is 0. */
+const ROOT_TOL = 8 * EPS;
 
 /**
  * The shortest decimal (within 10⁻⁹) where the polished simple root's p is no larger or zero to
@@ -200,71 +264,231 @@ export function polynomialRoots(coefficients: number[]): PolyRoots {
   const bound = Math.max(...monic.slice(1).map((v, k) => Math.abs(v) ** (1 / (k + 1))));
   const R = bound > 0 && Number.isFinite(bound) ? bound : 1;
   let found = Array.from({ length: deg }, (_, k) => cpolar(R, (2 * Math.PI * k) / deg + 0.4));
-  for (let it = 0; it < 2000; it++) {
+  const dkStep = (p: (z: Complex) => Complex) => {
     let delta = 0;
     found = found.map((r, i) => {
       let den = cx(1);
       found.forEach((s, j) => {
         if (j !== i) den = cmul(den, csub(r, s));
       });
-      const next = csub(r, cdiv(evalP(r), den.re === 0 && den.im === 0 ? cx(1e-12) : den));
-      delta = Math.max(delta, cabs(csub(next, r)));
+      const next = csub(r, cdiv(p(r), den.re === 0 && den.im === 0 ? cx(1e-12) : den));
+      if (!Number.isFinite(next.re) || !Number.isFinite(next.im)) return r;
+      delta = Math.max(delta, cabs(csub(next, r)) / Math.max(cabs(next), Number.MIN_VALUE));
       return next;
     });
-    if (delta < 1e-14) break;
-  }
+    return delta;
+  };
+  for (let it = 0; it < 2000; it++) if (dkStep(evalP) < 1e-14) break;
   if (!found.every((z) => Number.isFinite(z.re) && Number.isFinite(z.im))) throw new ExprError("The roots of this polynomial couldn't be found numerically");
-  steps.push(`Degree ${deg}: roots found numerically (Durand–Kerner iteration), each polished with Newton's method on p(x)`);
-  // Polish each root on p itself. A step that would land on another root is not taken (that root
-  // would be counted twice); near a repeated root the roots stay as they are and are grouped below.
-  const polished = found.map((r, i) => {
-    const z = newton(c, r);
-    const nearest = Math.min(...found.filter((_, j) => j !== i).map((s) => cabs(csub(s, r))));
-    return cabs(csub(z, r)) <= 0.25 * nearest ? z : r;
+  // Finish with p evaluated in double-double: the roots then are those of the polynomial as given, to
+  // double precision, even inside a cluster (a repeated root's copies, or close roots).
+  const pdd = (z: Complex) => cdiv(taylor(c, z, 0)[0]!, cx(lead));
+  for (let it = 0; it < 100; it++) if (dkStep(pdd) <= 2 * EPS) break;
+  steps.push(`Degree ${deg}: roots found numerically (Durand–Kerner iteration), with p(x) evaluated in double-double precision`);
+
+  // The coefficients are real, so the roots are real or come in conjugate pairs. Pair each complex root
+  // with the one nearest its mirror image and make the two exact mirror images; one with no partner is
+  // real and its imaginary part rounding.
+  const mirror = found.map((_, i) => i);
+  let madeReal = false;
+  const pairs: [number, number, number][] = [];
+  found.forEach((a, i) =>
+    found.forEach((b, j) => {
+      if (a.im > 0 && b.im < 0) {
+        const off = cabs(csub(b, cconj(a)));
+        if (off < 0.5 * (a.im - b.im)) pairs.push([off, i, j]);
+      }
+    }),
+  );
+  pairs.sort((x, y) => x[0] - y[0]);
+  for (const [, i, j] of pairs) {
+    if (mirror[i] !== i || mirror[j] !== j) continue;
+    mirror[i] = j;
+    mirror[j] = i;
+    const a = found[i]!;
+    const b = found[j]!;
+    found[i] = cx((a.re + b.re) / 2, (a.im - b.im) / 2);
+    found[j] = cconj(found[i]!);
+  }
+  found = found.map((z, i) => {
+    if (mirror[i] !== i || z.im === 0) return z;
+    if (Math.abs(z.im) > 1e-15 * cabs(z)) madeReal = true;
+    return cx(z.re);
   });
 
-  // Group repeated roots: a numerical root finder spreads an m-fold root into m roots about
-  // (rounding)^(1/m) apart, (x - 1)³ into 0.99989 - 0.00001i, 1, 1.00012 + 0.00003i. Try the largest
-  // group around each root first; one that passes the check becomes one root with its multiplicity.
-  const distinct: { root: Complex; multiplicity: number }[] = [];
-  let left = polished.map((z, i) => ({ z, i }));
-  while (left.length) {
-    const r = left[0]!.z;
-    // Wide enough for a 10-fold root's spread; the check, not the distance, decides what is one root.
-    const radius = 0.5 * Math.max(1, cabs(r));
-    const near = left.map((x) => ({ ...x, d: cabs(csub(x.z, r)) })).sort((a, b) => a.d - b.d);
-    let group = { root: r, members: [left[0]!.i] };
-    for (let m = near.length; m >= 2; m--) {
-      if (near[m - 1]!.d > radius) continue;
-      const members = near.slice(0, m);
-      const mean = cx(members.reduce((s, x) => s + x.z.re, 0) / m, members.reduce((s, x) => s + x.z.im, 0) / m);
-      const z = multipleRootNear(c, mean, m, radius);
-      if (!z) continue;
-      // The members must be the m roots nearest z, the copies rounding scattered about it, not a
-      // different root nearby: in (x + 3)²(x - 3)³(x - 4), 4 and one copy of 3 aren't a double root at 3.
-      const farthest = Math.max(...members.map((x) => cabs(csub(x.z, z))));
-      if (left.every((x) => members.some((y) => y.i === x.i) || cabs(csub(x.z, z)) >= farthest)) {
-        group = { root: z, members: members.map((x) => x.i) };
-        break;
+  // Group repeated roots. A root of multiplicity m of the polynomial as given (its coefficients rounded)
+  // is m roots up to about (rounding/|p⁽ᵐ⁾/m!|)^(1/m) apart: (x - 1)³ with rounded coefficients is three
+  // roots about 10⁻⁵ apart. Groups grow two at a time. A group of m becomes one root z only if p, p′, …,
+  // p⁽ᵐ⁻¹⁾ all vanish at z to the coefficients' rounding (evaluated in double-double, so that 1 and 1.001
+  // never pass as a double root) and every member lies within the spread rounding can cause at z. Of the
+  // merges that pass, the one at the point where the most derivatives vanish wins, then the closest: in
+  // (x - 2)³(x - 2.0001) the copies of 2 join at 2, not at a double point between 2 and 2.0001. A complex
+  // group and its mirror image grow together; a real group's members' conjugates are in it or become
+  // real roots themselves. So no complex root is ever left without its conjugate.
+  const sorted = (a: Iterable<number>) => [...new Set(a)].sort((x, y) => x - y);
+  const sameSet = (a: number[], b: number[]) => a.length === b.length && a.every((x, k) => x === b[k]);
+  const mirrorOf = (g: number[]) => sorted(g.map((i) => mirror[i]!));
+  // How far each root may be from a root of p: what rounding in the coefficients allows, plus what the
+  // root finder hasn't converged yet (copies of an exact repeated root close in on it slowly). With
+  // e = rounding + |p(r)|, p has a root within about min over k of (e/|p⁽ᵏ⁾(r)/k!|)^(1/k) of r.
+  const sens = found.map((r) => {
+    const T = taylor(c, r, deg);
+    const e = ROOT_TOL * taylorSize(c, cabs(r), 0)[0]! + cabs(T[0]!);
+    let s = Infinity;
+    for (let k = 1; k <= deg; k++) if (cabs(T[k]!) > 0) s = Math.min(s, (e / cabs(T[k]!)) ** (1 / k));
+    return s;
+  });
+  const tested = new Map<string, { z: Complex; order: number; fit: number } | null>();
+  /**
+   * Is there a root of multiplicity at least members.length (real if asked) that these roots are copies
+   * of? It is where p⁽ᵏ⁾ has a root for some k ≥ m - 1: two copies of a triple root sit around a root of
+   * p″, not of p′. The point where the most derivatives vanish wins.
+   */
+  const multipleRoot = (members: number[], real: boolean): { z: Complex; order: number; fit: number } | null => {
+    const m = members.length;
+    const pts = members.map((i) => found[i]!);
+    const mean = cx(pts.reduce((s, z) => s + z.re, 0) / m, real ? 0 : pts.reduce((s, z) => s + z.im, 0) / m);
+    let best: { z: Complex; order: number; fit: number } | null = null;
+    for (let k = m - 1; k < Math.min(deg, m + 3); k++) {
+      const z = newtonAt(c, mean, k);
+      if (!Number.isFinite(z.re) || !Number.isFinite(z.im) || (!real && z.im === 0)) continue;
+      const T = taylor(c, z, deg);
+      const S = taylorSize(c, cabs(z), deg);
+      let order = 0;
+      while (order < deg && cabs(T[order]!) <= ROOT_TOL * S[order]!) order++;
+      if (order < m || (best && order < best.order)) continue;
+      // How well the derivatives vanish (1 = at the rounding limit): of two candidate points with as
+      // many vanishing, the better fit wins.
+      let fit = 0;
+      for (let j = 0; j < order; j++) fit = Math.max(fit, cabs(T[j]!) / (ROOT_TOL * S[j]!));
+      if (best && order === best.order && fit >= best.fit) continue;
+      // y^q·T_q + Σ δₖ·yᵏ = 0 (δₖ the rounding in each Taylor coefficient below the first that isn't
+      // 0) has its roots within |y| ≤ 2·max (|δₖ|/|T_q|)^(1/(q - k)): the members must be that close to z.
+      const tq = cabs(T[order]!);
+      let rho = 0;
+      for (let j = 0; j < order; j++) rho = Math.max(rho, ((ROOT_TOL * S[j]!) / tq) ** (1 / (order - j)));
+      // (Plus what the root finder may not have converged yet: copies of an exact repeated root close
+      // in on it slowly.)
+      if (members.some((i) => cabs(csub(found[i]!, z)) > 3 * rho + 2 * order * sens[i]!)) continue;
+      best = { z: real ? cx(z.re) : z, order, fit };
+    }
+    return best;
+  };
+  /** The point near these roots where the most derivatives of p vanish, and how many. */
+  const peaks = new Map<string, { z: Complex; order: number }>();
+  const peakOf = (members: number[]) => {
+    const key = members.join(",");
+    if (!peaks.has(key)) {
+      const pts = members.map((i) => found[i]!);
+      const mean = cx(pts.reduce((s, z) => s + z.re, 0) / pts.length);
+      let best = { z: mean, order: 0 };
+      for (let k = 1; k < Math.min(deg, members.length + 3); k++) {
+        const z = cx(newtonAt(c, mean, k).re);
+        const T = taylor(c, z, deg);
+        const S = taylorSize(c, cabs(z), deg);
+        let order = 0;
+        while (order < deg && cabs(T[order]!) <= ROOT_TOL * S[order]!) order++;
+        if (order > best.order) best = { z, order };
+      }
+      peaks.set(key, best);
+    }
+    return peaks.get(key)!;
+  };
+  const test = (members: number[], real: boolean) => {
+    const key = `${members.join(",")}${real ? "r" : "c"}`;
+    if (!tested.has(key)) tested.set(key, multipleRoot(members, real));
+    return tested.get(key)!;
+  };
+  let groups = found.map((_, i) => [i]);
+  const groupRoot = new Map<string, Complex>();
+  for (let round = 0; round < 4 * deg; round++) {
+    let best: { members: number[]; mirrored: number[] | null; split?: number[]; z: Complex; d: number; order: number; fit: number } | null = null;
+    const groupOf = new Map<number, number[]>();
+    for (const g of groups) for (const i of g) groupOf.set(i, g);
+    for (let a = 0; a < groups.length; a++) {
+      for (let b = a + 1; b < groups.length; b++) {
+        let d = 0;
+        let size = 1;
+        for (const i of groups[a]!) {
+          for (const j of groups[b]!) {
+            d = Math.max(d, cabs(csub(found[i]!, found[j]!)));
+            size = Math.max(size, cabs(found[i]!), cabs(found[j]!));
+          }
+        }
+        // Copies of a q-fold root sit about q times their own sensitivity (how far rounding can move a
+        // root) apart; well separated simple roots are much farther apart than that.
+        if (d > 0.5 * size || d > 20 * deg * Math.max(...groups[a]!.map((i) => sens[i]!), ...groups[b]!.map((i) => sens[i]!))) continue;
+        const better = (t: { order: number; fit: number }) => !best || t.order > best.order || (t.order === best.order && (t.fit < best.fit || (t.fit === best.fit && d < best.d)));
+        const members = sorted([...groups[a]!, ...groups[b]!]);
+        const mir = mirrorOf(members);
+        // A real multiple root, from these roots or with their conjugates too. Conjugates it leaves out
+        // are real roots of their own; a whole group can't be left without its mirror image.
+        let anyReal = false;
+        for (const g of mir.some((i) => members.includes(i)) ? [members, sorted([...members, ...mir])] : [members]) {
+          const orphans = mirrorOf(g).filter((i) => !g.includes(i));
+          if (!orphans.every((i) => groupOf.get(i)!.length === 1)) continue;
+          const real = test(g, true);
+          if (!real && g === members && g.length >= 3) {
+            // The two groups hold copies of an m-fold root and a root next to it, mixed up: m roots of
+            // the union are the copies (those nearest the point where m derivatives vanish), the rest
+            // are on their own again.
+            const peak = peakOf(g);
+            if (peak.order >= 2 && peak.order < g.length && peak.order > Math.max(groups[a]!.length, groups[b]!.length)) {
+              const near = sorted([...g].sort((x, y) => cabs(csub(found[x]!, peak.z)) - cabs(csub(found[y]!, peak.z))).slice(0, peak.order));
+              const out = mirrorOf(near).filter((i) => !near.includes(i));
+              if (out.every((i) => g.includes(i) || groupOf.get(i)!.length === 1)) {
+                const t = test(near, true);
+                if (t && better(t)) best = { members: near, mirrored: null, split: g, z: t.z, d, order: t.order, fit: t.fit };
+              }
+            }
+          }
+          if (!real) continue;
+          anyReal = true;
+          if (better(real)) best = { members: g, mirrored: null, z: real.z, d, order: real.order, fit: real.fit };
+        }
+        // A complex one, its conjugate made of the mirror images.
+        if (anyReal || mir.some((i) => members.includes(i))) continue;
+        if (!mir.every((i) => groupOf.get(i)!.every((j) => mir.includes(j)))) continue;
+        const t = test(members, false);
+        if (t && better(t)) best = { members, mirrored: mir, z: t.z, d, order: t.order, fit: t.fit };
       }
     }
-    distinct.push({ root: group.root, multiplicity: group.members.length });
-    left = left.filter((x) => !group.members.includes(x.i));
-  }
-
-  // The coefficients are real, so a root with a rounding-level imaginary part is real when its real
-  // part passes the same test; a genuinely complex root (1 ± 0.00001i) doesn't.
-  let madeReal = false;
-  const scale = Math.max(1, ...distinct.map((g) => cabs(g.root)));
-  for (const g of distinct) {
-    const z = g.root;
-    if (z.im === 0 || (Math.abs(z.im) > 1e-6 * cabs(z) && Math.abs(z.im) > 1e-14 * scale)) continue;
-    const real = multipleRootNear(c, cx(z.re), g.multiplicity, Math.max(Math.abs(z.im) * 10, 1e-12 * Math.max(1, cabs(z))));
-    if (real && real.im === 0) {
-      g.root = real;
-      madeReal = true;
+    if (!best) break;
+    const { members, mirrored, split, z } = best;
+    const taken = new Set([...members, ...(mirrored ?? []), ...(split ?? [])]);
+    groups = groups.filter((g) => !g.some((i) => taken.has(i)));
+    groups.push(members);
+    for (const i of split ?? []) if (!members.includes(i)) groups.push([i]);
+    groupRoot.set(members.join(","), z);
+    if (mirrored) {
+      groups.push(mirrored);
+      groupRoot.set(mirrored.join(","), cconj(z));
+    } else {
+      // Conjugates left out of a real group are real.
+      for (const i of members) if (!members.includes(mirror[i]!)) mirror[mirror[i]!] = mirror[i]!;
+      for (const i of members) mirror[i] = i;
     }
   }
+
+  // Each group's root: the multiple root found above, or a simple root polished by Newton's method (a
+  // step that would land on another root is not taken: that root would be counted twice).
+  const roots0 = groups.map((g) => {
+    const t = groupRoot.get(g.join(","));
+    if (t) return t;
+    const r = mirror[g[0]!] === g[0] ? cx(found[g[0]!]!.re) : found[g[0]!]!;
+    const z = newtonAt(c, r, 0);
+    const nearest = Math.min(...found.filter((_, j) => j !== g[0]).map((s) => cabs(csub(s, r))));
+    return cabs(csub(z, r)) <= 0.25 * nearest ? z : r;
+  });
+  const mults = groups.map((g) => g.length);
+  // Which group is which one's mirror image (itself for a real root).
+  const mirrorGroup = groups.map((g) => {
+    const mg = mirrorOf(g);
+    return groups.findIndex((h) => sameSet([...h].sort((a, b) => a - b), mg));
+  });
+  for (const g of groups) if (g.length > 1 && g.some((i) => found[i]!.im !== 0)) madeReal = true;
+  const fitted = mults.some((m) => m > 1) ? fitRoots(c, roots0, mults, mirrorGroup) : roots0;
+  const distinct = fitted.map((root, k) => ({ root, multiplicity: mults[k]! }));
   distinct.sort((a, b) => sortRoots(a.root, b.root));
   const primes = ["", "′", "″", "‴"];
   for (const g of distinct.filter((x) => x.multiplicity > 1)) {
@@ -280,6 +504,78 @@ export function polynomialRoots(coefficients: number[]): PolyRoots {
   }
   const roots = distinct.flatMap((g) => Array.from({ length: g.multiplicity }, () => g.root));
   return { coefficients, roots, distinct, steps };
+}
+
+/** Coefficients of lead·∏(x - zⱼ)^mⱼ, highest power first. */
+function fromRootsC(lead: number, zs: Complex[], ms: number[]): Complex[] {
+  let q: Complex[] = [cx(lead)];
+  zs.forEach((z, j) => {
+    for (let t = 0; t < ms[j]!; t++) q = [...q, cx(0)].map((a, i) => (i === 0 ? a : csub(a, cmul(q[i - 1]!, z))));
+  });
+  return q;
+}
+
+/** Solve the square complex system A·x = b by Gaussian elimination with partial pivoting; null if singular. */
+function solveComplex(A: Complex[][], b: Complex[]): Complex[] | null {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]!]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (cabs(M[r]![col]!) > cabs(M[piv]![col]!)) piv = r;
+    if (!(cabs(M[piv]![col]!) > 0)) return null;
+    [M[col], M[piv]] = [M[piv]!, M[col]!];
+    for (let r = col + 1; r < n; r++) {
+      const f = cdiv(M[r]![col]!, M[col]![col]!);
+      for (let k = col; k <= n; k++) M[r]![k] = csub(M[r]![k]!, cmul(f, M[col]![k]!));
+    }
+  }
+  const x: Complex[] = new Array(n);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = M[r]![n]!;
+    for (let k = r + 1; k < n; k++) s = csub(s, cmul(M[r]![k]!, x[k]!));
+    x[r] = cdiv(s, M[r]![r]!);
+  }
+  return x.every((v) => Number.isFinite(v.re) && Number.isFinite(v.im)) ? x : null;
+}
+
+/**
+ * Once the multiplicities are known, the distinct roots are the zⱼ for which lead·∏(x - zⱼ)^mⱼ is
+ * closest to p, coefficient by coefficient (Gauss–Newton). With the multiplicities fixed this is well
+ * conditioned, unlike p's own roots there: in (x - 1)³(x - 1.001) as rounded, p's simple root is
+ * 1.0009996 but the closest triple-and-simple polynomial has 1 and 1.001. Real roots stay real and
+ * conjugates stay conjugate (mirror[j] is the index of zⱼ's conjugate).
+ */
+function fitRoots(c: number[], zs: Complex[], ms: number[], mirror: number[]): Complex[] {
+  const lead = c[0]!;
+  const big = Math.max(...c.map(Math.abs));
+  const w = c.map((a) => 1 / Math.max(Math.abs(a), 1e-8 * big));
+  const residual = (z: Complex[]) => fromRootsC(lead, z, ms).map((q, i) => cx((c[i]! - q.re) * w[i]!, -q.im * w[i]!));
+  const norm = (r: Complex[]) => Math.hypot(...r.map(cabs));
+  const symmetric = (z: Complex[]) => z.map((v, j) => (mirror[j] === j ? cx(v.re) : mirror[j]! < j ? cconj(z[mirror[j]!]!) : v));
+  let cur = zs;
+  let r = residual(cur);
+  let size = norm(r);
+  for (let it = 0; it < 20 && size > 0; it++) {
+    // Column j: ∂/∂zⱼ of lead·∏(x - zᵢ)^mᵢ = -mⱼ·lead·(x - zⱼ)^(mⱼ - 1)·∏ᵢ≠ⱼ(x - zᵢ)^mᵢ, one power lower.
+    const J = cur.map((_, j) => {
+      const col = fromRootsC(-ms[j]! * lead, cur, ms.map((m, i) => (i === j ? m - 1 : m)));
+      return [cx(0), ...col].map((v, i) => cx(v.re * w[i]!, v.im * w[i]!));
+    });
+    const A = J.map((a) => J.map((b) => a.reduce((s, x, i) => cadd(s, cmul(cconj(x), b[i]!)), cx(0))));
+    const rhs = J.map((a) => a.reduce((s, x, i) => cadd(s, cmul(cconj(x), r[i]!)), cx(0)));
+    const step = solveComplex(A, rhs);
+    if (!step) break;
+    const next = symmetric(cur.map((z, j) => cadd(z, step[j]!)));
+    const rn = residual(next);
+    const sn = norm(rn);
+    if (!(sn < size)) break;
+    const moved = Math.max(...next.map((z, j) => cabs(csub(z, cur[j]!)) / Math.max(1, cabs(z))));
+    cur = next;
+    r = rn;
+    size = sn;
+    if (moved < EPS) break;
+  }
+  return cur;
 }
 
 const round = (v: number) => Number(v.toPrecision(12));
@@ -493,7 +789,7 @@ export function decimalToFraction(text: string, opts: { maxDen?: number } = {}):
   const t = text.trim().replace(/\u2212/g, "-");
   if (!t) throw new ExprError("Enter a number");
   // 1,5 or 1,000: a decimal comma or a thousands separator? Refused rather than guessed.
-  if (/^[+-]?[\d,]*\.?[\d,]*$/.test(t) && t.includes(",")) throw new ExprError("Use a point for decimals and no thousands separators: 2.5, 1000");
+  if (/^[+-]?[\d,]*\.?[\d,]*$/.test(t) && t.includes(",")) throw new ExprError("Use a point for decimals and no thousands separators: 2.5, 1000.");
   if (opts.maxDen !== undefined && !(Number.isSafeInteger(opts.maxDen) && opts.maxDen >= 1)) throw new ExprError("The largest denominator must be a whole number of 1 or more");
   const maxDen = opts.maxDen === undefined ? null : BigInt(opts.maxDen);
   const tooLong = (digits: number) => {

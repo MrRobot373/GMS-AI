@@ -12,6 +12,8 @@ export interface FetchedPage {
   next: number | null;
   total: number;
   cut?: boolean;
+  /** A PDF's pages: how many were read (from the first) and how many it has. */
+  pages?: { read: number; total: number } | null;
 }
 export function formatPage(p: FetchedPage): string;
 export function webTools(defineTool: (def: unknown) => unknown, call: (path: string, init?: RequestInit) => Promise<any>): unknown[];

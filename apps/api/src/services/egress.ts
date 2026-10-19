@@ -51,6 +51,11 @@ export function hostAllowed(host: string, allowed: string[]): boolean {
   });
 }
 
+/** The corporate proxy from the environment (HTTPS_PROXY, then HTTP_PROXY), or null to connect directly. */
+export function upstreamProxyFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
+  return env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy || null;
+}
+
 export class EgressBlocked extends Error {}
 
 export interface EgressOptions {

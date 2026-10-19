@@ -104,28 +104,43 @@ async function extractPdf(data: Buffer): Promise<PageText[]> {
   return pages;
 }
 
+/** What `pdfRead` read of a PDF. */
+export interface PdfRead {
+  text: string;
+  /** Pages read (from the first), and how many the PDF has: fewer read means it stopped early. */
+  pagesRead: number;
+  numPages: number;
+}
+
 /**
- * The text a PDF carries, from its first pages until there's `maxChars` of it, never with OCR: cheap
- * enough for a page read from the web, where a scanned PDF just has no text. Each page checks
- * `signal` first; the document is let go either way.
+ * The text a PDF carries, from its first pages until there's `maxChars` of it or `maxPages` were
+ * read, never with OCR: cheap enough for a page read from the web, where a scanned PDF just has no
+ * text. Says how many pages were read, so a caller can tell the reader the rest wasn't. Each page
+ * checks `signal` first; the document is let go either way.
  */
-export async function pdfText(data: Buffer, opts: { maxChars: number; maxPages?: number; signal?: AbortSignal }): Promise<string> {
+export async function pdfRead(data: Buffer, opts: { maxChars: number; maxPages?: number; signal?: AbortSignal }): Promise<PdfRead> {
   const { getDocumentProxy } = await import("unpdf");
   // Errors only: a broken file's warnings would just fill the log.
   const pdf = await getDocumentProxy(new Uint8Array(data), { verbosity: 0 });
   try {
     const parts: string[] = [];
     let n = 0;
-    for (let p = 1; p <= Math.min(pdf.numPages, opts.maxPages ?? 30) && n < opts.maxChars; p++) {
+    let p = 1;
+    for (; p <= Math.min(pdf.numPages, opts.maxPages ?? 30) && n < opts.maxChars; p++) {
       opts.signal?.throwIfAborted();
       const { items } = await (await pdf.getPage(p)).getTextContent();
       const text = normalize(items.map((item) => ("str" in item ? item.str + (item.hasEOL ? "\n" : "") : "")).join(""));
       if (text) parts.push(text), (n += text.length + 2);
     }
-    return parts.join("\n\n");
+    return { text: parts.join("\n\n"), pagesRead: p - 1, numPages: pdf.numPages };
   } finally {
     await pdf.loadingTask.destroy();
   }
+}
+
+/** The text of a PDF's first pages (see pdfRead). */
+export async function pdfText(data: Buffer, opts: { maxChars: number; maxPages?: number; signal?: AbortSignal }): Promise<string> {
+  return (await pdfRead(data, opts)).text;
 }
 
 export async function extractText(name: string, data: Buffer): Promise<PageText[]> {

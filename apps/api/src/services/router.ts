@@ -89,12 +89,36 @@ const CODE_ASK = /\b(write|implement|build|code|create|generate)\b.{0,40}\b(func
 const CODE_DEPTH = /\b(algorithm|complexity|how fast|efficient(ly)?|optimal|shortest path|graph|tree|dynamic programming|recursi\w+|concurren\w+|thread\w*|distributed|scal(e|able|ing)|secure|security)\b/i;
 
 /**
- * For agents: research on the web, where pages have to be read, compared and cited. "Latest" and
- * "current" count for what's published (an edition, a price), not for the person's own work (the
- * latest commit, the current values of a variable).
+ * For agents: research on the web, where pages have to be read, compared and cited. Asking for the
+ * web outright counts anywhere; otherwise only what's published counts ("the latest edition", "today's
+ * copper price", "the current tariff"), not the person's own work (the latest commit, the latest
+ * month in sales.csv, the current version in package.json) nor electric current.
  */
-const WEB_RESEARCH =
-  /\b(search(ing)? (the )?(web|internet|online)|web search|use (the )?(web|internet)|look (it |this |them |that )?up online|find online|on the (web|internet))\b|\bcompar\w*\b.{0,80}\bsources\b|\blatest\b(?! (commits?|changes?|code|branch\w*|builds?|runs?|tests?|output|logs?|files?|data in|rows?|entr(y|ies)|values? (in|of|from))\b)|\b(current(ly)? (edition|models?|standard|release|regulations?|tariffs?)|(sold|available|on sale) (today|now)|up-to-date (prices?|figures|data))\b|\b(today'?s|current)\b[^.?!\n]{0,30}\b(prices?|exchange rates?|interest rates?|tariffs?|spot)\b/i;
+const WEB_ASKED =
+  /\b(search(ing)? (the )?(web|internet|online)|web search|use (the )?(web|internet)|look (it |this |them |that )?up online|find online|(search|look|find|check|research|browse)\w*\b[^.?!\n]{0,40}\b(on|from) the (web|internet))\b|\bcompar\w*\b.{0,80}\bsources\b/i;
+/** Words for things that are published and change: what "latest", "current" and "today's" are about. */
+const PUBLISHED = String.raw`(editions?|versions?|releases?|revisions?|prices?|pricing|figures|statistics|standards?|datasheets?|firmware|news|tariffs?|models?|guidance|regulations?|exchange rates?|interest rates?|spot prices?)`;
+/** "Current" as electricity: rated current, full-load current, 16 A current. */
+const ELECTRIC_CURRENT = String.raw`(?<!\b(full[- ]load|rated|load|fault|short[- ]circuit|inrush|starting|leakage|earth|ground|phase|line|neutral|peak|rms|nominal|operating|max(imum)?|min(imum)?|output|input|motor|cable|coil|base|collector|emitter|drain|gate|bias|ripple|charging|discharge|\d+(\.\d+)? ?[mk]?A)\s)`;
+const WEB_PUBLISHED = new RegExp(
+  [
+    String.raw`\blatest (\w+ )?${PUBLISHED}\b`,
+    // "current" right before what's published; not "current standard deviation" (a statistic).
+    String.raw`${ELECTRIC_CURRENT}\bcurrent(ly)? (\w+ ){0,2}${PUBLISHED}\b(?! (deviation|error|input|output|library|branch|directory|folder|file|values?|settings?))`,
+    String.raw`\btoday'?s\b[^.?!\n]{0,30}\b${PUBLISHED}\b`,
+    String.raw`\b((sold|available|on sale) (today|now)|up-to-date (prices?|figures|data))\b`,
+  ].join("|"),
+  "i",
+);
+/** A sentence about the person's own files: what's "latest" or "current" there is in the file. */
+const LOCAL_SOURCE =
+  /(?<!\b(sav(e|ed|ing)|writ(e|ing)|put|record|add|append|store)\b[^.?!\n]{0,25})\b(stored in|kept in|from|of|in|inside)\s+(the\s+|my\s+|our\s+|this\s+)?(attached\s+|uploaded\s+)?[\w-]+\.(md|py|csv|tsv|xlsx|xls|docx|doc|pptx|pdf|json|txt|ya?ml|toml|sql|html|ipynb|log|db)\b|\b(attached|uploaded)\b/i;
+
+/** Whether an agent's task is web research (see WEB_ASKED and WEB_PUBLISHED). */
+function webResearch(t: string): boolean {
+  if (WEB_ASKED.test(t)) return true;
+  return t.split(/[.?!\n]+(?:\s|$)/).some((s) => WEB_PUBLISHED.test(s) && !LOCAL_SOURCE.test(s));
+}
 /** For agents: what a long, many-part job asks for. */
 const AGENT_ACTIONS =
   /\b(make|create|write|build|implement|add|run|report|calculate|compute|work out|simulate|choose|select|size|design|plot|chart|draw|save|keep|compare|find|state|stating|list|tune|estimate|check|verify|test|show|put|tell|return|raise|throw|print|read|generate|fix|convert|analy[sz]e)\b/gi;
@@ -168,7 +192,7 @@ export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null;
   // Agents researching the web read pages, compare them and cite them; long jobs with many parts
   // lose steps on smaller models. Both get the advanced tier.
   if (input.agent && found.difficulty !== "hard") {
-    if (WEB_RESEARCH.test(t)) found = { difficulty: "hard", reason: "web research to read, compare and cite" };
+    if (webResearch(t)) found = { difficulty: "hard", reason: "web research to read, compare and cite" };
     else if (longAgentJob(t, words)) found = { difficulty: "hard", reason: "a long task with several parts" };
   }
   // Answers from documents have to read and cite them; small models skip the details.

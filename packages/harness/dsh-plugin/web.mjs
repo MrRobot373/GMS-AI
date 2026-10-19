@@ -33,7 +33,9 @@ export function formatPage(p) {
     lines.push("", `(Characters ${n(p.offset)}–${n(end)} of ${n(p.total)}. More: call web_fetch with the same url and offset ${p.next}.)`);
   } else {
     if (p.offset > 0) lines.push("", `(End of the page: characters ${n(p.offset)}–${n(end)} of ${n(p.total)}.)`);
-    if (p.cut) lines.push("", `(The page is longer than can be read: only its first ${n(p.total)} characters are here. Say so if what you need isn't in them.)`);
+    if (p.cut && p.pages && p.pages.read < p.pages.total)
+      lines.push("", `(This PDF has ${n(p.pages.total)} pages and only pages 1–${n(p.pages.read)} could be read (${n(p.total)} characters). Say so if what you need isn't in them.)`);
+    else if (p.cut) lines.push("", `(The page is longer than can be read: only its first ${n(p.total)} characters are here. Say so if what you need isn't in them.)`);
   }
   return lines.join("\n");
 }

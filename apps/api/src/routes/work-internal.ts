@@ -30,6 +30,7 @@ import { quotaFor } from "../services/quota";
 import { getWorkSettings } from "../services/work";
 import { BrowserError } from "../services/browser";
 import { fetchPage, PageRefused } from "../services/web-search";
+import { upstreamProxyFromEnv } from "../services/egress";
 
 const BASE = "/api/internal/work";
 /** Statuses worth retrying: the server is busy or briefly broken, not refusing the request. */
@@ -369,8 +370,12 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     const t = taskOf(req);
     const b = parse(fetchSchema, req.body);
     if (!work.internetAllowed(t.taskId)) return reply.status(403).send({ error: "This task has no internet access (Admin → Work AI → Containers → Internet)." });
+    // As the browser's egress proxy: hosts listed under *Internal sites it may open* are read
+    // directly; public pages go through the corporate proxy (HTTPS_PROXY) when there is one.
+    const { browserAllowedHosts } = await getWorkSettings(db);
+    const deps = { provider: null, url: null, key: null, fetch: ctx.fetch, resolve: ctx.resolve, allowedHosts: browserAllowedHosts, proxy: upstreamProxyFromEnv() };
     try {
-      return await fetchPage({ provider: null, url: null, key: null, fetch: ctx.fetch, resolve: ctx.resolve }, b.url, { offset: b.offset });
+      return await fetchPage(deps, b.url, { offset: b.offset });
     } catch (e) {
       const late = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
       // The agent reads this and says so, or tries another page.

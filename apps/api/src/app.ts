@@ -50,7 +50,7 @@ import { calculatorRoutes } from "./routes/calculators";
 import { knowledgeRoutes } from "./routes/knowledge";
 import { LearningRunner } from "./services/learning";
 import { ytDlpRunner, type YtDlpRunner } from "./services/youtube";
-import { startEgressProxy, type EgressProxy } from "./services/egress";
+import { startEgressProxy, upstreamProxyFromEnv, type EgressProxy } from "./services/egress";
 import { getWorkSettings, WorkRunner } from "./services/work";
 import type { HarnessEngine } from "@aatmiq/harness";
 import type { AddressInfo } from "node:net";
@@ -97,7 +97,7 @@ export async function buildApp(
   } as AppContext;
   // The Work AI browser reaches the web only through the egress proxy (started on first use).
   let egress: Promise<EgressProxy> | null = null;
-  const upstreamProxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
+  const upstreamProxy = upstreamProxyFromEnv();
   ctx.browser = new BrowserService({
     executablePath: findChromium(),
     egress: () =>
@@ -143,6 +143,8 @@ export async function buildApp(
     },
     log: (msg, err) => app.log.warn(err, msg),
   });
+  // For tests that check a running task's limits (internet in container mode).
+  app.decorate("workRunner", ctx.work);
   ctx.code = new CodeServers(ctx, {
     controlUrl: () => {
       const a = app.server.address() as AddressInfo | null;
@@ -293,5 +295,6 @@ declare module "fastify" {
   interface FastifyInstance {
     health: HealthMonitor;
     learning: LearningRunner;
+    workRunner: WorkRunner;
   }
 }

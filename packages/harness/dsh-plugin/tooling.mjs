@@ -9,7 +9,8 @@
  *                   spelled `status`), fills in the display-only `description` of bash and helper
  *                   calls, reads a single search query or plan step (or a plan written as lines)
  *                   as a list and a number written as text as a number, takes chat-template markers
- *                   (`<|channel|>`…) out of argument names and values, and drops the stray last
+ *                   (`<|channel|>`…) out of argument names and out of values where a slip left
+ *                   them (never quoted ones, nor a chat template's), and drops the stray last
  *                   line (`"""`, `">`, a heredoc's `EOF`) that the way a call was written left in a file
  *  - planReminder:  a short nudge to keep the plan current, after a few steps without updating it
  */
@@ -69,31 +70,99 @@ const FILE_TOOLS = new Set(["read", "write", "edit", "read_image"]);
 const FILE_ALIASES = ["path", "filepath", "filename", "file_name", "file"];
 
 /**
- * A chat-template marker (`<|channel|>`, `<|message|>`, `<|im_end|>`, `<|call|>`, DeepSeek's
- * `<｜tool▁call▁begin｜>`…). Models that slip out of their tool-call format leave these, and what
- * follows them, in a call. Only these known markers: `<|anything|>` can be real text. Role
- * markers (`<|user|>`) also turn up in real commands, so only a trailing one is taken out.
+ * Chat-template markers. Models that slip out of their tool-call format leave them, and what
+ * follows them, in a call: `call_bash<|channel|>… name="command` as an argument's name, `ls<|call|>`
+ * as its value. The same tokens are also real text in work on language models (`grep
+ * "<|endoftext|>" data/`, a chat template ending in `<|im_end|>`), so values are cleaned only where
+ * a marker can't be meant:
+ *  - CALL markers belong to the call format itself (`<|channel|>`, `<|message|>`, `<|call|>`,
+ *    DeepSeek's `<｜tool▁call▁end｜>`…): a command or path is cut at the first one outside quotes,
+ *    when something comes before it;
+ *  - VOCABULARY tokens (`<|endoftext|>`, `<|im_end|>`, role markers…) are a model's text tokens: one
+ *    is taken off a value's end only where the value shows a leak anyway (a mangled argument name, a
+ *    call marker), or ends an unquoted shell command (where `<|` can't be meant);
+ *  - text people write (a file, a message) only loses markers on their own last line(s), and a
+ *    template file (`.jinja`, `.j2`, `.tmpl`) none.
  */
-const STRUCTURAL = String.raw`<\|(?:channel|message|constrain|call|return|start|end|im_start|im_end|im_sep|endoftext|eot_id|eom_id|start_header_id|end_header_id|python_tag|tool_sep|tool_calls?(?:_[a-z]+)*)\|>|<｜[^｜<>\n]{1,40}｜>`;
-const TOKEN = String.raw`${STRUCTURAL}|<\|(?:observation|assistant|user|system)\|>`;
+const CALL = String.raw`<\|(?:channel|message|constrain|call|return|tool_sep|tool_calls?(?:_[a-z]+)*)\|>|<｜[^｜<>\n]{1,40}｜>`;
+const VOCABULARY = String.raw`<\|(?:start|end|im_start|im_end|im_sep|endoftext|eot_id|eom_id|start_header_id|end_header_id|python_tag|observation|assistant|user|system)\|>`;
+const TOKEN = String.raw`${CALL}|${VOCABULARY}`;
 const MARKER = new RegExp(TOKEN, "i");
-const CUT = new RegExp(STRUCTURAL, "i");
+const CALL_MARKER = new RegExp(CALL, "gi");
+const ANY_MARKER = new RegExp(TOKEN, "gi");
 const TRAILING_MARKERS = new RegExp(String.raw`(?:\s*(?:${TOKEN}))+\s*$`, "i");
-/** Values that are text people write (a file, a message): a marker is only cut from their end. */
+/** Markers alone on the last line(s) of a text. */
+const TRAILING_LINES = new RegExp(String.raw`\n(?:(?:[ \t]*(?:${TOKEN}))+[ \t]*(?:\r?\n|$))+$`, "i");
+/** Values that are text people write (a file, a message): only their own last line(s) of markers go. */
 const TEXT_KEYS = new Set(["content", "new_string", "old_string", "text", "prompt", "message"]);
+/** Files where markers are real text, even on their own last line (chat templates). */
+const TEMPLATE = /\.(jinja2?|j2|tmpl|tpl|template|liquid|mustache|hbs|njk)$/i;
+/** Values that are shell commands: there, an unquoted `<|` is never meant. */
+const SHELL_KEYS = new Set(["command", "cmd", "script"]);
+
+/** Where each character of `v` stands: true when inside '…' or "…" (a backslash escapes in "…"). */
+function quotedMask(v) {
+  const mask = new Array(v.length).fill(false);
+  let q = null;
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i];
+    if (q) {
+      mask[i] = true;
+      if (q === '"' && c === "\\") {
+        if (i + 1 < v.length) mask[++i] = true;
+      } else if (c === q) q = null;
+    } else if (c === '"' || c === "'") {
+      q = c;
+      mask[i] = true;
+    }
+  }
+  return mask;
+}
+
+/** The first match of `re` (global) in `v` that starts outside quotes, or null. */
+function firstUnquoted(v, re, mask) {
+  re.lastIndex = 0;
+  for (let m = re.exec(v); m; m = re.exec(v)) if (!mask[m.index]) return m;
+  return null;
+}
 
 /**
- * A value without the chat-template markers in it: trailing ones go (a file keeps its last line
- * break); a value that isn't text (a command, a path) also loses everything from the first
- * structural marker on.
+ * A value without the chat-template markers a slip left in it (see CALL). `leaked`: the value came
+ * with a mangled argument name, so it's from a slip whatever it holds.
  */
-function unmark(key, v) {
+function unmark(key, v, ctx) {
   if (typeof v === "string") {
     if (!MARKER.test(v)) return v;
-    const cut = !TEXT_KEYS.has(key) && CUT.test(v) ? v.slice(0, v.search(CUT)) : v;
-    return cut.replace(TRAILING_MARKERS, (m) => (TEXT_KEYS.has(key) && /^[ \t]*\r?\n/.test(m) ? "\n" : ""));
+    if (TEXT_KEYS.has(key)) {
+      if (TEMPLATE.test(String(ctx.filePath ?? ""))) return v;
+      // Under a mangled name any trailing marker is the slip's; otherwise only markers on their own
+      // last line(s). The text keeps its last line break.
+      if (ctx.leaked) return v.replace(TRAILING_MARKERS, (m) => (/^[ \t]*\r?\n/.test(m) ? "\n" : ""));
+      return v.replace(TRAILING_LINES, "\n");
+    }
+    const mask = quotedMask(v);
+    let out = v;
+    let leaked = ctx.leaked;
+    const call = firstUnquoted(v, CALL_MARKER, mask);
+    // A call marker after something: the rest is the slip. A value that is only markers stays.
+    if (call && v.slice(0, call.index).trim()) {
+      out = v.slice(0, call.index).trimEnd();
+      leaked = true;
+    }
+    // A vocabulary token at the very end, outside quotes, where a leak shows or `<|` can't be meant.
+    if (leaked || SHELL_KEYS.has(key)) {
+      const trail = TRAILING_MARKERS.exec(out);
+      if (trail && trail.index > 0 && out.slice(0, trail.index).trim()) {
+        const m = quotedMask(out);
+        let unquoted = true;
+        ANY_MARKER.lastIndex = trail.index;
+        for (let x = ANY_MARKER.exec(out); x; x = ANY_MARKER.exec(out)) if (m[x.index]) unquoted = false;
+        if (unquoted) out = out.slice(0, trail.index);
+      }
+    }
+    return out;
   }
-  if (Array.isArray(v)) return v.some((x) => typeof x === "string" && MARKER.test(x)) ? v.map((x) => unmark(key, x)) : v;
+  if (Array.isArray(v)) return v.some((x) => typeof x === "string" && MARKER.test(x)) ? v.map((x) => unmark(key, x, ctx)) : v;
   return v;
 }
 
@@ -113,16 +182,17 @@ function intendedName(key) {
 /** Arguments without chat-template markers in their names and values (the same object when there are none). */
 function stripMarkers(args) {
   let out = args;
+  const filePath = FILE_ALIASES.concat("file_path").map((k) => args[k]).find((x) => typeof x === "string");
   for (const [k, v] of Object.entries(args)) {
     if (MARKER.test(k)) {
       if (out === args) out = { ...args };
       delete out[k];
       const name = intendedName(k);
       // The intended argument is already there: the mangled copy is a leftover.
-      if (name && !Object.hasOwn(args, name)) out[name] = unmark(name, v);
+      if (name && !Object.hasOwn(args, name)) out[name] = unmark(name, v, { leaked: true, filePath });
       continue;
     }
-    const clean = unmark(k, v);
+    const clean = unmark(k, v, { leaked: false, filePath });
     if (clean !== v) {
       if (out === args) out = { ...args };
       out[k] = clean;
@@ -149,6 +219,8 @@ function describePrompt(prompt) {
 }
 
 const count = (s, part) => s.split(part).length - 1;
+/** Text files (and a file not named): a last line of `EOF` there can be real. */
+const PROSE = /(^|\.(txt|text|md|markdown|rst|adoc|org|log|csv|tsv))$/i;
 /** Files where a last line of `">` can be real markup. */
 const MARKUP = /\.(html?|xhtml|xml|svg|vue|jsx|tsx|svelte|php|erb|ejs|hbs|njk|jinja2?|j2)$/i;
 
@@ -156,7 +228,8 @@ const MARKUP = /\.(html?|xhtml|xml|svg|vue|jsx|tsx|svelte|php|erb|ejs|hbs|njk|ji
  * A file's text without the stray last line that the way the call was written left in it, or the
  * same text. Only these exact endings, only on the last line:
  *  - `"""` when the file holds an odd number of them (it closes nothing);
- *  - a heredoc terminator (`EOF`, `PYEOF`) when no heredoc in the file starts with that word;
+ *  - a heredoc terminator (`EOF`, `PYEOF`) when no heredoc in the file starts with that word, in a
+ *    code file (not a text file, nor one whose name isn't known);
  *  - `">` outside markup files.
  */
 export function dropCallArtefacts(content, filePath) {
@@ -165,7 +238,10 @@ export function dropCallArtefacts(content, filePath) {
   const quotes = /\n[ \t]*"""[ \t]*\n?$/.exec(out);
   if (quotes && count(out, '"""') % 2 === 1) out = `${out.slice(0, quotes.index)}\n`;
   const heredoc = /\n[ \t]*([A-Z_]*EOF)[ \t]*\n?$/.exec(out);
-  if (heredoc && !new RegExp(`<<-?\\s*['"]?${heredoc[1]}\\b`).test(out)) out = `${out.slice(0, heredoc.index)}\n`;
+  // Any way a heredoc can name its word: <<EOF, <<-EOF, << 'EOF', <<"EOF", <<\EOF. Prose (notes, a
+  // log) may really end in an EOF line, so only code files lose one.
+  const opens = heredoc && new RegExp(`<<-?\\s*\\\\?['"]?${heredoc[1]}\\b`).test(out);
+  if (heredoc && !opens && !PROSE.test(String(filePath ?? ""))) out = `${out.slice(0, heredoc.index)}\n`;
   const attr = /\n[ \t]*">[ \t]*\n?$/.exec(out);
   if (attr && !MARKUP.test(String(filePath ?? ""))) out = `${out.slice(0, attr.index)}\n`;
   return out;

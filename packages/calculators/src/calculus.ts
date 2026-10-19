@@ -362,20 +362,32 @@ export function limit(src: string, at: number | "inf" | "-inf", opts: { variable
   const steps: string[] = [];
   const sym = smooth(node) ? symbolicLimit(node, x, at, steps, { left: 8 }) : null;
   const scale = Math.max(1, Math.abs(at));
-  const sideLimit = (dir: 1 | -1): { value: number | null } => {
+  const sideLimit = (dir: 1 | -1): { value: number | null; how: "symbolic" | "numeric" } => {
     const num = numericLimit(node, x, at, dir);
-    if (!sym) return { value: num && trustworthy(num) };
-    const L = trustworthy(sym, 15);
+    const numeric = { value: num && trustworthy(num), how: "numeric" as const };
+    if (!sym) return numeric;
+    const symbolic = { value: trustworthy(sym, 15), how: "symbolic" as const };
     // Defined just beside the point on this side? (√x has no limit from the left at 0.) Only a
     // domain error counts: a division by zero there is the 0/0 itself, cancelled in floating point.
     const defined = [1e-4, 1e-6, 1e-8, 1e-10].filter((t) => definedAt(node, x, at + dir * t * scale)).length >= 3;
-    // A confident numeric estimate that disagrees means a premise failed: no answer rather than a wrong one.
-    const agrees = !num || (Number.isFinite(num[0]) && Math.abs(num[0] - L) <= 1e-6 * Math.max(1, Math.abs(L)) + 10 * num[1]);
-    return { value: defined && agrees ? L : null };
+    if (!defined) return { value: null, how: "symbolic" };
+    if (num && Number.isFinite(num[0])) {
+      // Both carry an error bound: they agree when they overlap. Substituting where f's pieces cancel
+      // ((sin x - x)/x³ at x = 10⁻⁵) leaves the symbolic value few digits, or none; the numeric
+      // estimate is then the more precise of the two.
+      const agrees = Math.abs(num[0] - sym[0]) <= sym[1] + 10 * num[1] + 1e-6 * Math.max(1, Math.abs(sym[0]));
+      if (agrees) return num[1] < sym[1] ? numeric : symbolic;
+      // A confident numeric estimate that disagrees with a precise symbolic one means a premise failed:
+      // no answer rather than a wrong one. One far more precise than the symbolic value wins.
+      return 10 * num[1] < sym[1] ? numeric : { value: null, how: "symbolic" };
+    }
+    if (num) return { value: null, how: "symbolic" }; // numbers run off to ±∞, the substitution says finite
+    // Nothing numeric to check against: the symbolic value, unless rounding left it no digit at all.
+    return Math.abs(sym[0]) <= 2 * sym[1] ? { value: null, how: "symbolic" } : symbolic;
   };
   const leftR = side === "right" ? null : sideLimit(-1);
   const rightR = side === "left" ? null : sideLimit(1);
-  const method = sym && [leftR, rightR].some((r) => r && r.value !== null) ? "symbolic" : "numeric";
+  const method = [leftR, rightR].some((r) => r && r.value !== null && r.how === "symbolic") ? "symbolic" : "numeric";
   const shownSteps = method === "symbolic" ? steps : [];
   const left = leftR?.value ?? null;
   const right = rightR?.value ?? null;

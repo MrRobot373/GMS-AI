@@ -16,10 +16,18 @@ const RISKY_COMMANDS = [
   [/(^|[\s;&|(])(sudo|su|doas|kill|pkill|killall|shutdown|reboot|mkfs[.\w]*|dd|mount|umount|systemctl|crontab)\b/, "Runs a system-level command"],
   [/(^|[\s;&|(])(sendmail|mail|mailx|mutt)\b/, "Sends an email"],
   // Certificate checks switched off: a download from anywhere could pass for the real site.
-  [/--trusted-host\b|--no-check-certificates?\b|\bcurl\b[^\n;&|]*\s(--insecure\b|-[a-zA-JL-Z]*k[a-zA-JL-Z]*(\s|$))/, "Turns off certificate checks"],
+  [/--trusted-host\b|--no-check-certificates?\b/, "Turns off certificate checks"],
   [/\bverify\s*=\s*False\b|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0|GIT_SSL_NO_VERIFY\b|\bsslVerify\s*=?\s*false\b|\bstrict-ssl\s*(=\s*)?false\b|PYTHONHTTPSVERIFY\s*=\s*['"]?0/i, "Turns off certificate checks"],
   [/\bPIP_TRUSTED_HOST\s*=|\bglobal\.trusted-host\b|_create_unverified_context\b|\brejectUnauthorized\s*:\s*false\b|--no-verify-ssl\b|\bssl_verify\s*(=\s*|\s+)(false|no|0)\b/i, "Turns off certificate checks"],
 ];
+
+/**
+ * curl told to skip certificate checks (`-k`, `-sSLk`, `--insecure`) anywhere in the same command,
+ * matched on the command with quoted text emptied, so a URL's `&` or `|` (`"…?a=1&b=2" -k`) doesn't
+ * end it (and as written, for a curl inside a quoted `bash -c "…"`).
+ */
+const CURL_INSECURE = /\bcurl\b[^\n;&|]*\s(--insecure\b|-[a-zA-JL-Z]*k[a-zA-JL-Z]*(\s|$))/;
+const unquoted = (cmd) => cmd.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
 
 const NETWORK_COMMANDS = [
   [/(^|[\s;&|(])(curl|wget|ssh|scp|sftp|rsync|nc|ncat|netcat|telnet|ftp|ping)\b/, "Uses the network"],
@@ -66,6 +74,8 @@ export function classifyRisk(call, policy) {
   if (name === "bash" || name === "pwsh") {
     const cmd = String(call.args?.command ?? "");
     for (const [re, reason] of RISKY_COMMANDS) if (re.test(cmd)) return reason;
+    // As written too: `bash -c "curl -k …"` is quoted whole.
+    if (CURL_INSECURE.test(cmd) || CURL_INSECURE.test(unquoted(cmd))) return "Turns off certificate checks";
     if (policy.askForNetwork) for (const [re, reason] of NETWORK_COMMANDS) if (re.test(cmd)) return reason;
   }
   return null;

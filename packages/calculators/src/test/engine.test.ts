@@ -240,6 +240,26 @@ describe("calculus", () => {
     // Away from the 0/0, plain substitution: only the digits the rounding leaves.
     near(calculus.limit("(1 - cos(x))/x^2", 1e-3).value!, (1 - Math.cos(1e-3)) / 1e-6, 1e-8);
   });
+  it("limits at small nonzero points where substitution cancels", () => {
+    // These came back 'unknown': substitution kept few digits ((sin x - x)/x³ at 10⁻⁵ is -0.16666728 ±
+    // 2·10⁻⁶) or none ((1 - cos x)/x² at 10⁻⁸ is 0 ± 2.2), and the precise numeric estimate was dropped.
+    for (const at of [1e-5, 1e-6, 1e-8, 1e-12, 1e-15]) {
+      const r = calculus.limit("(sin(x) - x)/x^3", at);
+      expect(r.verdict, `(sin x - x)/x³ at ${at}`).toBe("exists");
+      near(r.value!, -1 / 6 + at ** 2 / 120, 1e-7);
+    }
+    for (const at of [1e-5, 1e-8, 1e-9, 1e-12, 1e-15]) {
+      const r = calculus.limit("(1 - cos(x))/x^2", at);
+      expect(r.verdict, `(1 - cos x)/x² at ${at}`).toBe("exists");
+      near(r.value!, 0.5, 1e-7);
+      expect(r.method).toBe("numeric"); // not shown as exact
+    }
+    near(calculus.limit("(exp(x) - 1 - x)/x^2", 1e-9).value!, 0.5, 1e-7);
+    near(calculus.limit("(sqrt(1 + x) - 1)/x", 1e-9).value!, 0.5, 1e-7);
+    // At the point itself the symbolic route still decides, exactly.
+    expect(calculus.limit("(1 - cos(x))/x^2", 0)).toMatchObject({ value: 0.5, method: "symbolic" });
+    expect(calculus.limit("(sin(x) - x)/x^3", 0).method).toBe("symbolic");
+  });
   it("Taylor series", () => {
     expect(calculus.taylor("exp(x)", 0, 3).coefficients).toEqual([1, 1, 0.5, 0.166666666667]);
     expect(calculus.taylor("sin(x)", 0, 5).polynomial).toBe("x - 0.1666666667x^3 + 0.008333333333x^5");
@@ -324,6 +344,38 @@ describe("algebra", () => {
       const want = roots.flatMap((r, k) => (ms[k] ? [`${r}${ms[k]! > 1 ? ` ×${ms[k]}` : ""}`] : []));
       expect(distinct(fromRoots(rs).map((v) => -3 * v)), `-3·∏(x - r) for ${rs}`).toEqual(want);
     }
+  });
+  it("tells a repeated root from a simple root close to it, and keeps conjugates together", () => {
+    const fromRoots = (rs: number[]) => rs.reduce<number[]>((p, r) => algebra.polyMul(p, [1, -r]), [1]);
+    const distinct = (rs: number[]) => algebra.polynomialRoots(fromRoots(rs)).distinct.map((g) => `${algebra.formatComplex(g.root, 9)}${g.multiplicity > 1 ? ` ×${g.multiplicity}` : ""}`);
+    // These came out as two wrong double roots (0.999995475 ×2, 1.00075003 ×2) or with a complex root
+    // that had no conjugate (0.998651332 + 0.000872778773i ×2, 1.000002028 ×4).
+    expect(distinct([1, 1, 1, 1.001])).toEqual(["1 ×3", "1.001"]);
+    expect(distinct([2, 2, 2, 2.001])).toEqual(["2 ×3", "2.001"]);
+    expect(distinct([0.5, 0.5, 0.5, 0.5005])).toEqual(["0.5 ×3", "0.5005"]);
+    expect(distinct([1, 1, 1, 1, 1, 1.01])).toEqual(["1 ×5", "1.01"]);
+    expect(distinct([2, 2, 2, 2.0001])).toEqual(["2 ×3", "2.0001"]);
+    expect(distinct([3, 3, 3.0001])).toEqual(["3 ×2", "3.0001"]);
+    expect(distinct([2, 2, 2.0001])).toEqual(["2 ×2", "2.0001"]);
+    expect(distinct([5, 5, 5.0001])).toEqual(["5 ×2", "5.0001"]);
+    expect(distinct([1, 1, 1.001, -4])).toEqual(["-4", "1 ×2", "1.001"]);
+    // Real coefficients: every complex root comes with its conjugate, as often. (x - 3)²(x - 3.00001) is
+    // closer than rounding can resolve; it may come out either way, but never as a lone complex root.
+    const paired = (c: number[]) => {
+      const g = algebra.polynomialRoots(c).distinct;
+      expect(g.reduce((n, x) => n + x.multiplicity, 0)).toBe(c.length - 1);
+      for (const x of g.filter((y) => y.root.im !== 0)) {
+        expect(g.some((y) => y.multiplicity === x.multiplicity && y.root.re === x.root.re && y.root.im === -x.root.im), `${String(c)}: conjugate of ${algebra.formatComplex(x.root)}`).toBe(true);
+      }
+    };
+    paired(fromRoots([3, 3, 3.00001]));
+    for (const base of [1, 2, 5]) {
+      for (const m of [2, 3, 5]) {
+        for (const gap of [1e-3, 1e-4, 1e-5, 1e-6]) paired(fromRoots([...Array<number>(m).fill(base), base + gap, -4]));
+      }
+    }
+    // A repeated complex pair next to a simple one: (x² - 2x + 2)²(x² - 2.002x + 1.001² + 1).
+    paired(algebra.polyMul(algebra.polyMul([1, -2, 2], [1, -2, 2]), [1, -2.002, 1.001 ** 2 + 1]));
   });
   it("divides polynomials", () => {
     expect(algebra.polyDivide([1, -3, 2], [1, -1])).toEqual({ quotient: [1, -2], remainder: [0] });

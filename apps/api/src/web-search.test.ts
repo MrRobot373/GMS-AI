@@ -32,6 +32,32 @@ const BIG_PDF = Buffer.concat([REPORT_PDF, Buffer.alloc(1.6 * 1024 * 1024, "\n")
 /** Too big for a search result's page read, small enough for the agent's web_fetch (10 MB). */
 const MID_PDF = Buffer.concat([REPORT_PDF, Buffer.alloc(3 * 1024 * 1024, "\n")]);
 const HUGE_PDF = Buffer.concat([REPORT_PDF, Buffer.alloc(11 * 1024 * 1024, "\n")]);
+/** A PDF of `n` pages, each with one line of text ("Page 7 text"). */
+function pagesPdf(n: number): Buffer {
+  const objs: string[] = ["<< /Type /Catalog /Pages 2 0 R >>", "", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  const kids: string[] = [];
+  for (let i = 1; i <= n; i++) {
+    const stream = `BT /F1 12 Tf 72 720 Td (Page ${i} text) Tj ET`;
+    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${objs.length + 2} 0 R >>`);
+    kids.push(`${objs.length} 0 R`);
+    objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  }
+  objs[1] = `<< /Type /Pages /Kids [${kids.join(" ")}] /Count ${n} >>`;
+  let out = "%PDF-1.4\n";
+  const at: number[] = [];
+  objs.forEach((o, i) => {
+    at.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${at.map((a) => `${String(a).padStart(10, "0")} 00000 n \n`).join("")}`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
+/** More pages than web_fetch reads (60), with little text on each. */
+const MANY_PAGES_PDF = new Uint8Array(pagesPdf(150));
+/** A run with no space to end a part at (minified JSON, base64), then more text. */
+const RUN_TEXT = `${"x".repeat(20_050)} TAIL`;
 /** 50,000 characters in numbered lines, to read in parts. */
 const LONG_TEXT = Array.from({ length: 1000 }, (_, i) => `Line ${String(i).padStart(4, "0")} ${"x".repeat(39)}`).join("\n");
 
@@ -122,6 +148,8 @@ function fakeWeb() {
         if (u.pathname === "/latin1") return new Response(Buffer.from("caf\xe9 \xb0C", "latin1"), { headers: { "content-type": "text/html; charset=iso-8859-1" } });
         if (u.pathname === "/store") return new Response(STORE_HTML, { headers: { "content-type": "text/html; charset=utf-8" } });
         if (u.pathname === "/long") return new Response(LONG_TEXT, { headers: { "content-type": "text/plain" } });
+        if (u.pathname === "/run") return new Response(RUN_TEXT, { headers: { "content-type": "text/plain" } });
+        if (u.pathname === "/manual.pdf") return new Response(MANY_PAGES_PDF, { headers: { "content-type": "application/pdf" } });
         if (u.pathname === "/data.json") return Response.json({ ie3: 90.4 });
         if (u.pathname === "/datasheet.pdf") return new Response(MID_PDF, { headers: { "content-type": "application/pdf" } });
         if (u.pathname === "/huge.pdf") return new Response(HUGE_PDF, { headers: { "content-type": "application/pdf" } });
@@ -322,6 +350,15 @@ describe("reading pages", () => {
     expect(htmlToText(`<form id="aspnetForm"><h2>Data</h2><p>Kept text.</p></form>`)).toBe("## Data\nKept text.");
     // A menu in a menu is dropped whole.
     expect(htmlToText("<nav><nav>inner</nav>still menu</nav><p>after</p>")).toBe("after");
+    // A small <main> (a notice) beside the page's real text doesn't win.
+    const notice = `<body><main><p>${"We use cookies to improve this site. ".repeat(7)}</p></main><div class="content"><h1>Real article</h1><p>${"The real article text. ".repeat(110)}</p></div></body>`;
+    const read = htmlToText(notice);
+    expect(read).toContain("# Real article");
+    expect(read).toContain("The real article text.");
+    // Language pickers and navigation that isn't a <nav> aren't read, even inside <main>.
+    const langs = Array.from({ length: 120 }, (_, i) => `<li class="interlanguage-link interwiki-x${i} mw-list-item"><a href="/x${i}">Language ${i}</a></li>`).join("");
+    const wiki = `<body><main id="content"><div id="p-lang-btn"><ul>${langs}</ul></div><div role="navigation"><p>Jump to section one, section two, section three</p></div><h1>Transformer</h1><p>${"A transformer is a deep learning architecture. ".repeat(20)}</p></main></body>`;
+    expect(htmlToText(wiki)).toBe(`# Transformer\n${"A transformer is a deep learning architecture. ".repeat(20).trim()}`);
   });
 
   it("reads a hostile page as fast as any other: 1.5 MB of tags or comments left open, or of bare '<'", () => {
@@ -470,8 +507,28 @@ describe("reading pages", () => {
       expect(await fetchPage(deps, "https://docs.example.org/long", { offset: 10_000_000 })).toMatchObject({ text: "", next: null, offset: LONG_TEXT.length });
     });
 
+    it("following `next` gives back every character, even when a part had to end mid-word", async () => {
+      const first = await fetchPage(deps, "https://docs.example.org/run");
+      expect(first).toMatchObject({ offset: 0, next: 20_000 });
+      const second = await fetchPage(deps, "https://docs.example.org/run", { offset: first.next! });
+      expect(second.offset).toBe(20_000);
+      expect(second.next).toBeNull();
+      expect(first.text + second.text).toBe(RUN_TEXT);
+    });
+
+    it("a PDF with more pages than are read is cut, and says which pages were read", async () => {
+      const pdf = await fetchPage(deps, "https://docs.example.org/manual.pdf");
+      expect(pdf).toMatchObject({ kind: "pdf", next: null, cut: true, pages: { read: 60, total: 150 } });
+      expect(pdf.text).toContain("Page 60 text");
+      expect(pdf.text).not.toContain("Page 61 text");
+      // A PDF read whole isn't cut.
+      expect(await fetchPage(deps, "https://docs.example.org/report.pdf")).toMatchObject({ cut: false, pages: { read: 2, total: 2 } });
+      // A search result's page read reads fewer pages (30).
+      expect(await readPage(deps, "https://docs.example.org/manual.pdf", 100_000)).toContain("Page 30 text");
+    });
+
     it("reads PDFs up to 10 MB (more than a search result's page read takes), and JSON as text", async () => {
-      await expect(readPage(deps, "https://docs.example.org/datasheet.pdf")).rejects.toThrow("PDF over 2 MB");
+      await expect(readPage(deps, "https://docs.example.org/datasheet.pdf")).rejects.toThrow("a PDF over 1.5 MB");
       const pdf = await fetchPage(deps, "https://docs.example.org/datasheet.pdf");
       expect(pdf).toMatchObject({ kind: "pdf", title: null, next: null });
       expect(pdf.text).toBe("Quarterly report: revenue grew 18 percent.\n\nPage two: hiring plan adds 12 engineers.");
@@ -536,6 +593,47 @@ describe("reading pages", () => {
       expect(big.body.length).toBe(1.5 * 1024 * 1024);
       const moved = await pinnedGet(new URL(`http://reader.example.invalid:${port}/moved`), "127.0.0.1", AbortSignal.timeout(5000));
       expect(moved).toMatchObject({ status: 301, location: "http://10.0.0.1/" });
+    });
+
+    it("web_fetch reads hosts an admin allows (directly), and goes through a corporate proxy for public pages", async () => {
+      const proxied: string[] = [];
+      const proxy = createServer((req, res) => {
+        proxied.push(`GET ${req.url}`);
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end("through the proxy");
+      });
+      proxy.on("connect", (req, socket) => {
+        proxied.push(`CONNECT ${req.url}`);
+        socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+      });
+      await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
+      const proxyUrl = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`;
+      try {
+        const names: Record<string, string[]> = { "wiki.corp": ["127.0.0.1"], "intranet.acme.com": ["127.0.0.1"], "public.example.org": ["93.184.216.34"] };
+        const resolve = async (h: string) => names[h] ?? Promise.reject(new Error("ENOTFOUND"));
+        const base: WebSearchDeps = { provider: null, url: null, key: null, resolve };
+        // Internal hosts are refused unless an admin lists them (exactly, or by *.domain).
+        await expect(fetchPage(base, `http://wiki.corp:${port}/`)).rejects.toThrow("wiki.corp is an internal name");
+        await expect(fetchPage(base, `http://intranet.acme.com:${port}/`)).rejects.toThrow("points to a private address");
+        clearFetchCache();
+        const allowed = { ...base, allowedHosts: ["wiki.corp", "*.acme.com"], proxy: proxyUrl };
+        expect((await fetchPage(allowed, `http://wiki.corp:${port}/`)).text).toBe("hello");
+        expect((await fetchPage(allowed, `http://intranet.acme.com:${port}/`)).text).toBe("hello");
+        // ...and reached directly, not through the corporate proxy.
+        expect(proxied).toEqual([]);
+        // Public pages go through the proxy: http as a whole URL, https through a tunnel to the checked address.
+        expect((await fetchPage(allowed, "http://public.example.org/page")).text).toBe("through the proxy");
+        await expect(fetchPage(allowed, "https://public.example.org/doc")).rejects.toThrow("the proxy answered HTTP/1.1 403");
+        // A name local DNS doesn't know is left to the proxy; a private one is still refused.
+        await expect(fetchPage(allowed, "https://unknown.example.org/doc")).rejects.toThrow("the proxy answered");
+        await expect(fetchPage(allowed, "http://10.1.2.3/")).rejects.toThrow("is a private address");
+        expect(proxied).toEqual(["GET http://public.example.org/page", "CONNECT 93.184.216.34:443", "CONNECT unknown.example.org:443"]);
+        // Without a proxy, a name that can't be found is refused.
+        await expect(fetchPage(base, "https://unknown2.example.org/doc")).rejects.toThrow("couldn't be found");
+      } finally {
+        clearFetchCache();
+        await new Promise<void>((r) => proxy.close(() => r()));
+      }
     });
   });
 });

@@ -11,11 +11,12 @@ import type { WebProvider } from "@aatmiq/shared";
 import { lookup, Resolver } from "node:dns/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { isIP, type LookupFunction } from "node:net";
+import { connect as netConnect, isIP, type LookupFunction, type Socket } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { msg } from "../i18n";
-import { isPrivateAddress } from "./egress";
-import { pdfText } from "./extract";
+import { hostAllowed, isPrivateAddress } from "./egress";
+import { pdfRead } from "./extract";
 
 export interface WebResult {
   title: string;
@@ -34,6 +35,13 @@ export interface WebSearchDeps {
   fetch?: typeof fetch;
   /** Name lookups for page reads (tests replace it); `signal` is the page's time running out. */
   resolve?: (host: string, signal?: AbortSignal) => Promise<string[]>;
+  /**
+   * Internal hosts an admin allows (Work AI's *Internal sites it may open*, as the egress proxy
+   * reads them): read although they're private, connecting directly.
+   */
+  allowedHosts?: string[];
+  /** A corporate proxy (http://host:port, HTTPS_PROXY) public pages are read through; unset: directly. */
+  proxy?: string | null;
 }
 
 export type WebSearchErrorKind = "not_configured" | "auth" | "quota" | "unavailable";
@@ -108,6 +116,11 @@ const BLOCK = new Set("p div li ul ol dl dt dd h1 h2 h3 h4 h5 h6 tr table sectio
 const SKIPPED = new Set("script style noscript template svg nav footer head iframe select aside".split(" "));
 /** Their content is never text: one left open runs to the end of the page. */
 const RAW = new Set(["script", "style"]);
+/**
+ * Elements not read wherever they are, by their attributes: navigation that isn't a <nav>, and
+ * language pickers (Wikipedia's 100-odd other-language links sit inside its <main>).
+ */
+const NOT_READ = /\brole\s*=\s*["']?navigation\b|\bclass\s*=\s*["'][^"']*\binterlanguage-link\b|\baria-label\s*=\s*["'](?:[\w ]*\s)?(?:languages?|this article in other languages)["']/i;
 /** Elements that never have content (no closing tag to look for). */
 const VOID = new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
 /** Where a page's main text may be (see mainRegion). */
@@ -264,7 +277,7 @@ function skipped(sc: Scanner, t: Tag): number | undefined {
   // "<svg/>" holds nothing; "<script/>" is still open, as a browser reads it.
   if (t.selfClosing && !RAW.has(t.name)) return undefined;
   const conditional = t.name === "header" || t.name === "form";
-  if (!SKIPPED.has(t.name) && !conditional) return undefined;
+  if (!SKIPPED.has(t.name) && !conditional && !NOT_READ.test(t.attrs)) return undefined;
   // Scripts and styles end at their first closing tag, and so do headers and forms (which don't
   // nest, and are read on when they hold content); other elements count the ones nested in them.
   const close = sc.closeOf(t.name, t.end, !RAW.has(t.name) && !conditional);
@@ -408,7 +421,9 @@ function mainRegion(html: string): Region | null {
   const page = root.total + root.direct;
   if (page === 0) return null;
   const main = mains.sort((a, b) => b.total - a.total)[0];
-  if (main && (main.total >= 200 || main.total >= page * 0.5)) return main;
+  // <main> wins when it holds a fair share of the page: a small one (a notice, a cookie banner) next
+  // to the real text doesn't, and a short page's <main> needs no 200 characters.
+  if (main && main.total >= page * 0.3 && (main.total >= 200 || main.total >= page * 0.5)) return main;
   const article = articles.sort((a, b) => b.total - a.total)[0];
   const inArticles = articles.reduce((n, a) => n + a.total, 0);
   if (article && article.total >= 200 && article.total >= inArticles * 0.5 && article.total >= page * 0.25) return article;
@@ -641,24 +656,32 @@ async function defaultResolve(host: string, signal?: AbortSignal): Promise<strin
   }
 }
 
-/** The public address to connect to for this host, or PageRefused; the lookup ends with `signal`. */
-async function publicAddress(deps: WebSearchDeps, hostname: string, signal?: AbortSignal): Promise<string> {
+/**
+ * The address to connect to for this host, or PageRefused; the lookup ends with `signal`. Null when
+ * a corporate proxy (`deps.proxy`) is to resolve a public name local DNS doesn't know. A host an
+ * admin allows (`deps.allowedHosts`) may be internal.
+ */
+async function publicAddress(deps: WebSearchDeps, hostname: string, signal?: AbortSignal): Promise<string | null> {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  const allowed = hostAllowed(host, deps.allowedHosts ?? []);
   if (isIP(host)) {
-    if (isPrivateAddress(host)) throw new PageRefused(`${host} is a private address`);
+    if (!allowed && isPrivateAddress(host)) throw new PageRefused(`${host} is a private address`);
     return host;
   }
   // Names that only mean something inside a network (and single labels like "intranet").
-  if (!host.includes(".") || /(^|\.)(localhost|local|internal|lan|home|corp|intranet)$/.test(host)) throw new PageRefused(`${host} is an internal name`);
+  if (!allowed && (!host.includes(".") || /(^|\.)(localhost|local|internal|lan|home|corp|intranet)$/.test(host))) throw new PageRefused(`${host} is an internal name`);
   let addrs: string[];
   try {
     addrs = await abortable((deps.resolve ?? defaultResolve)(host, signal), signal);
   } catch (e) {
     if (signal?.aborted) throw signal.reason;
+    // Behind a corporate proxy local DNS may not know public names: that proxy resolves them.
+    if (deps.proxy && !allowed) return null;
     throw new PageRefused(`${host} couldn't be found`);
   }
+  if (!addrs.length) throw new PageRefused(`${host} couldn't be found`);
   // Every answer must be public: one private record is enough to refuse.
-  if (!addrs.length || addrs.some(isPrivateAddress)) throw new PageRefused(`${host} points to a private address`);
+  if (!allowed && addrs.some(isPrivateAddress)) throw new PageRefused(`${host} points to a private address`);
   return addrs[0]!;
 }
 
@@ -697,6 +720,29 @@ function collect(stream: NodeJS.ReadableStream & { destroy(): void }, cap: numbe
   });
 }
 
+/** Reads a response: the status and redirect, or up to the type's cap of the (decompressed) body. */
+function readResponse(res: IncomingMessage, capFor: (type: string) => number, resolve: (p: Page) => void, reject: (e: unknown) => void) {
+  const status = res.statusCode ?? 0;
+  const location = typeof res.headers.location === "string" ? res.headers.location : null;
+  const type = String(res.headers["content-type"] ?? "");
+  if (status !== 200) {
+    res.resume();
+    return resolve({ status, location, type, body: Buffer.alloc(0), full: true });
+  }
+  // The cap counts what comes out of decompression, so a small gzip bomb can't fill memory.
+  const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
+  const unzip = enc === "gzip" || enc === "x-gzip" ? createGunzip() : enc === "deflate" ? createInflate() : enc === "br" ? createBrotliDecompress() : null;
+  const stream = unzip ? res.pipe(unzip) : res;
+  if (unzip) res.on("error", (e) => unzip.destroy(e));
+  const cap = capFor(type);
+  collect(stream, cap).then((body) => {
+    res.destroy();
+    resolve({ status, location, type, body, full: body.length < cap });
+  }, reject);
+}
+
+const GET_HEADERS = { ...PAGE_HEADERS, "accept-encoding": "gzip, deflate, br" };
+
 /**
  * GET with the connection made to `address`, the one that was checked (TLS still checks the name).
  * Exported for tests.
@@ -705,28 +751,67 @@ export function pinnedGet(url: URL, address: string, signal: AbortSignal, capFor
   const family = isIP(address);
   const pinned: LookupFunction = (_host, opts, cb) => ((opts as { all?: boolean }).all ? cb(null, [{ address, family }]) : cb(null, address, family));
   return new Promise((resolve, reject) => {
-    const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(
-      url,
-      { method: "GET", headers: { ...PAGE_HEADERS, "accept-encoding": "gzip, deflate, br" }, lookup: pinned, agent: false, signal },
-      (res: IncomingMessage) => {
-        const status = res.statusCode ?? 0;
-        const location = typeof res.headers.location === "string" ? res.headers.location : null;
-        const type = String(res.headers["content-type"] ?? "");
-        if (status !== 200) {
-          res.resume();
-          return resolve({ status, location, type, body: Buffer.alloc(0), full: true });
-        }
-        // The cap counts what comes out of decompression, so a small gzip bomb can't fill memory.
-        const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
-        const unzip = enc === "gzip" || enc === "x-gzip" ? createGunzip() : enc === "deflate" ? createInflate() : enc === "br" ? createBrotliDecompress() : null;
-        const stream = unzip ? res.pipe(unzip) : res;
-        if (unzip) res.on("error", (e) => unzip.destroy(e));
-        const cap = capFor(type);
-        collect(stream, cap).then((body) => {
-          res.destroy();
-          resolve({ status, location, type, body, full: body.length < cap });
-        }, reject);
-      },
+    const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, { method: "GET", headers: GET_HEADERS, lookup: pinned, agent: false, signal }, (res) =>
+      readResponse(res, capFor, resolve, reject),
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/** A tunnel to `host:port` through an HTTP proxy (CONNECT), as the egress proxy makes one. */
+function tunnel(proxy: URL, host: string, port: number, signal: AbortSignal): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const s = netConnect(Number(proxy.port || 80), proxy.hostname);
+    const fail = (e: unknown) => {
+      s.destroy();
+      reject(e);
+    };
+    const stop = () => fail(signal.reason);
+    signal.addEventListener("abort", stop, { once: true });
+    const auth = proxy.username ? `Proxy-Authorization: Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`).toString("base64")}\r\n` : "";
+    const target = isIP(host) === 6 ? `[${host}]:${port}` : `${host}:${port}`;
+    s.once("connect", () => s.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n${auth}\r\n`));
+    let buf = "";
+    const onData = (chunk: Buffer) => {
+      buf += chunk.toString("latin1");
+      const end = buf.indexOf("\r\n\r\n");
+      if (end < 0) return;
+      s.off("data", onData);
+      s.off("error", fail);
+      signal.removeEventListener("abort", stop);
+      if (!/^HTTP\/1\.[01] 200/.test(buf)) return fail(new Error(`the proxy answered ${buf.split("\r\n")[0]}`));
+      const rest = Buffer.from(buf.slice(end + 4), "latin1");
+      if (rest.length) s.unshift(rest);
+      resolve(s);
+    };
+    s.on("data", onData);
+    s.on("error", fail);
+  });
+}
+
+/**
+ * GET through a corporate proxy: a CONNECT tunnel to the checked address (or to the name, when
+ * the proxy resolves it) for https, the page's whole URL for http. TLS checks the page's name.
+ * Exported for tests.
+ */
+export async function proxiedGet(url: URL, address: string | null, proxy: URL, signal: AbortSignal, capFor: (type: string) => number = () => PAGE_MAX_BYTES): Promise<Page> {
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (url.protocol === "https:") {
+    const raw = await tunnel(proxy, address ?? host, Number(url.port || 443), signal);
+    const socket = tlsConnect({ socket: raw, servername: isIP(host) ? undefined : host, ALPNProtocols: ["http/1.1"] });
+    return new Promise((resolve, reject) => {
+      // No agent (the socket is given), so the default port is said here: the Host header leaves out 443.
+      const req = httpsRequest(url, { method: "GET", headers: GET_HEADERS, createConnection: () => socket, defaultPort: 443, signal }, (res) => readResponse(res, capFor, resolve, reject));
+      req.on("error", reject);
+      req.end();
+    });
+  }
+  const auth = proxy.username ? { "proxy-authorization": `Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`).toString("base64")}` } : {};
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: proxy.hostname, port: Number(proxy.port || 80), method: "GET", path: url.href, headers: { ...GET_HEADERS, host: url.host, ...auth }, agent: false, signal },
+      (res) => readResponse(res, capFor, resolve, reject),
     );
     req.on("error", reject);
     req.end();
@@ -775,6 +860,8 @@ interface Loaded {
   text: string;
   /** The page is longer than was read (the size cap, or a PDF's page limit). */
   cut: boolean;
+  /** A PDF's pages: how many were read (from the first) and how many it has. */
+  pages?: { read: number; total: number };
 }
 
 interface LoadOptions {
@@ -804,7 +891,13 @@ async function loadPage(deps: WebSearchDeps, href: string, o: LoadOptions): Prom
   for (let hop = 0; url && hop <= MAX_REDIRECTS; hop++) {
     signal.throwIfAborted();
     const address = await publicAddress(deps, url.hostname, signal);
-    const page = deps.fetch ? await fetchGet(deps.fetch, url, signal, capFor) : await pinnedGet(url, address, signal, capFor);
+    // Allowed internal hosts are reached directly (a corporate proxy usually can't reach them).
+    const proxy = deps.proxy && !hostAllowed(url.hostname, deps.allowedHosts ?? []) ? new URL(deps.proxy) : null;
+    const page = deps.fetch
+      ? await fetchGet(deps.fetch, url, signal, capFor)
+      : proxy
+        ? await proxiedGet(url, address, proxy, signal, capFor)
+        : await pinnedGet(url, address!, signal, capFor);
     if (page.status >= 300 && page.status < 400 && page.location) {
       let next: URL | null = null;
       try {
@@ -820,9 +913,12 @@ async function loadPage(deps: WebSearchDeps, href: string, o: LoadOptions): Prom
     const type = page.type.toLowerCase();
     if (isPdf(type)) {
       // A PDF's index is at its end: one cut at the size cap is seldom readable, so it isn't parsed.
-      if (!page.full) throw new PageRefused(`a PDF over ${Math.round(o.pdfMaxBytes / 1024 / 1024)} MB`);
-      const text = tidy(await pdfText(page.body, { maxChars: o.maxChars, maxPages: o.pdfMaxPages, signal }));
-      return { url: url.href, kind: "pdf", title: "", text: clip(text, o.maxChars), cut: text.length > o.maxChars };
+      if (!page.full) throw new PageRefused(`a PDF over ${megabytes(o.pdfMaxBytes)} MB`);
+      const pdf = await pdfRead(page.body, { maxChars: o.maxChars, maxPages: o.pdfMaxPages, signal });
+      const text = tidy(pdf.text);
+      // Cut when pages were left unread (the page limit, or the text budget), not only at the size cap.
+      const cut = text.length > o.maxChars || pdf.pagesRead < pdf.numPages;
+      return { url: url.href, kind: "pdf", title: "", text: clip(text, o.maxChars), cut, pages: { read: pdf.pagesRead, total: pdf.numPages } };
     }
     const html = isHtml(type);
     if (!html && !isText(type, o.anyText)) throw new PageRefused(`${type || "no content type"} isn't read`);
@@ -832,6 +928,9 @@ async function loadPage(deps: WebSearchDeps, href: string, o: LoadOptions): Prom
   }
   throw new PageRefused(url ? "too many redirects" : "not an http(s) link");
 }
+
+/** A size in MB as people write it: 10, 1.5. */
+const megabytes = (bytes: number) => +(bytes / 1024 / 1024).toFixed(1);
 
 /** One page's text for a search result (see loadPage), at most `maxChars` of it. */
 export async function readPage(deps: WebSearchDeps, href: string, maxChars = CONTENT_MAX, timeoutMs = PAGE_TIMEOUT_MS): Promise<string> {
@@ -852,6 +951,8 @@ export interface FetchedPage {
   total: number;
   /** The page is longer than is read at all (`total` is what can be read). */
   cut: boolean;
+  /** A PDF's pages: how many were read (from the first) and how many it has; null for other pages. */
+  pages: { read: number; total: number } | null;
 }
 
 /** The agent reads a page in parts this long (about 5,000 tokens). */
@@ -892,7 +993,7 @@ export async function fetchPage(deps: WebSearchDeps, href: string, opts: { offse
   const { page } = hit;
   const total = page.text.length;
   const chars = Math.max(1000, Math.min(FETCH_PART_CHARS, Math.round(opts.chars ?? FETCH_PART_CHARS)));
-  let offset = Math.max(0, Math.min(total, Math.floor(opts.offset ?? 0)));
+  const offset = Math.max(0, Math.min(total, Math.floor(opts.offset ?? 0)));
   let end = Math.min(total, offset + chars);
   // A part ends at a line break (or a space) where there is one near the end, so no line is split.
   if (end < total) {
@@ -901,11 +1002,8 @@ export async function fetchPage(deps: WebSearchDeps, href: string, opts: { offse
     const at = nl > offset + chars * 0.7 ? nl + 1 : sp > offset + chars * 0.7 ? sp + 1 : end;
     end = at;
   }
-  // An offset in the middle of a word starts at the next one.
-  if (offset > 0 && offset < total && !/\s/.test(page.text[offset - 1]!)) {
-    const sp = page.text.slice(offset, offset + 200).search(/\s/);
-    if (sp >= 0) offset += sp + 1;
-  }
+  // The offset is used as given, even mid-word: `next` can fall mid-word (a long run with no space
+  // to end the part at), and following it must give back every character.
   return {
     url: page.url,
     status: 200,
@@ -916,6 +1014,7 @@ export async function fetchPage(deps: WebSearchDeps, href: string, opts: { offse
     next: end < total ? end : null,
     total,
     cut: page.cut,
+    pages: page.pages ?? null,
   };
 }
 
