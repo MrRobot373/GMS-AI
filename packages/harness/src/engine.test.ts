@@ -615,9 +615,11 @@ describe("context window", () => {
     const withBrowser = parse(buildPatch({ ...(await spec()), browser: true })) as any[];
     expect(withBrowser.find((r) => r.id === "system-prompt").config.personaPrefix).toContain("open it with browser_open by its path in your folder");
   });
-  it("reports condensed history to Aatmiq, but not a failed attempt", () => {
-    expect(mapEvent({ type: "compaction/end", data: { compactionId: "c1" } })).toEqual({ type: "compacted" });
-    expect(mapEvent({ type: "compaction/end", data: { compactionId: "c2", error: { message: "boom" } } })).toBeNull();
+  it("reports condensed history to Aatmiq with the summary the agent goes on from", () => {
+    const summary = { type: "compaction/summary", data: { compactionId: "c1", summary: [{ type: "text", text: "## Primary Request\n- Build Ridge Riders" }], shadowedSeqs: [4, 5, 6], shadowedTokenCount: 9120 } };
+    expect(mapEvent(summary)).toEqual({ type: "compacted", summary: "## Primary Request\n- Build Ridge Riders", steps: 3, tokens: 9120 });
+    // Start and end markers carry nothing to show.
+    expect(mapEvent({ type: "compaction/end", data: { compactionId: "c1" } })).toBeNull();
   });
 });
 
@@ -702,7 +704,10 @@ describe("DeepSeek Harness engine", () => {
     requestTokens.length = 0;
     try {
       const { events } = await runTurn(`script: ${JSON.stringify(script)}`, s);
-      expect(events.some((e) => e.type === "compacted")).toBe(true);
+      const compacted = events.find((e) => e.type === "compacted") as { summary: string; steps: number; tokens: number } | undefined;
+      expect(compacted?.summary.length).toBeGreaterThan(0);
+      expect(compacted?.steps).toBeGreaterThan(0);
+      expect(compacted?.tokens).toBeGreaterThan(1000);
       // No request the model saw came near the window.
       expect(Math.max(...requestTokens)).toBeLessThan(16_384 - 4096);
       expect(events.some((e) => e.type === "turn_end")).toBe(true);

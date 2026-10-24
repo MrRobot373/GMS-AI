@@ -82,7 +82,7 @@ type Item =
   | { kind: "error"; key: string; text: string }
   | { kind: "stopped"; key: string }
   /** Older steps were condensed to make room in the model's context window. */
-  | { kind: "compacted"; key: string };
+  | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number };
 
 function buildTimeline(events: WorkEvent[]) {
   const items: Item[] = [];
@@ -129,7 +129,7 @@ function buildTimeline(events: WorkEvent[]) {
         plan = d.items ?? [];
         break;
       case "context":
-        if (d.compacted) items.push({ kind: "compacted", key: `x${e.seq}` });
+        if (d.compacted) items.push({ kind: "compacted", key: `x${e.seq}`, summary: d.summary ?? "", steps: d.steps ?? 0, tokens: d.tokens ?? 0 });
         break;
       case "status":
         status = d.status;
@@ -642,12 +642,32 @@ function TimelineItem({
         </div>
       );
     case "compacted":
-      return (
-        <div className="mb-5 flex items-center gap-2 text-[12.5px] text-fg-subtle" data-testid="task-compacted">
-          <Layers className="size-3.5" /> {t("Older steps were summarized to make room in the model's memory. Files and the plan are kept.")}
-        </div>
-      );
+      return <CompactedNote item={item} />;
   }
+}
+
+/** Older steps condensed to make room: the summary the agent goes on from, folded away until opened. */
+function CompactedNote({ item }: { item: Extract<Item, { kind: "compacted" }> }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-5 rounded-lg border border-dashed border-border px-3 py-2 text-[12.5px] text-fg-subtle" data-testid="task-compacted">
+      <button type="button" className="group flex w-full items-center gap-2 text-left" onClick={() => setOpen((o) => !o)} aria-expanded={open} disabled={!item.summary}>
+        <Layers className="size-3.5 shrink-0" />
+        <span>
+          {t("Older steps were summarized to make room in the model's memory. Files and the plan are kept.")}
+          {item.steps > 0 && <> {t("({steps} steps, about {tokens} tokens)", { steps: item.steps, tokens: formatTokens(item.tokens) })}</>}
+        </span>
+        {item.summary && <ChevronRight className={cn("ml-auto size-3.5 shrink-0 transition-transform", open && "rotate-90")} />}
+      </button>
+      {open && item.summary && (
+        <div className="mt-2 border-t border-border pt-2 text-fg" data-testid="task-compacted-summary">
+          <p className="mb-1.5 text-fg-subtle">{t("What the agent goes on from:")}</p>
+          <Markdown content={item.summary} lineBreaks />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StepRow({ step, active, onDecide, deciding }: { step: Step; active: boolean; onDecide: (id: string, d: "approve" | "reject") => void; deciding?: string }) {

@@ -657,6 +657,8 @@ export const HI: Record<string, string> = {
   "Its timeline is deleted. The files in the Code workspace {workspace} stay. This can't be undone.": "इसकी टाइमलाइन हटा दी जाएगी। कोड वर्कस्पेस {workspace} की फ़ाइलें बनी रहेंगी। इसे वापस नहीं किया जा सकता।",
   "Older steps were summarized to make room in the model's memory. Files and the plan are kept.": "मॉडल की मेमोरी में जगह बनाने के लिए पुराने चरणों का सारांश बना दिया गया। फ़ाइलें और योजना सुरक्षित हैं।",
   "A real browser the agent can use for pages that need clicks, forms or JavaScript. It runs on this server, one per task, and does not need SearXNG.": "एक असली ब्राउज़र जिसे एजेंट उन पेजों के लिए इस्तेमाल कर सकता है जिनमें क्लिक, फ़ॉर्म या JavaScript चाहिए। यह इसी सर्वर पर चलता है, हर टास्क के लिए एक, और SearXNG की ज़रूरत नहीं।",
+  "({steps} steps, about {tokens} tokens)": "({steps} चरण, लगभग {tokens} टोकन)",
+  "What the agent goes on from:": "एजेंट यहाँ से आगे बढ़ता है:",
   "Stopped. Send a message to continue.": "रुक गया। जारी रखने के लिए संदेश भेजें।",
   "failed": "विफल",
   "failed, exit code {code}": "विफल, exit code {code}",

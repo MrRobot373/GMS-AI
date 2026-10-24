@@ -717,7 +717,8 @@ export class WorkRunner {
         await this.record(taskId, "plan", { items: e.items });
         return;
       case "compacted":
-        await this.record(taskId, "context", { compacted: true });
+        // What the agent goes on from, for people to read (like Claude Code's "continued from" summary).
+        await this.record(taskId, "context", { compacted: true, summary: clip(e.summary, MAX_TOOL_TEXT), steps: e.steps, tokens: e.tokens });
         return;
       case "turn_end": {
         if (l.cancelled) return;
