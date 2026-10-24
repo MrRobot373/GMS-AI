@@ -9,6 +9,19 @@ without one.
 
 ## Unreleased
 
+- **Work AI manages its context window** ([docs/06-work-ai.md](docs/06-work-ai.md#how-it-works)).
+  Big jobs on small windows (a 32K model) no longer fill up and stop: older steps are condensed
+  into a summary before the window fills (DSH's stock settings never did that below 64K), the
+  reply limit is a share of the window, and the model gateway turns a prompt that wouldn't fit into
+  an overflow the runtime recovers from instead of letting the server cut it silently. Long
+  requests are saved in the task folder and read from there. The agent is told how to build within
+  its window. A task whose plan still has open steps is sent back to them, and if it stops anyway
+  it is reported as unfinished with the steps named, never ticked off as completed. A restarted
+  task hears its plan and the files in its folder. An empty reply from the model in the middle of
+  the work no longer fails the task. The agent's browser opens pages from the task folder
+  (`game/index.html`), reports their script errors, and can press keys and click on a canvas, so
+  the agent tries what it built before calling it done.
+
 - **Skill platform, phase 0.** Twelve governance skills (routing, authoring, registry changes,
   templates, artifact checks, permissions, evidence, workflows, audit, evaluation, injection
   defense, and tool contracts) join the library at maturity `draft`. A catalog of 195 capabilities

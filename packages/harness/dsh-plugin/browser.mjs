@@ -11,6 +11,7 @@ export function formatView(v) {
   if (v.title) lines.push(`Page: ${v.title}`);
   if (v.url) lines.push(`URL: ${v.url}`);
   if (v.downloads?.length) lines.push(`Downloaded: ${v.downloads.join(", ")}`);
+  if (v.errors?.length) lines.push("Script errors on the page:", ...v.errors.map((e) => `- ${e}`));
   lines.push("", v.text || "(the page has no readable text)");
   if (v.truncated) {
     const next = (v.offset ?? 0) + (v.text?.length ?? 0);
@@ -41,8 +42,8 @@ export function browserTools(defineTool, browser) {
   return [
     tool(
       "browser_open",
-      "Open a web page in a real browser that runs JavaScript and keeps this task's cookies. Returns the page as text with numbered elements, like [3] button \"Sign in\" or [5] textbox \"Email\", to use with browser_click and browser_type. For simply reading a page, web_fetch is faster.",
-      { url: { type: "string", required: true, description: "The page's address (https://…)." } },
+      "Open a web page in a real browser that runs JavaScript and keeps this task's cookies. Returns the page as text with numbered elements, like [3] button \"Sign in\" or [5] textbox \"Email\", to use with browser_click and browser_type, plus any script errors. For simply reading a page, web_fetch is faster. To try a page or app you built, give its path in your working folder (like game/index.html): it opens from the folder.",
+      { url: { type: "string", required: true, description: "The page's address (https://…), or the path of an HTML file in your working folder." } },
       (a, signal) => view({ action: "open", url: String(a.url ?? "") }, signal),
     ),
     tool(
@@ -69,6 +70,21 @@ export function browserTools(defineTool, browser) {
       (a, signal) => view({ action: "select", ref: Number(a.element), option: String(a.option ?? "") }, signal),
     ),
     tool("browser_back", "Go back to the previous page.", {}, (_a, signal) => view({ action: "back" }, signal)),
+    tool(
+      "browser_press",
+      "Press a key on a page from your working folder (to try a game or app you built), optionally holding it down. Returns the page view and any script errors; take a screenshot to see the result.",
+      {
+        key: { type: "string", required: true, description: "One key: ArrowRight, ArrowLeft, ArrowUp, ArrowDown, Enter, Space, Escape, KeyW, Digit1…, optionally with Shift+ or Control+." },
+        hold_ms: { type: "integer", description: "Hold the key this long in milliseconds (0–5000), as a player holds the gas. Default: a single press." },
+      },
+      (a, signal) => view({ action: "press", key: String(a.key ?? ""), holdMs: Math.max(0, Math.min(5000, Number(a.hold_ms ?? 0) || 0)) }, signal),
+    ),
+    tool(
+      "browser_click_at",
+      "Click at a point on a page from your working folder, in pixels from the top left of the 1280×900 view (for a canvas game or drawing that has no numbered elements). Take a screenshot first to find the point.",
+      { x: { type: "number", required: true, description: "Pixels from the left." }, y: { type: "number", required: true, description: "Pixels from the top." } },
+      (a, signal) => view({ action: "click_at", x: Number(a.x), y: Number(a.y) }, signal),
+    ),
     tool(
       "browser_read",
       "Read more of the current page's text, from an offset (use the offset the page view suggests).",

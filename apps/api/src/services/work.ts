@@ -34,7 +34,7 @@ import {
   type DB,
 } from "@aatmiq/db";
 import { containerLauncher, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
-import { DEFAULT_WORK_SETTINGS, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
+import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
 import { webSearchReady } from "./web-search";
@@ -48,7 +48,7 @@ export function restartNote(saved: string[]): string {
   return `${base} Files already saved are still here: ${saved.join(", ")}. Send a message to continue.`;
 }
 import { randomBytes } from "node:crypto";
-import { chmod, chown, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, chown, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { notify, type AppContext } from "../context";
 import { msg } from "../i18n";
@@ -80,10 +80,19 @@ interface Live {
   turnOutput?: boolean;
   /** A tool ran this turn, so a sentence that stops halfway is unfinished work, not an answer. */
   usedTools?: boolean;
-  /** Times this turn was sent back to finish a cut-off answer. */
+  /** Times this turn was sent back to keep going (a cut-off answer, steps of its plan still open). */
   continues?: number;
-  /** This turn's plan as the agent last wrote it. */
+  /** The last nudge followed a round with no tool call: another such round ends the turn. */
+  idleNudge?: boolean;
+  /** The plan as the agent last wrote it (the runtime keeps it across turns, so it's kept here too). */
   plan: PlanItem[] | null;
+  /**
+   * The agent worked on this message (wrote its plan or used a tool), so the plan's open steps are
+   * this message's business; a question answered in passing leaves an older plan alone.
+   */
+  planActive?: boolean;
+  /** The model's context window, in tokens: long requests and restart history are sized to it. */
+  contextWindow?: number;
   /** Where the agent works and as whom (the browser uses the same). */
   workdir?: string;
   runUid?: number;
@@ -102,10 +111,19 @@ interface Live {
   idleTimer?: NodeJS.Timeout;
 }
 
-type PlanItem = { content: string; status: string };
+export type PlanItem = { content: string; status: string };
 
 const MAX_TOOL_TEXT = 20_000;
-const SEED_CHARS = 16_000;
+/** A restarted runtime gets the earlier conversation in at most this much of its window (as characters, about 4 a token)… */
+const SEED_SHARE = 0.5;
+const SEED_MAX_CHARS = 48_000;
+/** …and a request longer than this share of the window is saved in the folder rather than sent whole. */
+const LONG_REQUEST_SHARE = 0.15;
+/** Where those requests go, in the working folder (hidden from the Files tab). */
+export const REQUEST_FOLDER = ".task";
+/** How many times one message may be sent back to keep going before the turn ends as it is. */
+const MAX_CONTINUES = 8;
+const DEFAULT_WINDOW = 32_768;
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
 export async function getWorkSettings(db: DB): Promise<WorkSettingsValue> {
@@ -119,11 +137,53 @@ export function titleFrom(text: string): string {
 }
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n… (${s.length - n} more characters)` : s);
-/** A reply that stops halfway ("Renaming:") rather than at the end of a sentence. */
-const answerLeftHanging = (text: string) => {
+/**
+ * A reply that plainly stops halfway: on a colon, comma or dash ("Renaming:"), or inside a code
+ * block. A short answer without a full stop ("Result: 42") is an answer; unfinished work is caught
+ * by the plan's open steps instead.
+ */
+export const answerLeftHanging = (text: string) => {
   const t = text.trim();
-  return t.length >= 8 && !/[.!?…](?:["')\]]+)?$/.test(t) && !/```$/.test(t);
+  return t.length >= 8 && (/[:,;(\-–—]$/.test(t) || (t.match(/```/g)?.length ?? 0) % 2 === 1);
 };
+
+/**
+ * What the agent gets instead of a request too long for its context: where the whole text is, and
+ * its opening. It reads the rest from the file, again after older steps are condensed.
+ */
+export function requestPointer(path: string, text: string): string {
+  return [
+    `The person's request is long (${text.length.toLocaleString("en-US")} characters), so it is saved in \`${path}\` in your working folder.`,
+    "Read the whole file first (in parts if it is long), write a todo_write plan that covers every part of it, and read the matching section again before you build each part.",
+    "",
+    "It begins:",
+    "",
+    `${text.slice(0, 1500).trimEnd()}…`,
+  ].join("\n");
+}
+
+/** What the agent is told when it stopped with steps of its plan still open. */
+export function openStepsNudge(open: PlanItem[]): string {
+  const list = open.slice(0, 12).map((i) => `- ${i.content}`);
+  if (open.length > 12) list.push(`- … and ${open.length - 12} more`);
+  return [
+    "You stopped, but your plan still has steps that are not marked done:",
+    ...list,
+    "Carry on with the next one now. If a step is already done, mark it completed with todo_write. If one can't be done, say why.",
+  ].join("\n");
+}
+
+/** The task's error when it stopped with steps of its plan never done. */
+export function unfinishedNote(open: PlanItem[], total: number): string {
+  const count = open.length;
+  const steps = `${open.slice(0, 5).map((i) => i.content).join("; ")}${count > 5 ? "; …" : ""}`;
+  return msg(`Stopped with ${count} of ${total} planned steps not done: ${steps}. Send a message (for example "continue") to pick up from there.`);
+}
+
+/** After the model sent back nothing in the middle of the work (a glitch of the model server, not an answer). */
+const RESUME_NUDGE = "Your last reply came back empty. Continue the task from where you stopped.";
+
+const CUT_OFF_NUDGE = "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence. Write a long file in several smaller parts.";
 
 /** Command output that is mostly control characters (an image or archive printed to the terminal). */
 function looksBinary(s: string): boolean {
@@ -139,6 +199,31 @@ function storable(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(storable);
   if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, storable(x)]));
   return v;
+}
+
+/** Folders a restarted agent doesn't need listed. */
+const SUMMARY_SKIP = new Set([".git", "node_modules", "__pycache__", ".venv", ".cache", REQUEST_FOLDER]);
+
+/** Up to `max` files in a working folder with their sizes ("src/game.js (12,345 bytes)"), for a restarted agent. */
+export async function folderSummary(root: string, max = 40): Promise<string[]> {
+  const out: string[] = [];
+  const walk = async (dir: string, rel: string, depth: number) => {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (out.length >= max) return;
+      const path = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (SUMMARY_SKIP.has(e.name)) continue;
+        if (depth >= 3) out.push(`${path}/ (not listed)`);
+        else await walk(join(dir, e.name), path, depth + 1);
+      } else if (e.isFile()) {
+        const size = (await stat(join(dir, e.name)).catch(() => null))?.size ?? 0;
+        out.push(`${path} (${size.toLocaleString("en-US")} bytes)`);
+      }
+    }
+  };
+  await walk(root, "", 0);
+  return out;
 }
 
 /** Folder-safe skill slug. */
@@ -312,11 +397,12 @@ export class WorkRunner {
   /* ───────────── Lifecycle ───────────── */
 
   /** Queue the task's latest message: start (or continue) its runtime when the person has a free slot. */
-  async submit(taskId: string, prompt: string): Promise<void> {
-    await this.record(taskId, "user", { text: prompt });
+  async submit(taskId: string, text: string): Promise<void> {
+    await this.record(taskId, "user", { text });
     const l = this.live.get(taskId);
     if (l?.runtime?.alive && !l.cancelled) {
       clearTimeout(l.idleTimer);
+      const prompt = await this.briefed(l, text, this.seqs.get(taskId) ?? 0);
       // Mid-turn: the agent reads it as it works. Already waiting for a slot: it goes with the rest.
       if (l.busy || l.pending !== undefined) {
         if (l.pending !== undefined) l.pending = `${l.pending}\n\n${prompt}`;
@@ -402,7 +488,10 @@ export class WorkRunner {
     l.turnOutput = false;
     l.usedTools = false;
     l.continues = 0;
-    l.plan = null;
+    l.idleNudge = false;
+    l.planActive = false;
+    // The answer to show is this turn's; the plan stays (the runtime keeps its todo list too).
+    l.lastAnswer = "";
     await this.setStatus(l.taskId, "running", { error: null });
     await this.sendTo(l, prompt);
   }
@@ -449,6 +538,7 @@ export class WorkRunner {
       // In Aatmiq Code the agent works in the person's own workspace, as the person's own user.
       const [code] = task.codeWorkspaceId ? await db.select().from(codeWorkspace).where(eq(codeWorkspace.id, task.codeWorkspaceId)) : [];
       const { model: m } = await resolveModel(db, box, task.workspaceId, code ? "code" : "work", task.modelId, task.userId);
+      l.contextWindow = m.contextLength ?? DEFAULT_WINDOW;
       if (task.modelId !== m.id) await db.update(workTask).set({ modelId: m.id }).where(eq(workTask.id, taskId));
       const runUid = code ? await this.ctx.code.uidFor(task.userId) : task.runUid;
       const workdir = code ? this.ctx.code.workspacePath(task.userId, code.slug) : this.filesDir(taskId);
@@ -481,7 +571,7 @@ export class WorkRunner {
           taskId,
           workdir,
           homeDir,
-          model: { key: m.id, name: m.displayName, contextWindow: m.contextLength ?? 32_768, vision: m.vision },
+          model: { key: m.id, name: m.displayName, contextWindow: l.contextWindow, vision: m.vision },
           controlUrl: this.opts.controlUrl(),
           token,
           approvals: settings.approvals,
@@ -517,7 +607,7 @@ export class WorkRunner {
         await runtime.stop();
         return;
       }
-      await runtime.send(await this.promptWithHistory(taskId));
+      await runtime.send(await this.promptWithHistory(l));
     } catch (e) {
       await this.fail(taskId, e instanceof Error ? e.message : "The agent couldn't start.");
     }
@@ -525,34 +615,75 @@ export class WorkRunner {
 
   /**
    * The newest message, plus (when an earlier runtime worked on this task) the conversation so far,
-   * so a restarted runtime knows what happened. The files are still in the folder.
+   * the plan as it was left and the files in the folder, so a restarted runtime knows what happened.
+   * The history is sized to the model's window; long requests in it point to their saved files.
    */
-  private async promptWithHistory(taskId: string): Promise<string> {
+  private async promptWithHistory(l: Live): Promise<string> {
     const events = await this.ctx.db
-      .select({ kind: workEvent.kind, data: workEvent.data })
+      .select({ seq: workEvent.seq, kind: workEvent.kind, data: workEvent.data })
       .from(workEvent)
-      .where(and(eq(workEvent.taskId, taskId), inArray(workEvent.kind, ["user", "assistant", "tool_call"])))
+      .where(and(eq(workEvent.taskId, l.taskId), inArray(workEvent.kind, ["user", "assistant", "tool_call", "plan"])))
       .orderBy(asc(workEvent.seq));
     const lastUser = events.findLastIndex((e) => e.kind === "user");
-    const prompt = String(events[lastUser]?.data.text ?? "");
-    const earlier = events.slice(0, lastUser);
+    const prompt = await this.briefed(l, String(events[lastUser]?.data.text ?? ""), events[lastUser]?.seq ?? 0);
+    const earlier = events.slice(0, Math.max(0, lastUser));
     if (!earlier.some((e) => e.kind === "assistant")) return prompt;
+    const window = l.contextWindow ?? DEFAULT_WINDOW;
+    const seedChars = Math.min(SEED_MAX_CHARS, Math.floor(window * SEED_SHARE));
     const lines: string[] = [];
+    let plan: PlanItem[] = [];
     for (const e of earlier) {
-      if (e.kind === "user") lines.push(`User: ${e.data.text}`);
-      else if (e.kind === "assistant" && e.data.text) lines.push(`You: ${e.data.text}`);
+      if (e.kind === "user") {
+        const text = String(e.data.text ?? "");
+        const brief = await this.briefed(l, text, e.seq);
+        lines.push(brief === text ? `User: ${text}` : `User: (a long request, saved in \`${REQUEST_FOLDER}/request-${e.seq}.md\`) ${clip(text, 300)}`);
+      } else if (e.kind === "assistant" && e.data.text) lines.push(`You: ${e.data.text}`);
       else if (e.kind === "tool_call") lines.push(`(you used ${e.data.name}: ${clip(JSON.stringify(e.data.args ?? {}), 300)})`);
+      else if (e.kind === "plan") plan = (e.data.items as PlanItem[] | undefined) ?? [];
     }
     let history = lines.join("\n");
-    if (history.length > SEED_CHARS) history = `…${history.slice(-SEED_CHARS)}`;
+    if (history.length > seedChars) history = `…${history.slice(-seedChars)}`;
+    const files = l.workdir ? await folderSummary(l.workdir) : [];
     return [
       "This task continues an earlier conversation. Files you created are still in your working folder.",
       "<earlier-conversation>",
       history,
       "</earlier-conversation>",
+      ...(plan.length
+        ? ["", "Your plan when it stopped (write it again with todo_write, keeping finished steps completed):", ...plan.map((i) => `- [${i.status}] ${i.content}`)]
+        : []),
+      ...(files.length ? ["", "Files in your working folder now:", ...files] : []),
       "",
       prompt,
     ].join("\n");
+  }
+
+  /**
+   * A request too long to keep whole in the model's context (over LONG_REQUEST_SHARE of its window)
+   * is saved in the working folder; the agent gets where it is and its opening instead.
+   */
+  private async briefed(l: Live, text: string, seq: number): Promise<string> {
+    if (!l.workdir || estimateTokens(text) <= (l.contextWindow ?? DEFAULT_WINDOW) * LONG_REQUEST_SHARE) return text;
+    const path = `${REQUEST_FOLDER}/request-${seq}.md`;
+    try {
+      const dir = join(l.workdir, REQUEST_FOLDER);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(l.workdir, path), text);
+      if (l.runUid !== undefined) await this.chownTree(dir, l.runUid);
+      // In a Code workspace (a git repository) the saved request stays out of the person's changes.
+      const exclude = join(l.workdir, ".git", "info", "exclude");
+      if ((await stat(join(l.workdir, ".git")).catch(() => null))?.isDirectory()) {
+        const have = await readFile(exclude, "utf8").catch(() => "");
+        if (!have.split("\n").includes(`/${REQUEST_FOLDER}/`)) {
+          await mkdir(join(l.workdir, ".git", "info"), { recursive: true });
+          await appendFile(exclude, `${have && !have.endsWith("\n") ? "\n" : ""}/${REQUEST_FOLDER}/\n`);
+        }
+      }
+    } catch (e) {
+      this.opts.log?.("work: saving a long request failed", e);
+      return text;
+    }
+    return requestPointer(path, text);
   }
 
   private async onEvent(l: Live, e: HarnessEvent) {
@@ -567,6 +698,7 @@ export class WorkRunner {
       case "tool_call":
         l.turnOutput = true;
         l.usedTools = true;
+        l.planActive = true;
         await this.record(taskId, "tool_call", { callId: e.callId, name: e.name, args: e.args as Record<string, unknown> });
         return;
       case "tool_result":
@@ -581,18 +713,30 @@ export class WorkRunner {
         return;
       case "plan":
         l.plan = e.items;
+        l.planActive = true;
         await this.record(taskId, "plan", { items: e.items });
+        return;
+      case "compacted":
+        await this.record(taskId, "context", { compacted: true });
         return;
       case "turn_end": {
         if (l.cancelled) return;
-        // A cut-off sentence after tools, or a turn that hit the context limit, is not a finished task.
+        // Not finished yet: a sentence cut off after tools, a reply that hit its length limit, or a
+        // plan with open steps. The agent is sent back (a few times, while it keeps making progress).
+        const open = l.planActive ? (l.plan ?? []).filter((i) => i.status !== "completed") : [];
         const hanging = !!l.lastAnswer && answerLeftHanging(l.lastAnswer) && (l.usedTools || e.reason === "max-tokens");
-        if (hanging && (l.continues ?? 0) < 2 && l.runtime?.alive && !l.lastError) {
+        const cutOff = e.reason === "max-tokens" && !!l.turnOutput;
+        const planOpen = e.reason === "completed" && open.length > 0 && (!!l.usedTools || !l.idleNudge);
+        // An empty reply after real work this round is the model server's glitch: carry on.
+        const blank = e.reason !== "completed" && e.reason !== "blocked" && !!l.usedTools && /no content|empty (response|reply)/i.test(e.error ?? "");
+        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : null;
+        if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
           l.continues = (l.continues ?? 0) + 1;
+          l.idleNudge = !l.usedTools;
           l.busy = true;
           l.usedTools = false;
           await this.setStatus(taskId, "running");
-          await this.sendTo(l, "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence.");
+          await this.sendTo(l, nudge);
           return;
         }
         l.busy = false;
@@ -601,20 +745,19 @@ export class WorkRunner {
         const ok = e.reason === "completed" || e.reason === "blocked" || e.reason === "max-tokens";
         // The model sent back nothing (even after the proxy asked again): the runtime either calls that
         // an error in its own words or ends the turn as if done. Neither is a finished task.
-        const empty = !l.turnOutput && (ok ? e.reason === "completed" : /no content|empty (response|reply)/i.test(e.error ?? ""));
+        const empty = !l.turnOutput && (ok ? e.reason !== "blocked" : /no content|empty (response|reply)/i.test(e.error ?? ""));
         const error =
           l.lastError ??
           (empty
-            ? msg("The model sent back an empty answer, so nothing was done. Send the task again, or pick another model.")
-            : ok
-              ? null
-              : (e.error ?? `The agent stopped (${e.reason}).`));
-        // Models often finish the work without ticking the last steps off; a turn that ended
-        // normally is done, so its plan is too.
-        if (!error && e.reason === "completed" && l.plan?.some((i) => i.status !== "completed")) {
-          l.plan = l.plan.map((i) => ({ ...i, status: "completed" }));
-          await this.record(taskId, "plan", { items: l.plan });
-        }
+            ? e.reason === "max-tokens"
+              ? msg("The model's context window was full, so it couldn't answer. Send the message again; older steps are condensed to make room.")
+              : msg("The model sent back an empty answer, so nothing was done. Send the task again, or pick another model.")
+            : !ok
+              ? (e.error ?? `The agent stopped (${e.reason}).`)
+              : // A plan with steps never done is not a finished task, whatever the last sentence says.
+                e.reason !== "blocked" && open.length > 0
+                ? unfinishedNote(open, l.plan!.length)
+                : null);
         await this.setStatus(taskId, error ? "failed" : "completed", { result: l.lastAnswer ? clip(l.lastAnswer, 4000) : null, error });
         await this.notifyDone(l, error);
         this.armIdle(l);

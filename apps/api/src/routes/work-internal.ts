@@ -75,6 +75,28 @@ function contextRequest(provider: { baseUrl?: string | null }, contextLength: nu
   return { num_ctx: contextLength };
 }
 
+/** The least room a reply needs; a request that leaves less is over the window. */
+const MIN_REPLY_TOKENS = 256;
+
+/**
+ * Fit one request into the model's window. A prompt bigger than the window is cut silently by
+ * Ollama (the agent then loses its own task); answering in the words the runtime recognizes as an
+ * overflow makes it condense older steps and try again. A reply cap that would run past the window
+ * is lowered to what is left.
+ */
+export function fitWindow(
+  body: { messages?: unknown; tools?: unknown; max_tokens?: unknown; max_completion_tokens?: unknown },
+  window: number | null,
+): { overflow: string } | { cap?: { field: "max_tokens" | "max_completion_tokens"; tokens: number } } {
+  if (!window || window <= 0) return {};
+  const input = estimateTokens(JSON.stringify(body.messages ?? [])) + (body.tools ? estimateTokens(JSON.stringify(body.tools)) : 0);
+  if (input > window - MIN_REPLY_TOKENS) return { overflow: `Input length (${input}) exceeds model's maximum context length (${window}).` };
+  const field = typeof body.max_completion_tokens === "number" ? "max_completion_tokens" : typeof body.max_tokens === "number" ? "max_tokens" : null;
+  if (!field) return {};
+  const asked = body[field] as number;
+  return input + asked > window ? { cap: { field, tokens: window - input } } : {};
+}
+
 type OpenAiChunk = {
   choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: unknown[] }; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
@@ -111,6 +133,10 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       return refuse(402, quota.scope.kind === "group" ? `You've used your share of the ${quota.scope.name} group's tokens for this period. Ask your admin for more.` : "You've used your token allowance for this period. Ask your admin for more tokens.");
     const body = (req.body ?? {}) as Record<string, unknown> & { messages?: unknown[]; stream?: boolean };
     const inputGuess = estimateTokens(JSON.stringify(body.messages ?? []));
+    const fit = fitWindow(body, m.contextLength);
+    // Not an error for the person: the runtime condenses older steps and asks again.
+    if ("overflow" in fit) return llmError(reply, 400, fit.overflow, "context_length_exceeded");
+    if (fit.cap) body[fit.cap.field] = fit.cap.tokens;
     // Models that can switch thinking: on only when Auto judged the task hard.
     const thinking = thinkingParams(provider, m.thinkingSwitch ? (task?.routing?.thinking ?? false) : undefined);
     const started = Date.now();
@@ -456,6 +482,8 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     z.object({ action: z.literal("back") }),
     z.object({ action: z.literal("read"), offset: z.number().int().min(0).default(0) }),
     z.object({ action: z.literal("screenshot"), fullPage: z.boolean().default(false) }),
+    z.object({ action: z.literal("press"), key: z.string().trim().min(1).max(60), holdMs: z.number().int().min(0).max(5000).default(0) }),
+    z.object({ action: z.literal("click_at"), x: z.number().min(0).max(4000), y: z.number().min(0).max(4000) }),
   ]);
   app.post(`${BASE}/browser`, internal, async (req, reply) => {
     const t = taskOf(req);
@@ -481,6 +509,10 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
           return await br.read(t.taskId, target, b.offset);
         case "screenshot":
           return await br.screenshot(t.taskId, target, b.fullPage);
+        case "press":
+          return await br.press(t.taskId, target, b.key, b.holdMs);
+        case "click_at":
+          return await br.clickAt(t.taskId, target, b.x, b.y);
       }
     } catch (e) {
       if (!(e instanceof BrowserError)) req.log.warn({ err: (e as Error).message }, "browser: unexpected failure");

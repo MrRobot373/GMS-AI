@@ -9,6 +9,27 @@ import { harnessFile } from "../files";
 
 export const PROVIDER_ID = "aatmiq";
 
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.floor(n)));
+
+/**
+ * How a model's context window is shared out. DSH's stock compaction keeps 65,536 tokens of
+ * headroom and lets one reply take 32,768, so on a 32K window it never compacts: the history grows
+ * until the model server cuts it off. Here every budget is a share of the real window.
+ *
+ * - `maxOutput`: the most one reply may write (reserved in every request).
+ * - `summaryTokens`: the longest summary when older steps are condensed; `headroom` leaves room for
+ *   that summary call's own instructions and answer.
+ * - Compaction starts when a request would pass `thresholdRatio` of the window (or the window minus
+ *   the reply and the headroom, if smaller) and keeps the newest `retainRatio` of it word for word.
+ */
+export function contextBudget(window: number) {
+  const maxOutput = clamp(window / 4, 1024, 32_768);
+  const summaryTokens = clamp(window / 10, 512, 8192);
+  const headroom = summaryTokens + 1024;
+  const threshold = Math.min(Math.floor(window * 0.8), window - maxOutput - headroom);
+  return { window, maxOutput, summaryTokens, headroom, thresholdRatio: 0.8, retainRatio: 0.2, threshold };
+}
+
 /** Rows from the stock profile that must not run inside a private, multi-user deployment. */
 export const DISABLED_ROWS = [
   // Third-party clouds: DeepSeek accounts, models and web search.
@@ -46,7 +67,26 @@ function connectedApps(spec: TaskSpec): string {
   return `Connected apps you can use through their tools: ${apps.join("; ")}. Use them when the person refers to that service.`;
 }
 
+/** What the agent is told about its own memory, so a long job is built in a way that survives it. */
+function contextRules(window: number, browser: boolean): string[] {
+  return [
+    `Your context window is about ${window.toLocaleString("en-US")} tokens. When it fills up, older steps are condensed into a summary automatically; what lasts is the files in your working folder and your todo_write plan.`,
+    "So for anything bigger than a few steps: write the plan with todo_write first, then build one part at a time and save each file as soon as it is written. For a product or app, get a small version working end to end first (for a web page: an index.html that opens and runs), then add the features one by one.",
+    "Write a long file in several parts (create it, then append or edit section by section, a few hundred lines at a time) instead of one huge write.",
+    "Keep what you read small: limit command output (head, tail, grep -c, wc), read big files in ranges, never print or search minified or vendor files (like phaser.min.js), and don't read back a file you just wrote.",
+    "Don't install tools, browsers or test frameworks the person didn't ask for and the task doesn't need.",
+    "A self-contained piece of work (research, exploring many files, one independent module) can go to the subagent tool, so your own context stays small.",
+    "If the person's request is saved in a file under .task/, read it fully before planning and read the relevant section again before you build each part.",
+    "When one file uses what another defines (a function, an object's property, an element id), check the other file really defines it under that name (grep for it) before relying on it: after older steps are condensed you can't trust your memory of it.",
+    browser
+      ? "Before you call a program done, try it. Run what can be run; for a web page, app or game, open it with browser_open by its path in your folder (like game/index.html), fix every script error it reports, and use browser_press, browser_click_at and browser_screenshot to check it really responds."
+      : "Before you call a program done, try it: run what can be run, and at least check every script parses (for example node --check on each JavaScript file).",
+    "Before your final answer, check your plan: every step done, or say plainly which ones are not and why. Never call something working that you haven't tried.",
+  ];
+}
+
 export function buildPatch(spec: TaskSpec): string {
+  const budget = contextBudget(spec.model.contextWindow);
   const rows: Record<string, unknown>[] = [
     {
       id: "llm-pi-ai",
@@ -60,7 +100,7 @@ export function buildPatch(spec: TaskSpec): string {
             apiKeyEnv: "AATMIQ_TOKEN",
             retryPolicy: { mode: "normal", maxRetries: 2 },
             // Image input lets read_image (and pasted screenshots) reach models that can see.
-            models: [{ id: spec.model.key, name: spec.model.name, contextWindow: spec.model.contextWindow, input: spec.model.vision ? ["text", "image"] : ["text"] }],
+            models: [{ id: spec.model.key, name: spec.model.name, contextWindow: spec.model.contextWindow, maxTokens: budget.maxOutput, input: spec.model.vision ? ["text", "image"] : ["text"] }],
           },
         },
       },
@@ -88,6 +128,7 @@ export function buildPatch(spec: TaskSpec): string {
           process.platform === "win32"
             ? "On Windows, run a program by a quoted path with the call operator, not in a pipeline: `& 'C:\\path\\to\\python.exe' script.py`. A pipeline (`| Out-String`, `2>&1 |`) makes PowerShell refuse a program whose path contains a space. If `python` or `cmd` is not found, use `$env:SystemRoot\\System32\\cmd.exe` and look for Python only under `$env:LOCALAPPDATA\\Programs\\Python`. Do not search the whole disk."
             : "",
+          ...contextRules(spec.model.contextWindow, !!spec.browser),
           "When you finish, close with a short summary: the key results, the files you made, and anything unresolved (pages you couldn't read, approximations you used, parts of the request you didn't do).",
           spec.instructions ? `\nInstructions for this task:\n${spec.instructions}` : "",
         ]
@@ -100,6 +141,19 @@ export function buildPatch(spec: TaskSpec): string {
         ]
           .filter(Boolean)
           .join("\n"),
+      },
+    },
+    // Condense older steps before the window fills, with budgets sized to this model (see contextBudget).
+    {
+      id: "compaction-basic",
+      name: "@deepseek-ai/dsh-compaction-basic",
+      config: {
+        thresholdRatio: budget.thresholdRatio,
+        headroomTokens: budget.headroom,
+        retainRatio: budget.retainRatio,
+        maxTokens: budget.summaryTokens,
+        compactionRetries: 2,
+        maxOverflowRetries: 2,
       },
     },
     { id: "web", name: "@deepseek-ai/dsh-web", config: { searchProvider: PROVIDER_ID, fetchProvider: "http" } },

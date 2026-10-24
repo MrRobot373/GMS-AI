@@ -136,6 +136,9 @@ export function mapEvent(ev: DshSessionEvent, calls?: Map<string, string>): Harn
       const items = (d.todos ?? d.items) as { content?: string; status?: string }[] | undefined;
       return Array.isArray(items) ? { type: "plan", items: items.map((t) => ({ content: String(t.content ?? ""), status: String(t.status ?? "pending") })) } : null;
     }
+    // Older steps were condensed to make room (a failed attempt closes with an error and changes nothing).
+    case "compaction/end":
+      return d.error ? null : { type: "compacted" };
     case "session/title":
       return typeof d.title === "string" ? { type: "title", title: d.title } : null;
     case "turn/end": {

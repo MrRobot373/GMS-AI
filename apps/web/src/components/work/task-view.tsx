@@ -14,6 +14,7 @@ import {
   FileText,
   FolderOpen,
   Globe,
+  Layers,
   ListChecks,
   Loader2,
   MoreHorizontal,
@@ -79,7 +80,9 @@ type Item =
   | { kind: "steps"; key: string; steps: Step[] }
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "error"; key: string; text: string }
-  | { kind: "stopped"; key: string };
+  | { kind: "stopped"; key: string }
+  /** Older steps were condensed to make room in the model's context window. */
+  | { kind: "compacted"; key: string };
 
 function buildTimeline(events: WorkEvent[]) {
   const items: Item[] = [];
@@ -124,6 +127,9 @@ function buildTimeline(events: WorkEvent[]) {
       }
       case "plan":
         plan = d.items ?? [];
+        break;
+      case "context":
+        if (d.compacted) items.push({ kind: "compacted", key: `x${e.seq}` });
         break;
       case "status":
         status = d.status;
@@ -633,6 +639,12 @@ function TimelineItem({
       return (
         <div className="mb-5 flex items-center gap-2 text-[12.5px] text-fg-subtle">
           <XCircle className="size-3.5" /> {t("Stopped. Send a message to continue.")}
+        </div>
+      );
+    case "compacted":
+      return (
+        <div className="mb-5 flex items-center gap-2 text-[12.5px] text-fg-subtle" data-testid="task-compacted">
+          <Layers className="size-3.5" /> {t("Older steps were summarized to make room in the model's memory. Files and the plan are kept.")}
         </div>
       );
   }

@@ -288,8 +288,10 @@ d("Work AI tools", () => {
     "bash", "read", "write", "edit", "glob", "grep", "read_image", "todo_write", "web_search", "web_fetch", "skill",
     "subagent", "subagent_fork", "send_message", "list_agents", "interrupt_agent", "job_list", "job_output", "job_kill",
     "documents_search", "documents_read", "documents_save",
+    // The owner is an org admin and Calculators is on by default, so the tested calculators come too.
+    "calculators_search", "calculators_run",
   ];
-  const BROWSER_TOOLS = ["browser_open", "browser_click", "browser_type", "browser_select", "browser_back", "browser_read", "browser_screenshot"];
+  const BROWSER_TOOLS = ["browser_open", "browser_click", "browser_type", "browser_select", "browser_back", "browser_read", "browser_screenshot", "browser_press", "browser_click_at"];
 
   it("offers every tool", async () => {
     const t = await run(workspaceId, []);

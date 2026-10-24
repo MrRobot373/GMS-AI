@@ -8,11 +8,16 @@
  * Pages come back as text with numbered elements ("[4] button "Sign in""), which the agent uses
  * to click or type. A click or Enter that would submit a form is held until the agent repeats it
  * with confirm_submit, which the approval policy turns into a question for the person.
+ *
+ * Pages the agent built are opened from the task folder under http://task.local/, so it can try
+ * them the way a person would: script errors come back with each view, and on those pages it can
+ * press keys and click at a point (a canvas game has no elements to number).
  */
-import { chown, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chown, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { extname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright-core";
 import type { EgressProxy } from "./egress";
 
@@ -21,6 +26,65 @@ const NAV_TIMEOUT_MS = 30_000;
 const ACTION_TIMEOUT_MS = 10_000;
 
 export class BrowserError extends Error {}
+
+/** Where the task's own files are served to its browser (never on the network). */
+export const LOCAL_ORIGIN = "http://task.local";
+const LOCAL_MAX_BYTES = 20 * 1024 * 1024;
+/** Script errors kept per view, and how much of each. */
+const MAX_ERRORS = 10;
+const ERROR_CHARS = 300;
+const LOCAL_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".map": "application/json",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".wasm": "application/wasm",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+};
+
+/**
+ * The file a task.local path names, or null: it must be a file (a folder means its index.html)
+ * inside the task folder once every link is followed, and not too big.
+ */
+export async function localFile(workdir: string, pathname: string): Promise<string | null> {
+  let rel: string;
+  try {
+    rel = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  if (rel.includes("\0")) return null;
+  const root = await realpath(workdir).catch(() => null);
+  if (!root) return null;
+  const inside = (p: string) => p === root || p.startsWith(root + sep);
+  let real = await realpath(join(root, rel)).catch(() => null);
+  if (!real || !inside(real)) return null;
+  let info = await stat(real).catch(() => null);
+  if (info?.isDirectory()) {
+    real = await realpath(join(real, "index.html")).catch(() => null);
+    if (!real || !inside(real)) return null;
+    info = await stat(real).catch(() => null);
+  }
+  return info?.isFile() && info.size <= LOCAL_MAX_BYTES ? real : null;
+}
 
 /** Where the browser lives for one task. */
 export interface BrowserTarget {
@@ -40,6 +104,8 @@ export interface PageView {
   truncated: boolean;
   /** Files the page downloaded since the last action, relative to the task folder. */
   downloads: string[];
+  /** Script errors on the page since the last action. */
+  errors?: string[];
 }
 
 /** Find the system's Chromium: BROWSER_PATH, the image's /usr/bin/chromium, or Playwright's own copy. */
@@ -173,6 +239,8 @@ interface Session {
   downloads: string[];
   /** A page load the egress proxy refused (plain HTTP), reported with the next view. */
   blocked: { host: string; reason: string } | null;
+  /** Script errors since the last view (uncaught exceptions and console errors). */
+  errors: string[];
   lastUsed: number;
 }
 
@@ -271,6 +339,12 @@ export class BrowserService {
     context.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
     // Only web pages: no file://, chrome:// or other schemes, whatever a page links to.
     await context.route(/^(?!https?:|data:|blob:|about:)/i, (route) => route.abort("accessdenied"));
+    // The task's own files, for trying what the agent built. Nothing under task.local reaches the network.
+    await context.route(`${LOCAL_ORIGIN}/**`, async (route) => {
+      const file = await localFile(target.workdir, new URL(route.request().url()).pathname);
+      if (!file) return route.fulfill({ status: 404, contentType: "text/plain; charset=utf-8", body: "Not found in the task folder." });
+      await route.fulfill({ status: 200, contentType: LOCAL_TYPES[extname(file).toLowerCase()] ?? "application/octet-stream", body: await readFile(file) });
+    });
     const page = context.pages()[0] ?? (await context.newPage());
     const s: Session = {
       context,
@@ -280,14 +354,23 @@ export class BrowserService {
       egress,
       downloads: [],
       blocked: null,
+      errors: [],
       lastUsed: Date.now(),
     };
-    const watch = (p: Page) =>
+    const error = (text: string) => {
+      if (s.errors.length < MAX_ERRORS) s.errors.push(text.slice(0, ERROR_CHARS));
+    };
+    const watch = (p: Page) => {
       p.on("response", (r) => {
         const why = r.headers()["x-aatmiq-blocked"];
         if (why && r.request().isNavigationRequest())
           s.blocked = { host: new URL(r.url()).hostname, reason: decodeURIComponent(why) };
       });
+      p.on("pageerror", (e) => error(e.stack?.split("\n").slice(0, 2).join(" ") || e.message));
+      p.on("console", (m) => {
+        if (m.type() === "error") error(m.text());
+      });
+    };
     watch(page);
     context.on("page", watch);
     context.on("page", (p) => {
@@ -359,12 +442,14 @@ export class BrowserService {
     await s.page.waitForLoadState("networkidle", { timeout: 2500 }).catch(() => undefined);
     const text = ((await s.page.evaluate(SNAPSHOT).catch(() => "")) as string) || "";
     const downloads = s.downloads.splice(0);
+    const errors = s.errors.splice(0);
     return {
       url: s.page.url(),
       title: await s.page.title().catch(() => ""),
       text: text.slice(0, MAX_TEXT),
       truncated: text.length > MAX_TEXT,
       downloads,
+      ...(errors.length ? { errors } : {}),
     };
   }
 
@@ -410,10 +495,43 @@ export class BrowserService {
     return el;
   }
 
+  /**
+   * A page from the task folder as its task.local address: a path in the folder
+   * (`game/index.html`), a file:// address inside it, or task.local itself. Null for anything else.
+   */
+  private async localAddress(url: string, target: () => Promise<BrowserTarget>): Promise<string | null> {
+    if (url.startsWith(`${LOCAL_ORIGIN}/`) || url === LOCAL_ORIGIN) return url;
+    const { workdir } = await target();
+    let rel: string | null = null;
+    if (/^file:/i.test(url)) {
+      let path: string;
+      try {
+        path = fileURLToPath(url);
+      } catch {
+        throw new BrowserError("That isn't a file address.");
+      }
+      const root = await realpath(workdir).catch(() => workdir);
+      rel = relative(root, path);
+      if (rel.startsWith("..") || rel.startsWith(sep)) throw new BrowserError("Only files in your working folder can be opened.");
+    } else if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+      const candidate = url.replace(/^\.?\//, "");
+      if (await localFile(workdir, `/${candidate}`)) rel = candidate;
+    }
+    if (rel === null) return null;
+    return `${LOCAL_ORIGIN}/${rel.split(sep).map(encodeURIComponent).join("/")}`;
+  }
+
+  /** Keys and clicks at a point only on pages from the task folder: elsewhere they could submit a form unasked. */
+  private local(s: Session) {
+    if (!s.page.url().startsWith(`${LOCAL_ORIGIN}/`))
+      throw new BrowserError("This works on pages from your working folder only: open one with browser_open and its path, like game/index.html.");
+  }
+
   async open(taskId: string, target: () => Promise<BrowserTarget>, url: string): Promise<PageView> {
+    const local = await this.localAddress(url, target);
     let u: URL;
     try {
-      u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`);
+      u = new URL(local ?? (/^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`));
     } catch {
       throw new BrowserError("That isn't a web address.");
     }
@@ -481,6 +599,38 @@ export class BrowserService {
     const el = await this.exists(s, ref);
     try {
       await el.selectOption({ label: option }).catch(() => el.selectOption(option));
+    } catch (e) {
+      await this.explain(e);
+    }
+    return this.view(s);
+  }
+
+  /** Press a key (held for `holdMs`, as a player holds the gas) on a page from the task folder. */
+  async press(taskId: string, target: () => Promise<BrowserTarget>, key: string, holdMs: number): Promise<PageView> {
+    const s = await this.session(taskId, target);
+    this.local(s);
+    if (!/^(?:(?:Shift|Control|Alt|Meta)\+)*[A-Za-z0-9]{1,20}$/.test(key))
+      throw new BrowserError("Name one key, like ArrowRight, Enter, Space, KeyW or Shift+Tab.");
+    try {
+      if (holdMs > 0) {
+        await s.page.keyboard.down(key);
+        await s.page.waitForTimeout(holdMs);
+        await s.page.keyboard.up(key);
+      } else await s.page.keyboard.press(key);
+      await s.page.waitForTimeout(300);
+    } catch (e) {
+      await this.explain(e);
+    }
+    return this.view(s);
+  }
+
+  /** Click at a point of the viewport (CSS pixels) on a page from the task folder, for canvas apps and games. */
+  async clickAt(taskId: string, target: () => Promise<BrowserTarget>, x: number, y: number): Promise<PageView> {
+    const s = await this.session(taskId, target);
+    this.local(s);
+    try {
+      await s.page.mouse.click(x, y);
+      await s.page.waitForTimeout(300);
     } catch (e) {
       await this.explain(e);
     }

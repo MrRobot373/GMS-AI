@@ -6,12 +6,12 @@
 import { createServer, type Server } from "node:http";
 import { connect } from "node:net";
 import { existsSync, statSync } from "node:fs";
-import { chmod, chown, mkdir, mkdtemp, readFile } from "node:fs/promises";
+import { chmod, chown, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BrowserError, BrowserService, findChromium, type BrowserTarget } from "./services/browser";
+import { BrowserError, BrowserService, findChromium, LOCAL_ORIGIN, localFile, type BrowserTarget } from "./services/browser";
 import { hostAllowed, isPrivateAddress, startEgressProxy, type EgressProxy } from "./services/egress";
 
 describe("egress rules", () => {
@@ -235,8 +235,61 @@ const chrome = findChromium();
   it("refuses the private network, other schemes and non-addresses with a clear reason", async () => {
     await expect(browser.open("t1", target(), `http://sneaky.test:${site.port}/`)).rejects.toThrow("private network");
     await expect(browser.open("t1", target(), `http://127.0.0.1:${site.port}/`)).rejects.toThrow("private network");
-    await expect(browser.open("t1", target(), "file:///etc/passwd")).rejects.toThrow("Only http and https");
+    await expect(browser.open("t1", target(), "file:///etc/passwd")).rejects.toThrow("Only files in your working folder");
     await expect(browser.open("t1", target(), "javascript:alert(1)")).rejects.toThrow("Only http and https");
+  }, 60_000);
+
+  it("opens what the agent built from its folder: script errors come back, keys and clicks reach the page", async () => {
+    const mine = () => target({ profileDir: join(work, "..", "profile-t4") });
+    const game = join(work, "game");
+    await mkdir(join(game, "src"), { recursive: true });
+    await writeFile(join(game, "index.html"), `<!doctype html><title>Mini game</title><body><p id="out">ready</p><canvas id="c" width="400" height="300"></canvas>
+      <script src="src/main.js"></script></body>`);
+    await writeFile(
+      join(game, "src/main.js"),
+      `const out = document.getElementById("out");
+      window.addEventListener("keydown", (e) => { out.textContent = "down " + e.code; });
+      window.addEventListener("keyup", (e) => { out.textContent += " up " + e.code; });
+      document.getElementById("c").addEventListener("click", (e) => { out.textContent = "clicked " + Math.round(e.offsetX) + "," + Math.round(e.offsetY); });
+      RR.Input.mousePos.x;`,
+    );
+    const v = await browser.open("t4", mine(), "game/index.html");
+    expect(v.url).toBe(`${LOCAL_ORIGIN}/game/index.html`);
+    expect(v.title).toBe("Mini game");
+    // The bug the Ridge Riders run shipped: a name one file used that no file defined.
+    expect(v.errors?.join("\n")).toMatch(/RR is not defined/);
+    const pressed = await browser.press("t4", mine(), "ArrowRight", 400);
+    expect(pressed.text).toContain("down ArrowRight up ArrowRight");
+    expect(pressed.errors).toBeUndefined();
+    const clicked = await browser.clickAt("t4", mine(), 58, 100);
+    expect(clicked.text).toMatch(/clicked \d+,\d+/);
+    // The same page by its file address; a folder opens its index.html.
+    expect((await browser.open("t4", mine(), `file://${game}/index.html`)).title).toBe("Mini game");
+    expect((await browser.open("t4", mine(), `${LOCAL_ORIGIN}/game/`)).title).toBe("Mini game");
+    // Keys and clicks at a point only on the task's own pages: elsewhere they could submit a form unasked.
+    await browser.open("t4", mine(), base);
+    await expect(browser.press("t4", mine(), "Enter", 0)).rejects.toThrow("pages from your working folder only");
+    await expect(browser.clickAt("t4", mine(), 10, 10)).rejects.toThrow("pages from your working folder only");
+    await browser.close("t4");
+  }, 60_000);
+
+  it("serves only files inside the task folder, links followed", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "aatmiq-outside-"));
+    await writeFile(join(outside, "secret.txt"), "top-secret");
+    await mkdir(join(work, "site"), { recursive: true });
+    await writeFile(join(work, "site", "page.html"), "<p>hi</p>");
+    await symlink(join(outside, "secret.txt"), join(work, "site", "leak.txt"));
+    await symlink(outside, join(work, "site", "elsewhere"));
+    expect(await localFile(work, "/site/page.html")).toMatch(/page\.html$/);
+    expect(await localFile(work, "/site/leak.txt")).toBeNull();
+    expect(await localFile(work, "/site/elsewhere/secret.txt")).toBeNull();
+    expect(await localFile(work, "/../../etc/passwd")).toBeNull();
+    expect(await localFile(work, "/%2e%2e/%2e%2e/etc/passwd")).toBeNull();
+    expect(await localFile(work, "/site/missing.html")).toBeNull();
+    const v = await browser.open("t5", target({ profileDir: join(work, "..", "profile-t5") }), `${LOCAL_ORIGIN}/site/leak.txt`);
+    expect(v.text).toContain("Not found in the task folder");
+    expect(v.text).not.toContain("top-secret");
+    await browser.close("t5");
   }, 60_000);
 
   it.runIf(process.getuid?.() === 0)("runs as the task's own Unix user", async () => {

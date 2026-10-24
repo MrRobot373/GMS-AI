@@ -2,12 +2,12 @@
  * Work AI end to end through the API: a real DeepSeek Harness runtime, a scripted OpenAI-compatible
  * model and a fake SearXNG, against the test database (TEST_DATABASE_URL).
  */
-import { connectorAccount, createDb, eq, organization, sql, user, workTask, type DB } from "@aatmiq/db";
+import { connectorAccount, createDb, eq, model, organization, sql, user, workTask, type DB } from "@aatmiq/db";
 import { APPROVAL_PRESETS } from "@aatmiq/shared";
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { createServer, type Server } from "node:http";
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -49,6 +49,8 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   const last = body.messages.at(-1)!;
   const usage = { choices: [], usage: { prompt_tokens: 100, completion_tokens: 20 } };
   const say = (t: string) => sse(res, [{ choices: [{ index: 0, delta: { content: t } }] }, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, usage]);
+  // A model server that sends back nothing in the middle of the work, every time it's asked.
+  if (last.role === "tool" && textOf(last.content).includes("blank-after-step")) return sse(res, [{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, usage]);
   if (last.role === "tool") return say(`Result: ${textOf(last.content).trim().slice(0, 300)}`);
   const userText = (m: { content: unknown }) => textOf(m.content).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
   const ask = [...body.messages].reverse().filter((m) => m.role === "user").map(userText).find((t) => t && !/^Current runtime context/.test(t)) ?? "";
@@ -335,20 +337,68 @@ d("Work AI", () => {
     expect(t.task.status).toBe("completed");
   }, 60_000);
 
-  it("keeps the plan true: misnamed fields are fixed, open steps are ticked when the turn completes", async () => {
+  it("keeps the plan true: misnamed fields are fixed; open steps are sent back, then reported, never ticked off", async () => {
     const todos = [{ task: "Gather the numbers", status: "in-progress" }, { task: "Write the summary" }];
     const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: `use todo_write ${JSON.stringify({ todos })}` });
     const t = await waitStatus(r.json.id, "completed", "failed");
-    expect(t.task.status).toBe("completed");
     const plans = t.events.filter((e) => e.kind === "plan").map((e) => e.data.items);
-    expect(plans[0]).toEqual([
-      { content: "Gather the numbers", status: "in_progress" },
-      { content: "Write the summary", status: "pending" },
+    expect(plans).toEqual([
+      [
+        { content: "Gather the numbers", status: "in_progress" },
+        { content: "Write the summary", status: "pending" },
+      ],
     ]);
-    expect(plans.at(-1)).toEqual([
-      { content: "Gather the numbers", status: "completed" },
-      { content: "Write the summary", status: "completed" },
-    ]);
+    // The agent was sent back to the open steps; it did nothing more, so the task says what's left.
+    expect(modelRequests.some((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("your plan still has steps that are not marked done")))).toBe(true);
+    expect(t.task.status).toBe("failed");
+    expect(t.task.error).toBe('Stopped with 2 of 2 planned steps not done: Gather the numbers; Write the summary. Send a message (for example "continue") to pick up from there.');
+
+    // A question in passing, with no work done, leaves the older plan alone.
+    await call("POST", `/api/work/tasks/${r.json.id}/messages`, { prompt: "how long will it take" });
+    const asked = await waitFor(async () => {
+      const x = await getTask(r.json.id);
+      return x.task.status !== "running" && x.task.status !== "queued" && x.events.filter((e) => e.kind === "user").length === 2 ? x : null;
+    });
+    expect(asked.task.status).toBe("completed");
+    expect(asked.task.result).toContain("how long will it take");
+
+    // A runtime started again (after it was stopped) hears the plan and what's in the folder.
+    await writeFile(join(workDir, r.json.id, "files", "vehicles.js"), "export const vehicles = [];\n");
+    await (app.workRunner as unknown as { release(id: string): Promise<void> }).release(r.json.id);
+    const before = modelRequests.length;
+    await call("POST", `/api/work/tasks/${r.json.id}/messages`, { prompt: "continue" });
+    await waitFor(async () => (modelRequests.length > before ? true : null));
+    const seed = modelRequests.slice(before).flat().filter((x) => x.role === "user").map((x) => textOf(x.content)).join("\n");
+    expect(seed).toContain("Your plan when it stopped");
+    expect(seed).toContain("- [in_progress] Gather the numbers");
+    expect(seed).toContain("Files in your working folder now:\nvehicles.js (28 bytes)");
+    await waitStatus(r.json.id, "completed", "failed");
+  }, 90_000);
+
+  it("finishes a task whose plan is done", async () => {
+    const todos = [{ content: "Write the note", status: "completed" }];
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: `use todo_write ${JSON.stringify({ todos })}` });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    expect(t.task.status).toBe("completed");
+  }, 60_000);
+
+  it("saves a request too long for the model's window in the folder and sends the agent where it is", async () => {
+    await db.update(model).set({ contextLength: 16_384 }).where(eq(model.modelKey, "fake-agent"));
+    try {
+      const brief = `Build Ridge Riders. ${"Section: physics, levels, garage, audio, save data. ".repeat(250)}`.trim();
+      const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: brief });
+      const t = await waitStatus(r.json.id, "completed", "failed");
+      const seq = t.events.find((e) => e.kind === "user")!.seq;
+      expect(await readFile(join(workDir, r.json.id, "files", ".task", `request-${seq}.md`), "utf8")).toBe(brief);
+      const sent = modelRequests.flat().filter((x) => x.role === "user").map((x) => textOf(x.content));
+      expect(sent.some((x) => x.includes(`so it is saved in \`.task/request-${seq}.md\``) && x.includes("Build Ridge Riders."))).toBe(true);
+      expect(sent.some((x) => x.includes(brief))).toBe(false);
+      // The person's timeline keeps the whole message; the saved copy isn't one of the task's files.
+      expect(t.events.find((e) => e.kind === "user")!.data.text).toBe(brief);
+      expect((await call("GET", `/api/work/tasks/${r.json.id}/files`)).json.files).toEqual([]);
+    } finally {
+      await db.update(model).set({ contextLength: null }).where(eq(model.modelKey, "fake-agent"));
+    }
   }, 60_000);
 
   it("reads web pages for the agent: the page's main text, public addresses only", async () => {
@@ -496,6 +546,14 @@ d("Work AI", () => {
     expect(t3.task.status).toBe("failed");
     expect(t3.task.error).toMatch(/empty answer/);
   }, 120_000);
+
+  it("carries on after an empty reply in the middle of the work, instead of failing the task", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo blank-after-step" });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    expect(modelRequests.some((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("Your last reply came back empty")))).toBe(true);
+    expect(t.task.status).toBe("completed");
+    expect(t.task.result).toContain("Your last reply came back empty");
+  }, 60_000);
 
   it("streams the timeline over SSE", async () => {
     const res = await fetch(`${apiUrl}/api/work/tasks/${taskId}/stream?after=2`, { headers: { cookie: owner.cookie } });

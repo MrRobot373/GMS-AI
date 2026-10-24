@@ -62,6 +62,8 @@ export type HarnessEvent =
   | { type: "tool_result"; callId: string; text: string; isError: boolean; exitCode?: number; notRun?: string }
   | { type: "plan"; items: { content: string; status: string }[] }
   | { type: "title"; title: string }
+  /** Older steps were condensed into a summary to make room in the model's context window. */
+  | { type: "compacted" }
   | { type: "turn_end"; reason: string; error?: string }
   | { type: "status"; status: "running" | "idle" }
   | { type: "exit"; code: number | null; error?: string };

@@ -155,14 +155,54 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   (arguments it couldn't take, an unknown tool) is stored with `notRun` and its reason and shows as
   "Not run: …".
 - **The plan stays true.** After 3 steps without a plan update (then every 4), the agent gets a short
-  reminder appended to the tool result; it's stripped from what people see. When a turn ends
-  normally, steps the agent left open are ticked off, so a finished task never shows "0 of 9".
+  reminder appended to the tool result; it's stripped from what people see. Steps are never ticked
+  off for the agent. When a turn ends with steps still open, the agent is sent back to them ("your
+  plan still has steps that are not marked done: …"), and again after each round that did some work
+  (at most 8 times per message; one round with no tool call is allowed, for ticking off steps already
+  done). If it stops with steps open anyway, the task is **failed**, not completed, with the open
+  steps named: "Stopped with 3 of 9 planned steps not done: … Send a message (for example
+  "continue") to pick up from there." A reply that plainly stops halfway (ending on `:`, `,` or a
+  dash, or inside a code block) or one cut at its length limit is sent back the same way, and so is
+  a turn the model server ended with an empty reply after real work ("continue from where you
+  stopped"); an empty reply with nothing done before it still fails the task. The stored result is
+  this message's answer, never an earlier one.
+- **The context window.** Every budget is a share of the model's own context length (Admin →
+  Models; `contextBudget` in packages/harness/src/dsh/patch.ts), so big jobs work on small windows:
+
+  | Window | One reply (max) | Older steps condensed from | Summary (max) |
+  |---|---|---|---|
+  | 32,768 | 8,192 | 20,276 | 3,276 |
+  | 131,072 | 32,768 | 89,088 | 8,192 |
+  | 262,144 | 32,768 | 209,715 | 8,192 |
+
+  DSH's own defaults keep 65,536 tokens of headroom and let one reply take 32,768, so on a 32K
+  window it never condensed anything: the history grew until the model server cut the prompt
+  (Ollama does that silently) and the agent lost its task. Now, before each step, DSH condenses the
+  oldest steps into a checkpoint summary once the request passes the threshold, keeping the newest
+  20 % word for word; oversized old tool results are trimmed first. The timeline shows "Older steps
+  were summarized…" each time. As a safety net, the model gateway answers a request bigger than the
+  window with an overflow error in the words DSH recognizes (it then condenses and retries), and
+  lowers a reply limit that would run past the window.
+  The agent is told its window size and how to work within it: plan first with `todo_write`, get a
+  small version working end to end, save each file as soon as it's written, write long files in
+  parts, keep command output short, never print or search minified or vendor files, don't install
+  tools nobody asked for, hand self-contained pieces to the `subagent` tool, check that a name one
+  file uses is really defined in the other (after condensing it can't trust its memory), and try a
+  program before calling it done (in the browser for pages, apps and games; otherwise run it, or at
+  least `node --check` each script).
+- **Long requests.** A message longer than 15 % of the window (about 19,000 characters on a 32K
+  model) is saved as `.task/request-<n>.md` in the working folder (hidden from the Files tab; in a
+  Code workspace it's added to `.git/info/exclude`). The agent gets where it is and its first 1,500
+  characters, reads the whole file, and reads sections again after older steps are condensed. The
+  timeline keeps the whole message.
 - **The timeline** is DSH's session events normalized into `work_event` rows (`user`, `assistant`,
-  `tool_call`, `tool_result`, `approval`, `plan`, `status`) with a per-task sequence number. The
+  `tool_call`, `tool_result`, `approval`, `plan`, `status`, `context`) with a per-task sequence number. The
   browser replays from a sequence number over SSE, so reconnecting never loses or repeats steps.
 - **Warm and cold follow-ups.** A finished task keeps its runtime for `idleMinutes`. After that (or
-  after Stop or a server restart) a new runtime starts and receives the earlier conversation as
-  context. DSH's SDK protocol has no way to reopen a stored session (D26).
+  after Stop or a server restart) a new runtime starts and receives the earlier conversation (at
+  most half its window; long requests as pointers to their saved files), the plan as it was left,
+  and the files now in the folder with their sizes. DSH's SDK protocol has no way to reopen a stored
+  session (D26).
 - **Queue.** Tasks beyond a person's concurrency limit wait as `queued` and start in order.
   Unfinished tasks are marked failed after a server restart ("send a message to continue").
 - **Schedules** are checked every 30 seconds. A due schedule is claimed by moving its next run
@@ -226,8 +266,8 @@ Limits, to know when deploying:
 
 ### Browser
 
-`browser_open`, `browser_click`, `browser_type`, `browser_select`, `browser_back`, `browser_read`
-and `browser_screenshot`, registered by the Aatmiq DSH plugin when the browser is on. Each call goes
+`browser_open`, `browser_click`, `browser_type`, `browser_select`, `browser_back`, `browser_read`,
+`browser_screenshot`, `browser_press` and `browser_click_at`, registered by the Aatmiq DSH plugin when the browser is on. Each call goes
 to `/api/internal/work/browser` with the task token; the browser belongs to the API, never to the
 agent.
 
@@ -244,7 +284,16 @@ agent.
   (any private answer refuses), unless the host is listed under *Internal sites it may open*. The
   proxy connects to the address it checked, so DNS rebinding can't swap it. Behind a corporate
   proxy (`HTTPS_PROXY`) public sites go through it; allowed internal hosts are reached directly.
-  Only `http`/`https` pages open.
+  Only `http`/`https` pages open, and the task's own files (next point).
+- **Trying what it built**: `browser_open` with a path in the working folder (`game/index.html`, or
+  a `file://` address inside it) opens the page under `http://task.local/…`, served from the task
+  folder by the API itself (nothing goes on the network). Only files inside the folder are served,
+  every link followed (a symlink out of it is "not found"), 20 MB at most each. Every page view
+  lists the page's script errors (uncaught exceptions and console errors), so a script that uses a
+  name no file defines shows up at once. On those pages only, `browser_press` presses a key (held up
+  to 5 s, like a player holding the gas) and `browser_click_at` clicks at a point (a canvas has no
+  numbered elements); elsewhere they're refused, since they could submit a form unasked. The agent
+  is told to try a web page, app or game this way before calling it done.
 - **Approvals**: reading never asks. A click or Enter that would submit a form is held until the
   agent repeats it with `confirm_submit: true`, which asks the person under *before risky actions*;
   under *before every change* every page action asks; *never* asks nothing.

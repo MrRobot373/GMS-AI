@@ -25,7 +25,8 @@ import { getWorkSettings, titleFrom, type WorkStreamEvent } from "../services/wo
 import { localeOf, tr } from "../i18n";
 
 const MAX_FILES = 1000;
-const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".venv", ".cache"]);
+// `.task` holds long requests saved for the agent (services/work.ts), not something it made.
+const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".venv", ".cache", ".task"]);
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 /** Content types shown inline; anything else downloads. HTML/SVG are never rendered (served as text). */

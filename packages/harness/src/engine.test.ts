@@ -9,7 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDshEngine, mapEvent, networkEnv, notRunReason, prependPath, readableBy, shellFailure } from "./dsh/engine";
-import { buildPatch } from "./dsh/patch";
+import { buildPatch, contextBudget } from "./dsh/patch";
+import { parse } from "yaml";
 import { APPROVAL_PRESETS } from "@aatmiq/shared";
 import { classifyRisk } from "./policy";
 import { containerArgs, containerEnv, egressToken, type ContainerOptions } from "./dsh/container";
@@ -31,6 +32,9 @@ const fetchCalls: { url: string; offset: number }[] = [];
 /** The tools and system prompt of the latest model request. */
 let modelTools: string[] = [];
 let modelSystem = "";
+/** Report usage like a real server (about 4 characters a token), and remember each request's size. */
+let realUsage = false;
+const requestTokens: number[] = [];
 
 function sse(res: import("node:http").ServerResponse, chunks: unknown[]) {
   res.writeHead(200, { "content-type": "text/event-stream" });
@@ -47,7 +51,9 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   modelTools = (body.tools ?? []).map((t) => t.function.name);
   modelSystem = body.messages.filter((m) => m.role === "system").map((m) => text(m.content)).join("\n");
   const last = body.messages.at(-1)!;
-  const usage = { choices: [], usage: { prompt_tokens: 50, completion_tokens: 10 } };
+  const promptTokens = Math.ceil(JSON.stringify({ messages: body.messages, tools: body.tools ?? [] }).length / 4);
+  if (realUsage) requestTokens.push(promptTokens);
+  const usage = { choices: [], usage: { prompt_tokens: realUsage ? promptTokens : 50, completion_tokens: 10 } };
   const askAt = body.messages.findLastIndex((m) => m.role === "user" && !/^Current runtime context/.test(text(m.content)));
   const ask = text(body.messages[askAt]?.content);
   if (last.role === "tool") toolMessages.push(text(last.content));
@@ -579,6 +585,42 @@ describe("patch", () => {
   });
 });
 
+describe("context window", () => {
+  it("shares out a 32K window so compaction can run (the stock 64K headroom never let it)", () => {
+    const b = contextBudget(32_768);
+    expect(b).toMatchObject({ maxOutput: 8192, summaryTokens: 3276, headroom: 4300 });
+    // DSH compacts at min(ratio × window, window − reply − headroom): well inside the window.
+    expect(b.threshold).toBe(20_276);
+    expect(b.threshold).toBeGreaterThan((b.window - b.maxOutput) * b.retainRatio);
+    // A big window keeps its replies and summaries bounded.
+    expect(contextBudget(262_144)).toMatchObject({ maxOutput: 32_768, summaryTokens: 8192, threshold: 209_715 });
+    // A small one still leaves room to work.
+    const small = contextBudget(8192);
+    expect(small.threshold).toBeGreaterThan(0);
+    expect(small.maxOutput + small.headroom).toBeLessThan(8192);
+  });
+  it("configures compaction and the reply limit from the model's window, and tells the agent how to work within it", async () => {
+    const rows = parse(buildPatch({ ...(await spec()), model: { key: "main", name: "Qwen", contextWindow: 32_768 } })) as any[];
+    const compaction = rows.find((r) => r.id === "compaction-basic");
+    expect(compaction).toMatchObject({ name: "@deepseek-ai/dsh-compaction-basic", config: { thresholdRatio: 0.8, headroomTokens: 4300, retainRatio: 0.2, maxTokens: 3276 } });
+    const llm = rows.find((r) => r.id === "llm-pi-ai");
+    expect(llm.config.providers.aatmiq.models[0]).toMatchObject({ contextWindow: 32_768, maxTokens: 8192 });
+    const persona = rows.find((r) => r.id === "system-prompt").config.personaPrefix as string;
+    expect(persona).toContain("Your context window is about 32,768 tokens");
+    expect(persona).toContain("Write a long file in several parts");
+    expect(persona).toContain("never print or search minified or vendor files");
+    expect(persona).toContain("saved in a file under .task/");
+    expect(persona).toContain("check the other file really defines it under that name");
+    expect(persona).toContain("node --check");
+    const withBrowser = parse(buildPatch({ ...(await spec()), browser: true })) as any[];
+    expect(withBrowser.find((r) => r.id === "system-prompt").config.personaPrefix).toContain("open it with browser_open by its path in your folder");
+  });
+  it("reports condensed history to Aatmiq, but not a failed attempt", () => {
+    expect(mapEvent({ type: "compaction/end", data: { compactionId: "c1" } })).toEqual({ type: "compacted" });
+    expect(mapEvent({ type: "compaction/end", data: { compactionId: "c2", error: { message: "boom" } } })).toBeNull();
+  });
+});
+
 describe("shell path", () => {
   it("puts required directories first and does not list one twice", () => {
     expect(prependPath("C:\\Windows\\System32;C:\\Tools", ["D:\\Py", "c:\\windows\\system32\\"], ";")).toBe("D:\\Py;C:\\Windows\\System32;C:\\Tools");
@@ -650,6 +692,24 @@ describe("DeepSeek Harness engine", () => {
       await rm(secretDir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it("condenses older steps before a small window fills up, and keeps working", async () => {
+    // The Ridge Riders failure: a 32K window, DSH's stock compaction never ran, the history grew
+    // until the server cut it off. Here 16K, with steps that each add about 1,500 tokens.
+    const s = { ...(await spec()), model: { key: "fake-model", name: "Fake", contextWindow: 16_384 } };
+    const script = Array.from({ length: 10 }, (_, i) => ["bash", { description: `Step ${i + 1}`, command: `python3 -c "print('step${i + 1} ' + 'a' * 6000)"` }]);
+    realUsage = true;
+    requestTokens.length = 0;
+    try {
+      const { events } = await runTurn(`script: ${JSON.stringify(script)}`, s);
+      expect(events.some((e) => e.type === "compacted")).toBe(true);
+      // No request the model saw came near the window.
+      expect(Math.max(...requestTokens)).toBeLessThan(16_384 - 4096);
+      expect(events.some((e) => e.type === "turn_end")).toBe(true);
+    } finally {
+      realUsage = false;
+    }
+  }, 120_000);
 
   it("runs calls with stray sandbox_permissions and misnamed plan fields instead of failing them", async () => {
     const script = [
