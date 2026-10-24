@@ -3,9 +3,9 @@
  * are one number, an ambiguous comma stops the tool, and a model's proposal only counts in the unit
  * that was written. No database needed.
  */
-import { getCalculator } from "@aatmiq/calculators";
+import { calculatorCatalog, getCalculator } from "@aatmiq/calculators";
 import { describe, expect, it } from "vitest";
-import { acceptModelInputs, ambiguousNumber, calcContext, findCalculation, readQuantities, saveChatCalculation } from "./services/calc-tool";
+import { acceptModelInputs, ambiguousNumber, calcContext, dispatchCalculatorTool, findCalculation, readQuantities, runCalculatorTool, saveChatCalculation, searchCalculatorsTool } from "./services/calc-tool";
 
 const out = (r: Awaited<ReturnType<typeof findCalculation>>, key: string) => r?.outputs.find((o) => o.key === key)?.value;
 
@@ -90,5 +90,30 @@ describe("chat calculator tool: what a model proposes", () => {
   });
   it("refuses a written number of another quantity", () => {
     expect(acceptModelInputs(buck, "buck at 48 A and 0.4 duty", { Vin: { value: 48, unit: "V" } })).toEqual({});
+  });
+});
+
+describe("calculator tool calls", () => {
+  it("runs the calculator the model names, from a JSON string or an object", () => {
+    const json = runCalculatorTool("ohms-law", '{"V":{"value":12,"unit":"V"},"R":4}', false);
+    expect(json.calculation?.via).toBe("tool");
+    expect(json.calculation?.outputs.find((o) => o.key === "I")?.value).toBe(3);
+    expect(json.text).toMatch(/tested code/);
+    const obj = dispatchCalculatorTool("calculators_run", { calculator_id: "ohms-law", inputs: { V: 12, R: 4 } }, false);
+    expect(obj.calculation?.outputs.find((o) => o.key === "I")?.value).toBe(3);
+  });
+  it("searches by words, and does not offer a calculator that is hidden", () => {
+    expect(searchCalculatorsTool("ohm current resistance", false)).toMatch(/id: ohms-law/);
+    expect(runCalculatorTool("not-a-calculator", { V: 1 }, false).text).toMatch(/no calculator/i);
+    const beta = calculatorCatalog().find((c) => c.kind === "formula" && c.status === "beta");
+    if (!beta) return;
+    expect(runCalculatorTool(beta.id, {}, false).text).toMatch(/not available/);
+    expect(searchCalculatorsTool(beta.name, false)).not.toContain(`id: ${beta.id}`);
+  });
+  it("does not invent a number when the formula refuses the inputs", () => {
+    const r = dispatchCalculatorTool("calculators_run", { calculator_id: "ground-rod-resistance", inputs_json: { rho: 100, L: 0.1, d: 1000 } }, true);
+    expect(r.calculation?.refused?.field).toBe("L");
+    expect(r.calculation?.outputs).toEqual([]);
+    expect(r.text).toMatch(/Don't work out a result/);
   });
 });

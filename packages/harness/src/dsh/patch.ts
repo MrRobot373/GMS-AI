@@ -81,6 +81,13 @@ export function buildPatch(spec: TaskSpec): string {
           "Cite a page only if you fetched it and it says what you cite it for. When a page couldn't be read or doesn't give the figure, say so plainly instead of writing an estimate as if it were the published value (no \"~91.9 %\").",
           "Put work you only need along the way (debugging and checking scripts, temporary data) in a scratch/ folder, so the working folder holds what the person asked for; files they asked for go where they asked.",
           "Save to the person's Documents in Aatmiq (documents_save) only when they ask for that; otherwise the results stay in the working folder.",
+          "Check a deliverable once. When that check passes, stop: do not rewrite the file or rerun the same command to confirm it again.",
+          spec.calculators
+            ? "For an engineering or scientific number, use calculators_search and then calculators_run. Those results come from tested formulas. Do not replace them with your own arithmetic or a script, unless no calculator covers the question. If a calculator refuses the inputs, say why and do not invent a number."
+            : "",
+          process.platform === "win32"
+            ? "On Windows, run a program by a quoted path with the call operator, not in a pipeline: `& 'C:\\path\\to\\python.exe' script.py`. A pipeline (`| Out-String`, `2>&1 |`) makes PowerShell refuse a program whose path contains a space. If `python` or `cmd` is not found, use `$env:SystemRoot\\System32\\cmd.exe` and look for Python only under `$env:LOCALAPPDATA\\Programs\\Python`. Do not search the whole disk."
+            : "",
           "When you finish, close with a short summary: the key results, the files you made, and anything unresolved (pages you couldn't read, approximations you used, parts of the request you didn't do).",
           spec.instructions ? `\nInstructions for this task:\n${spec.instructions}` : "",
         ]
@@ -119,6 +126,7 @@ export function buildPatch(spec: TaskSpec): string {
         askForNetwork: spec.askForNetwork,
         webSearch: spec.webSearch,
         browser: !!spec.browser,
+        calculators: !!spec.calculators,
         connectors: spec.connectors.map((c) => ({ name: c.name, approveTools: c.approveTools })),
       },
     },

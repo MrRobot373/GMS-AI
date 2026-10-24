@@ -133,8 +133,8 @@ export function FormulaCalculator({ c, prefill }: { c: CatalogEntry; prefill?: R
             }}
           >
             {(c.inputs ?? []).map((i) => {
-              const v = values[i.key]!;
               const units = unitsOf(i.quantity);
+              const v = values[i.key] ?? { text: "", unit: i.unit ?? units[0]?.id ?? "" };
               const bad = error?.field === i.key;
               return (
                 <div key={i.key}>

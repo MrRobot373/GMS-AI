@@ -43,8 +43,23 @@ export interface PageView {
 }
 
 /** Find the system's Chromium: BROWSER_PATH, the image's /usr/bin/chromium, or Playwright's own copy. */
+/** Chrome and Edge on Windows, where the Linux Chromium paths don't exist. */
+function windowsBrowsers(env: NodeJS.ProcessEnv): string[] {
+  if (process.platform !== "win32") return [];
+  const local = env.LOCALAPPDATA;
+  const pf = env.PROGRAMFILES;
+  const pf86 = env["PROGRAMFILES(X86)"];
+  return [
+    local && join(local, "Google", "Chrome", "Application", "chrome.exe"),
+    pf && join(pf, "Google", "Chrome", "Application", "chrome.exe"),
+    pf86 && join(pf86, "Google", "Chrome", "Application", "chrome.exe"),
+    pf && join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
+    pf86 && join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"),
+  ].filter((p): p is string => !!p);
+}
+
 export function findChromium(env: NodeJS.ProcessEnv = process.env): string | null {
-  for (const p of [env.BROWSER_PATH, "/usr/bin/chromium", "/usr/bin/chromium-browser"])
+  for (const p of [env.BROWSER_PATH, "/usr/bin/chromium", "/usr/bin/chromium-browser", ...windowsBrowsers(env)])
     if (p && existsSync(p)) return p;
   try {
     const p = chromium.executablePath();

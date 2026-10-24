@@ -95,8 +95,8 @@ d("GEM AI Calculators", () => {
     await h.call(h.owner, "PUT", "/api/admin/gem", { betaCalculators: false });
     const r = await h.call(h.alice, "GET", `/api/calculators?workspaceId=${h.workspaceId}`);
     expect(r.json.calculators.every((c: { status: string }) => c.status !== "beta")).toBe(true);
-    expect(r.json.calculators.filter((c: { status: string }) => c.status === "verified")).toHaveLength(20);
-    expect((await h.call(h.alice, "POST", "/api/calculators/run", { workspaceId: h.workspaceId, calculatorId: "bmi", inputs: { m: { value: 70 }, h: { value: 175 } } })).status).toBe(404);
+    expect(r.json.calculators.filter((c: { status: string }) => c.status === "verified")).toHaveLength(202);
+    expect((await h.call(h.alice, "POST", "/api/calculators/run", { workspaceId: h.workspaceId, calculatorId: "bmi", inputs: { m: { value: 70 }, h: { value: 175 } } })).status).toBe(200);
     await h.call(h.owner, "PUT", "/api/admin/gem", { betaCalculators: true, modules: { calculators: false } });
     expect((await h.call(h.alice, "GET", `/api/calculators?workspaceId=${h.workspaceId}`)).status).toBe(403);
     await h.call(h.owner, "PUT", "/api/admin/gem", { modules: { calculators: true } });

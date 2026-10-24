@@ -1,11 +1,17 @@
 # Skill library
 
-Aatmiq ships 59 built-in skills that Work AI and the Aatmiq panel (Code) can use. A skill is a
+Aatmiq ships 71 built-in skills that Work AI and the Aatmiq panel (Code) can use. A skill is a
 folder with a `SKILL.md`: a one-line description the agent sees in every task ("Use when…"), and
 detailed instructions it loads only when a task matches — a workflow, checklists, templates,
 pitfalls and a "Done when" bar. Some skills also ship tested helper scripts the agent runs from the
 skill's folder (Markdown → Word/PDF, outline → PowerPoint, formatted Excel export, link checker,
-contrast checker, secret scanner, data profiler, chart style).
+contrast checker, secret scanner, data profiler, chart style, skill-contract validator, artifact inspector).
+
+The organizational target is smaller than a pile of prompts: a catalog of 195 capabilities, with
+broad skills kept as routers until a narrower one is installed. Phase 0 (platform governance) is in
+the library at maturity `draft`. Later rows stay in the catalog and are not skills yet.
+See [GMS_AI_ORGANIZATIONAL_SKILLS_BLUEPRINT.md](GMS_AI_ORGANIZATIONAL_SKILLS_BLUEPRINT.md) and
+`packages/skills/library/skill-router/references/catalog.json`.
 
 ## For people
 
@@ -18,8 +24,9 @@ admins write (**New skill**) work the same way and win over a library skill with
 
 Switch library skills on or off for everyone on the same page (the switch on each row; stored as
 `disabledLibrarySkills` in the Work AI settings). Work AI tasks get every skill that's on; Code
-tasks get the Software development, Data and Apps ones. Each skill adds about 40 tokens (its
-description) to every model call; the full library adds about 2,000.
+tasks get the Software development, Data, Apps, and Platform ones. Each skill adds about 40 tokens (its
+description) to every model call; the full library adds about 2,800. The 195-row catalog is not part of
+that prompt; it loads only when the skill router reads it.
 
 The helper scripts need Python with pandas, openpyxl, matplotlib, python-docx, python-pptx,
 reportlab, pypdf and lxml; the Docker image installs them.
@@ -32,7 +39,8 @@ reportlab, pypdf and lxml; the Docker image installs them.
   `skill` tool that returns the instructions plus the skill's folder path.
 - `packages/skills/src/library.test.ts` checks every skill: name and folder match, the description
   starts with "Use when/for" and fits in 160 characters, a "Done when" section exists, every
-  script a skill mentions exists and parses, and cross-references point to real skills.
+  script a skill mentions exists and parses, and cross-references point to real skills. Governed
+  skills also pass `validate_skill.py`, and the catalog stays at 195 rows with resolvable routers.
 
 API: `GET /api/work/skills/library`, `GET /api/work/skills/library/:name` (instructions),
 `PATCH /api/work/skills/library/:name {enabled}` (admins).
@@ -40,11 +48,17 @@ API: `GET /api/work/skills/library`, `GET /api/work/skills/library/:name` (instr
 ## Writing a new library skill
 
 1. `packages/skills/library/<name>/SKILL.md` with frontmatter `name`, `description` ("Use when …",
-   ≤ 160 characters, the words people would use), `category` (one of the five below).
+   ≤ 160 characters, the words people would use), `category` (one of the six below).
 2. Body: a `#` title, the workflow in numbered steps, checklists and templates, environment-specific
    tips (what's installed, which tools exist), pitfalls, and `## Done when`.
 3. Helper scripts in `scripts/`, referenced as `scripts/<file>`; test them as a task user.
 4. `pnpm --filter @aatmiq/skills test`.
+
+A governed skill (the Platform set, and any new skill that sets `maturity`) also has scalar
+frontmatter `version`, `owner_team`, `risk_level`, and `maturity`, the contract headings, and
+`tests/cases.md`. Check it with `packages/skills/library/skill-authoring/scripts/validate_skill.py`.
+Do not add a catalog row's folder while its status is `proposed` or `routed`; use the router named
+in `coveredBy`. Maturity stays `draft` until the cases have been run in a real task.
 
 ## The skills
 
@@ -131,4 +145,25 @@ API: `GET /api/work/skills/library`, `GET /api/work/skills/library/:name` (instr
 | `email-calendar-assistant` — Email and calendar assistant | working with the person's connected email or calendar (Gmail, Google Calendar, Outlook): triage, drafts, scheduling. | – |
 | `github-workflow` — GitHub through the connector | working with GitHub through the connected app: issues, pull requests, PR reviews, triage, release notes, CI runs. | – |
 | `work-trackers` — Project trackers and team docs (connected apps) | working with connected trackers and team docs (Jira, Confluence, Linear, Asana, Notion…): find, summarize, create tasks. | – |
+
+### Platform (12)
+
+Governance skills for routing, authoring, permissions, evidence, and checks. They are `draft`: the
+packages validate, and they have not been exercised in a live organization workflow. Proposed
+catalog names are not in this list.
+
+| Skill | Use it for | Helpers |
+|---|---|---|
+| `skill-router` — Skill router | choosing the smallest installed skill set and refusing proposed catalog names. | catalog |
+| `skill-authoring` — Skill authoring | creating or revising a skill package and validating the contract. | `validate_skill.py` |
+| `skill-registry-admin` — Skill registry admin | planning enable, disable, or retire without breaking routers. | – |
+| `template-library` — Template library | filling a template the user actually supplied, without inventing letterhead. | – |
+| `artifact-quality-control` — Artifact quality control | reopening a generated file and blocking delivery on structural errors. | `inspect_artifact.py` |
+| `permission-and-approval-planner` — Permission and approval planner | classifying send, delete, deploy, and purchase before they run. | – |
+| `evidence-and-provenance` — Evidence and provenance | binding claims to files, cells, commits, or marking them unsupported. | – |
+| `workflow-orchestration` — Workflow orchestration | checkpointing multi-step jobs so a retry cannot repeat a side effect. | – |
+| `audit-log-and-reporting` — Audit log and reporting | recording tools, changes, and approvals with secrets redacted. | – |
+| `llm-evaluation` — LLM evaluation | scoring supplied cases, or stopping when no dataset was given. | – |
+| `prompt-injection-defense` — Prompt injection defense | keeping untrusted documents and tool output from changing tools or recipients. | – |
+| `agent-tool-design` — Agent tool design | specifying one model-callable effect with a dry-run and rejection tests. | – |
 

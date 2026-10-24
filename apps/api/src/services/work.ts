@@ -25,6 +25,8 @@ import {
   or,
   organization,
   skill,
+  user,
+  workspaceMember,
   workApproval,
   workEvent,
   workTask,
@@ -32,10 +34,19 @@ import {
   type DB,
 } from "@aatmiq/db";
 import { containerLauncher, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
-import { DEFAULT_WORK_SETTINGS, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
+import { DEFAULT_WORK_SETTINGS, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
+import { getGemSettings, workWebSearchDeps } from "./gem";
+import { webSearchReady } from "./web-search";
 
-const CODE_LIBRARY: readonly LibraryCategory[] = ["Software development", "Data", "Apps"];
+const CODE_LIBRARY: readonly LibraryCategory[] = ["Software development", "Data", "Apps", "Platform"];
+
+/** What a person sees when the server died mid-task. Saved files stay in the folder either way. */
+export function restartNote(saved: string[]): string {
+  const base = "The server restarted while this task was running.";
+  if (saved.length === 0) return `${base} Send a message to continue.`;
+  return `${base} Files already saved are still here: ${saved.join(", ")}. Send a message to continue.`;
+}
 import { randomBytes } from "node:crypto";
 import { chmod, chown, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -67,6 +78,10 @@ interface Live {
   lastAnswer: string;
   /** This turn produced something (text or a tool call); a turn that ends without is reported, not "completed". */
   turnOutput?: boolean;
+  /** A tool ran this turn, so a sentence that stops halfway is unfinished work, not an answer. */
+  usedTools?: boolean;
+  /** Times this turn was sent back to finish a cut-off answer. */
+  continues?: number;
   /** This turn's plan as the agent last wrote it. */
   plan: PlanItem[] | null;
   /** Where the agent works and as whom (the browser uses the same). */
@@ -104,6 +119,11 @@ export function titleFrom(text: string): string {
 }
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n… (${s.length - n} more characters)` : s);
+/** A reply that stops halfway ("Renaming:") rather than at the end of a sentence. */
+const answerLeftHanging = (text: string) => {
+  const t = text.trim();
+  return t.length >= 8 && !/[.!?…](?:["')\]]+)?$/.test(t) && !/```$/.test(t);
+};
 
 /** Command output that is mostly control characters (an image or archive printed to the terminal). */
 function looksBinary(s: string): boolean {
@@ -380,6 +400,8 @@ export class WorkRunner {
     l.busy = true;
     l.lastError = null;
     l.turnOutput = false;
+    l.usedTools = false;
+    l.continues = 0;
     l.plan = null;
     await this.setStatus(l.taskId, "running", { error: null });
     await this.sendTo(l, prompt);
@@ -398,6 +420,19 @@ export class WorkRunner {
     const idle = [...this.live.values()].filter((l) => !l.busy && l.pending === undefined && l.runtime).sort((a, b) => (a.idleSince ?? 0) - (b.idleSince ?? 0));
     const extra = idle.length - Math.max(4, s.maxRunning * 2);
     for (const l of idle.slice(0, Math.max(0, extra))) await this.release(l.taskId);
+  }
+
+  /** Calculators are on for the organization and this person has the section (org admins always do). */
+  private async calculatorsOn(userId: string, workspaceId: string): Promise<boolean> {
+    const g = await getGemSettings(this.ctx.db);
+    if (!g.modules.calculators) return false;
+    const [u] = await this.ctx.db.select({ orgRole: user.orgRole }).from(user).where(eq(user.id, userId));
+    if (u && isOrgAdmin(u.orgRole)) return true;
+    const [m] = await this.ctx.db
+      .select({ sections: workspaceMember.sections })
+      .from(workspaceMember)
+      .where(and(eq(workspaceMember.workspaceId, workspaceId), eq(workspaceMember.userId, userId)));
+    return !!m?.sections.includes("calculators");
   }
 
   private async start(taskId: string, settings: WorkSettingsValue) {
@@ -451,8 +486,9 @@ export class WorkRunner {
           token,
           approvals: settings.approvals,
           askForNetwork: !settings.allowNetwork,
-          webSearch: !!settings.searxngUrl,
+          webSearch: webSearchReady(await workWebSearchDeps(this.ctx)),
           browser: settings.browser && !!this.ctx.browser?.available,
+          calculators: await this.calculatorsOn(task.userId, task.workspaceId),
           skillsDir,
           connectors: await this.connectorSpecs(task.userId, token, l.connectorIds ?? null),
           productName: org?.productName ?? PRODUCT_NAME,
@@ -530,6 +566,7 @@ export class WorkRunner {
         return;
       case "tool_call":
         l.turnOutput = true;
+        l.usedTools = true;
         await this.record(taskId, "tool_call", { callId: e.callId, name: e.name, args: e.args as Record<string, unknown> });
         return;
       case "tool_result":
@@ -548,6 +585,16 @@ export class WorkRunner {
         return;
       case "turn_end": {
         if (l.cancelled) return;
+        // A cut-off sentence after tools, or a turn that hit the context limit, is not a finished task.
+        const hanging = !!l.lastAnswer && answerLeftHanging(l.lastAnswer) && (l.usedTools || e.reason === "max-tokens");
+        if (hanging && (l.continues ?? 0) < 2 && l.runtime?.alive && !l.lastError) {
+          l.continues = (l.continues ?? 0) + 1;
+          l.busy = true;
+          l.usedTools = false;
+          await this.setStatus(taskId, "running");
+          await this.sendTo(l, "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence.");
+          return;
+        }
         l.busy = false;
         l.idleSince = Date.now();
         // completed, blocked (a person said no) and max-tokens all end with an answer to show.
@@ -651,6 +698,15 @@ export class WorkRunner {
     await rm(this.taskDir(taskId), { recursive: true, force: true });
   }
 
+  /** Names already in the task folder, scratch and hidden entries left out. */
+  private async savedFileNames(taskId: string): Promise<string[]> {
+    const entries = await readdir(this.filesDir(taskId), { withFileTypes: true }).catch(() => []);
+    return entries
+      .filter((e) => e.name !== "scratch" && !e.name.startsWith("."))
+      .map((e) => e.name)
+      .slice(0, 8);
+  }
+
   /** After a restart nothing is running: unfinished tasks fail visibly, queued ones start again. */
   async recover() {
     if (this.containerEngine) await removeStaleContainers(this.ctx.cfg.workContainer?.docker);
@@ -660,7 +716,7 @@ export class WorkRunner {
       .where(or(eq(workTask.status, "running"), eq(workTask.status, "needs_approval")));
     for (const t of stale) {
       await this.expireApprovals(t.id);
-      await this.setStatus(t.id, "failed", { error: "The server restarted while this task was running. Send a message to continue." });
+      await this.setStatus(t.id, "failed", { error: restartNote(await this.savedFileNames(t.id)) });
     }
     await this.pump();
   }

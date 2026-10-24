@@ -185,7 +185,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext) {
     // The address is only typed in here, so it isn't confirmed until the link in the email is used.
     await db.update(user).set({ orgRole: "owner" }).where(eq(user.id, ownerId));
 
-    const [ws] = await db.insert(workspace).values({ name: "General", icon: "✦" }).returning();
+    const [ws] = await db.insert(workspace).values({ name: "General", icon: "blue:sparkles" }).returning();
     await db.insert(workspaceMember).values({
       workspaceId: ws!.id,
       userId: ownerId,

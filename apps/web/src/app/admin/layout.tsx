@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Activity, ArrowLeft, BarChart3, Cpu, Inbox, KeyRound, LayoutDashboard, Layers, ScrollText, Settings2, ShieldCheck, Users, UsersRound, Workflow } from "lucide-react";
+import { Activity, ArrowLeft, BarChart3, CircleHelp, Cpu, Inbox, KeyRound, LayoutDashboard, Layers, ScrollText, Settings2, ShieldCheck, Users, UsersRound, Workflow } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -42,6 +42,7 @@ const GROUPS = [
       { href: "/admin/authentication", label: msg("Authentication"), icon: ShieldCheck, org: true },
       { href: "/admin/work", label: msg("Work AI"), icon: Workflow, org: true },
       { href: "/admin/license", label: msg("License"), icon: KeyRound, org: true },
+      { href: "/admin/faq", label: msg("FAQ"), icon: CircleHelp, org: true },
     ],
   },
 ];
@@ -120,6 +121,7 @@ const TITLES: Record<string, string> = {
   license: msg("License"),
   authentication: msg("Authentication"),
   work: msg("Work AI"),
+  faq: msg("FAQ"),
 };
 
 function Crumbs() {

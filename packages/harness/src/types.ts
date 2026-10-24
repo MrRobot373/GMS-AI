@@ -35,6 +35,8 @@ export interface TaskSpec {
   webSearch: boolean;
   /** The browser_* tools (a headless browser run by Aatmiq). */
   browser?: boolean;
+  /** calculators_search and calculators_run (tested formulas). */
+  calculators?: boolean;
   skillsDir: string | null;
   connectors: ConnectorSpec[];
   productName: string;

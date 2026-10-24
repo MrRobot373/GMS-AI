@@ -1,0 +1,1972 @@
+{
+  "blueprint": "docs/GMS_AI_ORGANIZATIONAL_SKILLS_BLUEPRINT.md",
+  "prepared": "2026-10-18",
+  "productionTarget": "110-125",
+  "entries": [
+    {
+      "name": "skill-router",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Select the smallest correct skill set for a request",
+      "status": "installed",
+      "installedAs": "skill-router",
+      "coveredBy": null
+    },
+    {
+      "name": "skill-authoring",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Create or revise skill packages",
+      "status": "installed",
+      "installedAs": "skill-authoring",
+      "coveredBy": null
+    },
+    {
+      "name": "skill-registry-admin",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Publish, enable, disable, version, and retire skills",
+      "status": "installed",
+      "installedAs": "skill-registry-admin",
+      "coveredBy": null
+    },
+    {
+      "name": "template-library",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Find and apply approved organization templates",
+      "status": "installed",
+      "installedAs": "template-library",
+      "coveredBy": null
+    },
+    {
+      "name": "artifact-quality-control",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Validate generated Office, PDF, image, code, and data artifacts",
+      "status": "installed",
+      "installedAs": "artifact-quality-control",
+      "coveredBy": null
+    },
+    {
+      "name": "permission-and-approval-planner",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Decide what can run automatically and what needs approval",
+      "status": "installed",
+      "installedAs": "permission-and-approval-planner",
+      "coveredBy": null
+    },
+    {
+      "name": "evidence-and-provenance",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Attach sources and evidence to claims and outputs",
+      "status": "installed",
+      "installedAs": "evidence-and-provenance",
+      "coveredBy": null
+    },
+    {
+      "name": "task-planning",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Turn a goal into executable steps and acceptance criteria",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "workflow-orchestration",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Coordinate multiple tools, skills, and long-running jobs",
+      "status": "installed",
+      "installedAs": "workflow-orchestration",
+      "coveredBy": null
+    },
+    {
+      "name": "organizational-memory",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Retrieve and update approved long-term organizational context",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "audit-log-and-reporting",
+      "priority": "P0",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Explain what the agent did and why",
+      "status": "installed",
+      "installedAs": "audit-log-and-reporting",
+      "coveredBy": null
+    },
+    {
+      "name": "cost-and-budget-control",
+      "priority": "P1",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Estimate and control model, connector, and compute cost",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "schedule-and-monitor",
+      "priority": "P1",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Run recurring reports, checks, and reminders",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "human-review-workflow",
+      "priority": "P1",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Route specialist or manager review",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "policy-as-code",
+      "priority": "P1",
+      "phase": 0,
+      "group": "platform",
+      "purpose": "Convert organization policy into enforceable checks",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "spreadsheet-core",
+      "priority": "P0",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Create, read, edit, and verify workbook files",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "excel-spreadsheets"
+    },
+    {
+      "name": "spreadsheet-template-fill",
+      "priority": "P0",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Populate an existing organizational workbook",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "excel-spreadsheets"
+    },
+    {
+      "name": "spreadsheet-data-cleaning",
+      "priority": "P0",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Repair messy or inconsistent sheets",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "data-cleaning"
+    },
+    {
+      "name": "spreadsheet-formula-audit",
+      "priority": "P0",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Check formulas and workbook logic",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "excel-spreadsheets"
+    },
+    {
+      "name": "excel-financial-model",
+      "priority": "P1",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Build linked financial and business-planning models",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "financial-analysis"
+    },
+    {
+      "name": "excel-project-tracker",
+      "priority": "P1",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Build milestones, status, weekly plans, and resource trackers",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "excel-spreadsheets"
+    },
+    {
+      "name": "excel-dashboard",
+      "priority": "P1",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Create management dashboards in a workbook",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "kpi-report"
+    },
+    {
+      "name": "excel-engineering-calculation",
+      "priority": "P1",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Build transparent engineering calculation sheets",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "spreadsheet-reconciliation",
+      "priority": "P1",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Reconcile two or more systems or periods",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "spreadsheet-automation",
+      "priority": "P2",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Create refresh or export automation where approved",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "excel-live-session",
+      "priority": "P2",
+      "phase": 1,
+      "group": "spreadsheets",
+      "purpose": "Operate an open workbook interactively",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "word-document-core",
+      "priority": "P0",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Create or edit professional Word documents",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "word-documents"
+    },
+    {
+      "name": "word-template-fill",
+      "priority": "P0",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Populate approved Word templates",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "word-documents"
+    },
+    {
+      "name": "word-redline-review",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Compare, redline, comment, and reconcile Word documents",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "technical-report-authoring",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Produce evidence-led technical reports",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "report-writing"
+    },
+    {
+      "name": "pdf-core",
+      "priority": "P0",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Read, create, inspect, merge, split, rotate, and verify PDFs",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "pdf-documents"
+    },
+    {
+      "name": "pdf-ocr-and-extraction",
+      "priority": "P0",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Extract information from scanned or mixed PDFs",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "pdf-forms",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Read or fill PDF forms and generate completed packets",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "pdf-redaction-and-sanitization",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Remove sensitive content from PDFs",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "presentation-core",
+      "priority": "P0",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Create and edit PowerPoint decks",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "presentations"
+    },
+    {
+      "name": "presentation-template-derivation",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Learn a reusable deck style from a reference",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "executive-presentation",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Create concise management or board decks",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "presentations"
+    },
+    {
+      "name": "technical-presentation",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Create architecture, engineering, design-review, or training decks",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "presentations"
+    },
+    {
+      "name": "document-conversion",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Convert between document formats while preserving meaning",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "document-template-management",
+      "priority": "P1",
+      "phase": 1,
+      "group": "documents",
+      "purpose": "Create and govern reusable document templates",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "ux-problem-framing",
+      "priority": "P0",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Define user, job, context, constraints, and success before designing",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "ui-ux-design"
+    },
+    {
+      "name": "user-research",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Plan interviews, surveys, observations, or usability studies",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "information-architecture",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Organize navigation, content, labels, and search",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "ui-ux-design"
+    },
+    {
+      "name": "workflow-and-service-design",
+      "priority": "P0",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Design multi-step business processes across people and systems",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "wireframe-and-prototype",
+      "priority": "P0",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Produce low and high fidelity interaction prototypes",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "ui-ux-design"
+    },
+    {
+      "name": "enterprise-ui-design",
+      "priority": "P0",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Design dense admin, engineering, and operations interfaces",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "ui-ux-design"
+    },
+    {
+      "name": "dashboard-ux",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Design monitoring and analytical dashboards",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "design-system",
+      "priority": "P0",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Build and govern tokens, components, patterns, and documentation",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "ui-ux-design"
+    },
+    {
+      "name": "accessibility-audit",
+      "priority": "P0",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Audit against WCAG 2.2 AA and fix issues",
+      "status": "installed",
+      "installedAs": "accessibility-audit",
+      "coveredBy": null
+    },
+    {
+      "name": "responsive-and-mobile-ux",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Adapt flows across desktop, tablet, and phone",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "content-design",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Write labels, instructions, empty states, errors, and help",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "usability-evaluation",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Review or test an existing interface",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "visual-design-review",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Review hierarchy, spacing, typography, color, and brand consistency",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "ui-ux-design"
+    },
+    {
+      "name": "hmi-industrial-ux",
+      "priority": "P2",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Design control-room, lab, machine, or embedded interfaces",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "frontend-implementation-handoff",
+      "priority": "P1",
+      "phase": 2,
+      "group": "design",
+      "purpose": "Turn design into implementable requirements",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "requirements-engineering",
+      "priority": "P0",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Convert goals into testable functional and non-functional requirements",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "product-management"
+    },
+    {
+      "name": "product-requirements-document",
+      "priority": "P0",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Produce or revise a product requirements document",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "product-management"
+    },
+    {
+      "name": "project-planning",
+      "priority": "P0",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Build a project plan, work breakdown, milestones, and dependencies",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "project-management"
+    },
+    {
+      "name": "weekly-status-report",
+      "priority": "P0",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Create evidence-based weekly manager reports",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "project-management"
+    },
+    {
+      "name": "raid-management",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Maintain risks, assumptions, issues, and dependencies",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "project-management"
+    },
+    {
+      "name": "decision-record",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Produce decision memos and architecture decision records",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "strategy-okrs"
+    },
+    {
+      "name": "roadmap-and-release-plan",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Build outcome-based product and release roadmaps",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "product-management"
+    },
+    {
+      "name": "meeting-management",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Prepare agendas, minutes, actions, and follow-up",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "meeting-notes"
+    },
+    {
+      "name": "sop-and-work-instruction",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Document repeatable processes",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "sop-process-docs"
+    },
+    {
+      "name": "training-and-onboarding",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Create role-based learning paths and training material",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "sop-process-docs"
+    },
+    {
+      "name": "knowledge-base-curation",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Organize policies, procedures, references, and FAQs",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "executive-briefing",
+      "priority": "P1",
+      "phase": 1,
+      "group": "delivery",
+      "purpose": "Convert detailed work into an executive decision packet",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "report-writing"
+    },
+    {
+      "name": "system-architecture",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Design a system or major capability",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "system-design"
+    },
+    {
+      "name": "frontend-web-application",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Build accessible production web interfaces",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "frontend-web-app"
+    },
+    {
+      "name": "react-typescript",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Implement typed React and Next.js components",
+      "status": "installed",
+      "installedAs": "react-typescript",
+      "coveredBy": null
+    },
+    {
+      "name": "mobile-application",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Build mobile clients",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "mobile-app"
+    },
+    {
+      "name": "backend-api",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Build secure HTTP services",
+      "status": "installed",
+      "installedAs": "backend-api",
+      "coveredBy": null
+    },
+    {
+      "name": "graphql-api",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Design and operate GraphQL services",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "identity-and-access-management",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Implement sign-in, SSO, roles, and resource permissions",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "multi-tenant-architecture",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Keep organization, workspace, project, and customer data isolated",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "background-jobs-and-queues",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Build asynchronous and scheduled processing",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "cache-design",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Add safe application and data caching",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "object-storage",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Manage large files and binary artifacts",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "search-and-indexing",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Implement text, vector, or hybrid search",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "integration-connector",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Connect external SaaS or enterprise systems",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "event-and-webhook-design",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Design reliable event contracts",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "resilience-engineering",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Improve behavior during dependency or infrastructure failures",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "observability",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Add logs, metrics, traces, dashboards, and alerts",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "performance-engineering",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Profile and improve latency, throughput, or resource use",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "performance-optimization"
+    },
+    {
+      "name": "software-testing",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Design unit, integration, contract, browser, and system tests",
+      "status": "installed",
+      "installedAs": "software-testing",
+      "coveredBy": null
+    },
+    {
+      "name": "debugging",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Reproduce, isolate, repair, and prevent defects",
+      "status": "installed",
+      "installedAs": "debugging",
+      "coveredBy": null
+    },
+    {
+      "name": "code-review",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Review diffs for correctness, security, and maintainability",
+      "status": "installed",
+      "installedAs": "code-review",
+      "coveredBy": null
+    },
+    {
+      "name": "refactoring",
+      "priority": "P1",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Improve structure without changing behavior",
+      "status": "installed",
+      "installedAs": "refactoring",
+      "coveredBy": null
+    },
+    {
+      "name": "secure-coding-review",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Detect application security weaknesses",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "security-review"
+    },
+    {
+      "name": "api-documentation",
+      "priority": "P0",
+      "phase": 2,
+      "group": "software",
+      "purpose": "Generate OpenAPI and human-readable API guides",
+      "status": "installed",
+      "installedAs": "api-documentation",
+      "coveredBy": null
+    },
+    {
+      "name": "database-schema-design",
+      "priority": "P0",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Design relational data structures",
+      "status": "installed",
+      "installedAs": "database-schema-design",
+      "coveredBy": null
+    },
+    {
+      "name": "database-migration",
+      "priority": "P0",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Change schemas safely",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "database-migrations"
+    },
+    {
+      "name": "sql-query-engineering",
+      "priority": "P0",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Write and optimize SQL",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "sql-queries"
+    },
+    {
+      "name": "database-operations",
+      "priority": "P1",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Operate production databases",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "data-ingestion-etl",
+      "priority": "P0",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Build batch or stream ingestion",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "data-quality",
+      "priority": "P0",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Define and monitor data checks",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "data-cleaning",
+      "priority": "P0",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Clean messy data reproducibly",
+      "status": "installed",
+      "installedAs": "data-cleaning",
+      "coveredBy": null
+    },
+    {
+      "name": "data-analysis",
+      "priority": "P0",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Answer questions from structured data",
+      "status": "installed",
+      "installedAs": "data-analysis",
+      "coveredBy": null
+    },
+    {
+      "name": "statistical-analysis",
+      "priority": "P1",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Perform statistical inference or experiment analysis",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "forecasting",
+      "priority": "P1",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Build time-series or operational forecasts",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "business-intelligence",
+      "priority": "P1",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Build semantic models and BI dashboards",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "kpi-report"
+    },
+    {
+      "name": "chart-and-visualization",
+      "priority": "P1",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Choose and produce truthful visualizations",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "charts-visualization"
+    },
+    {
+      "name": "geospatial-analysis",
+      "priority": "P1",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Analyze location and map data",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "master-data-management",
+      "priority": "P1",
+      "phase": 2,
+      "group": "data",
+      "purpose": "Manage canonical customers, vendors, products, assets, and codes",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "model-provider-integration",
+      "priority": "P0",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Add or update an LLM or embedding provider",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "model-routing",
+      "priority": "P0",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Select a model based on difficulty, policy, data, and cost",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "prompt-template-management",
+      "priority": "P0",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Create and version system and task prompts",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "rag-ingestion",
+      "priority": "P0",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Ingest documents for grounded retrieval",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "rag-retrieval",
+      "priority": "P0",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Retrieve and rank authorized evidence",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "grounded-answering",
+      "priority": "P0",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Answer only from permitted evidence",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "llm-evaluation",
+      "priority": "P0",
+      "phase": 0,
+      "group": "ai",
+      "purpose": "Create and run quality, safety, and evidence evaluations",
+      "status": "installed",
+      "installedAs": "llm-evaluation",
+      "coveredBy": null
+    },
+    {
+      "name": "agent-tool-design",
+      "priority": "P0",
+      "phase": 0,
+      "group": "ai",
+      "purpose": "Design safe tools for model use",
+      "status": "installed",
+      "installedAs": "agent-tool-design",
+      "coveredBy": null
+    },
+    {
+      "name": "agent-orchestration",
+      "priority": "P0",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Plan and execute multi-step tool workflows",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "agent-memory",
+      "priority": "P1",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Maintain useful short and long-term memory",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "prompt-injection-defense",
+      "priority": "P0",
+      "phase": 0,
+      "group": "ai",
+      "purpose": "Protect tool and retrieval workflows from hostile instructions",
+      "status": "installed",
+      "installedAs": "prompt-injection-defense",
+      "coveredBy": null
+    },
+    {
+      "name": "synthetic-test-data",
+      "priority": "P1",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Generate safe representative test and evaluation data",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "model-observability",
+      "priority": "P1",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Monitor AI quality, latency, cost, and failures",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "ai-incident-response",
+      "priority": "P1",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Diagnose wrong answers, leakage, tool errors, or runaway tasks",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "ai-governance",
+      "priority": "P1",
+      "phase": 3,
+      "group": "ai",
+      "purpose": "Govern approved models, uses, data classes, and reviews",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "git-workflow",
+      "priority": "P0",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Branch, commit, merge, rebase, tag, and recover safely",
+      "status": "installed",
+      "installedAs": "git-workflow",
+      "coveredBy": null
+    },
+    {
+      "name": "ci-cd-pipeline",
+      "priority": "P0",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Build test and deployment pipelines",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "ci-cd-pipelines"
+    },
+    {
+      "name": "containerization",
+      "priority": "P0",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Build secure deterministic container images",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "docker-deployment"
+    },
+    {
+      "name": "kubernetes-deployment",
+      "priority": "P1",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Deploy and operate workloads on Kubernetes",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "release-management",
+      "priority": "P0",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Prepare version, changelog, artifacts, and the release decision",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "backup-and-restore",
+      "priority": "P0",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Protect and restore databases, files, and secrets",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "incident-response",
+      "priority": "P1",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Coordinate operational incidents",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "capacity-and-load-testing",
+      "priority": "P1",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Measure behavior under expected and peak load",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "dependency-and-sbom",
+      "priority": "P1",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Manage third-party dependencies and provenance",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "secrets-and-key-management",
+      "priority": "P0",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Manage application credentials and signing keys",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "threat-modeling",
+      "priority": "P0",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Identify threats before implementation or release",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "privacy-engineering",
+      "priority": "P1",
+      "phase": 2,
+      "group": "operations",
+      "purpose": "Implement privacy requirements in systems",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "engineering-calculation-verification",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Independently verify engineering calculators and worksheets",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "electrical-circuit-analysis",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Analyze DC, AC, single-phase, and three-phase circuits",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "power-electronics-topology-selection",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Select converter, inverter, or rectifier topology",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "dc-dc-converter-design",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design buck, boost, buck-boost, flyback, forward, LLC, or related converters",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "inverter-and-rectifier-design",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design AC/DC or DC/AC stages",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "magnetics-design",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design inductors, transformers, and coupled magnetics",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "semiconductor-selection",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Select MOSFET, IGBT, diode, SiC, or GaN devices",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "gate-driver-design",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design isolated or non-isolated gate drive",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "capacitor-and-dc-link-design",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Size input, output, and DC-link capacitors",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "control-loop-design",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design analog or digital converter control loops",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "motor-drive-design",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Analyze and design induction, PMSM, and BLDC drives",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "thermal-design-electronics",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Estimate junction, case, heatsink, and enclosure temperatures",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "emi-emc-design-review",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Review conducted and radiated emissions and immunity risks",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "power-electronics-protection",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design overcurrent, short-circuit, overvoltage, and thermal protection",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "high-voltage-safety",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Review creepage, clearance, insulation, touch, and stored-energy hazards",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "power-quality-and-harmonics",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Analyze power factor, harmonics, flicker, and filtering",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "battery-and-bms-design",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design battery packs and management functions",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "solar-and-energy-storage",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Design PV, MPPT, inverter, and storage systems",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "pcb-power-layout-review",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Review a PCB for high-current and high-dv/dt circuits",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "component-derating-and-lifetime",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Verify margin and expected life",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "spice-and-system-simulation",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Build and verify circuit and control simulations",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "electrical-bom-and-costing",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Build a technical bill of materials and cost or risk view",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "engineering-test-plan",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Define verification and validation tests",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "measurement-and-uncertainty",
+      "priority": "P0",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Plan measurements and quantify uncertainty",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "failure-analysis-fmea",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Analyze failure modes and corrective actions",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "engineering-compliance-dossier",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Assemble technical construction and compliance evidence",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "engineering-technical-writing",
+      "priority": "P1",
+      "phase": 4,
+      "group": "power",
+      "purpose": "Produce specifications, design notes, and manuals",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "mechanical-design-review",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Review parts, assemblies, and mechanisms",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "thermal-fluid-analysis",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Analyze heat transfer, pressure drop, and flow",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "cad-drawing-review",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Review drawings and manufacturing definitions",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "design-for-manufacture-assembly",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Improve manufacturability and assembly",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "manufacturing-process-plan",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Create routing and work instructions",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "quality-control-plan",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Define incoming, in-process, and final controls",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "reliability-engineering",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Plan reliability prediction and testing",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "root-cause-analysis",
+      "priority": "P1",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Run structured investigations of a failure",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "civil-structural-calculation",
+      "priority": "P2",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Perform scoped civil or structural checks",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "chemical-process-analysis",
+      "priority": "P2",
+      "phase": 5,
+      "group": "mechanical",
+      "purpose": "Analyze mass and energy balance and process conditions",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "financial-planning-analysis",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Budget, forecast, variance, and decision analysis",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "financial-analysis"
+    },
+    {
+      "name": "bookkeeping-reconciliation",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Categorize and reconcile transactions",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "invoicing-bookkeeping"
+    },
+    {
+      "name": "procurement-and-rfq",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Prepare RFQs and compare suppliers",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "vendor-due-diligence",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Evaluate vendor security, finance, delivery, and compliance",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "contract-review",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Summarize commercial and legal documents for business review",
+      "status": "installed",
+      "installedAs": "contract-review",
+      "coveredBy": null
+    },
+    {
+      "name": "policy-authoring",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Create internal policies",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "privacy-compliance",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Support privacy operations and reviews",
+      "status": "installed",
+      "installedAs": "privacy-compliance",
+      "coveredBy": null
+    },
+    {
+      "name": "hr-recruiting",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Create job, interview, and onboarding materials",
+      "status": "installed",
+      "installedAs": "hr-recruiting",
+      "coveredBy": null
+    },
+    {
+      "name": "performance-and-goals",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Define goals, check-ins, and development plans",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "sales-proposal-and-sow",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Create proposals, quotes, and statements of work",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "proposals-quotes"
+    },
+    {
+      "name": "crm-and-sales-operations",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Maintain opportunities, follow-ups, and forecasts",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "marketing-content",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Produce governed campaigns and collateral",
+      "status": "installed",
+      "installedAs": "marketing-content",
+      "coveredBy": null
+    },
+    {
+      "name": "customer-support",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Triage and resolve support interactions",
+      "status": "installed",
+      "installedAs": "customer-support",
+      "coveredBy": null
+    },
+    {
+      "name": "market-and-competitor-research",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Research markets, competitors, and opportunities",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "market-research"
+    },
+    {
+      "name": "business-case",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Compare investment or change options",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "strategy-okrs"
+    },
+    {
+      "name": "okr-and-strategy",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Define strategy, OKRs, and the execution review",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "strategy-okrs"
+    },
+    {
+      "name": "compliance-audit",
+      "priority": "P1",
+      "phase": 5,
+      "group": "business",
+      "purpose": "Plan and perform internal control reviews",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "email-assistant",
+      "priority": "P0",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Search, summarize, draft, label, and send email",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "email-calendar-assistant"
+    },
+    {
+      "name": "calendar-assistant",
+      "priority": "P0",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Search availability and manage meetings",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "email-calendar-assistant"
+    },
+    {
+      "name": "drive-document-operations",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Find, organize, share, and export cloud files",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "work-tracker-operations",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Read and update tracker records",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "work-trackers"
+    },
+    {
+      "name": "source-control-connector",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Work with GitHub or GitLab issues, pull requests, and CI",
+      "status": "routed",
+      "installedAs": null,
+      "coveredBy": "github-workflow"
+    },
+    {
+      "name": "crm-connector",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Read and update CRM accounts, contacts, and opportunities",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "erp-procurement-connector",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Work with purchasing, inventory, and finance systems",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "browser-research-and-automation",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Operate approved sites where APIs are unavailable",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "desktop-application-control",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Operate native applications",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    },
+    {
+      "name": "notification-and-escalation",
+      "priority": "P1",
+      "phase": 5,
+      "group": "connected",
+      "purpose": "Notify people only when action is needed",
+      "status": "proposed",
+      "installedAs": null,
+      "coveredBy": null
+    }
+  ],
+  "retainedLibrary": [
+    "business-writing",
+    "design-with-canva",
+    "email-campaigns",
+    "node-typescript-project",
+    "proofreading-editing",
+    "python-project",
+    "sales-outreach",
+    "seo",
+    "static-website",
+    "technical-documentation",
+    "translation-localization",
+    "web-research",
+    "web-scraping"
+  ]
+}

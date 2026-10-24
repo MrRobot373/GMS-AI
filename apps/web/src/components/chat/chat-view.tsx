@@ -381,7 +381,8 @@ export function ChatView({
               const cites = [...(m.citations ?? []), ...((ev.data.citations ?? []) as Citation[])];
               return { ...m, web: { queries: ev.data.queries ?? [], provider: ev.data.provider ?? null, note: ev.data.note ?? null }, citations: cites.length ? cites : null };
             });
-          } else if (ev.event === "delta") patchAsst((m) => ({ ...m, content: m.content + ev.data.text }));
+          } else if (ev.event === "calculation") patchAsst((m) => ({ ...m, calculation: ev.data.calculation ?? m.calculation }));
+          else if (ev.event === "delta") patchAsst((m) => ({ ...m, content: m.content + ev.data.text }));
           else if (ev.event === "done") {
             // `content`: the answer as saved, when a citation number that matched no source was taken out.
             patchAsst((m) => ({ ...m, streaming: false, content: ev.data.content ?? m.content }));

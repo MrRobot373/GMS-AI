@@ -15,7 +15,7 @@ import { loadWebSearch } from "./config";
 import type { AppContext } from "./context";
 import { createSecretBox } from "./crypto";
 import { pdfText } from "./services/extract";
-import { webSearchSetup } from "./services/gem";
+import { webSearchSetup, workWebSearchDeps } from "./services/gem";
 import { clearFetchCache, clearWebSearchCache, fetchPage, htmlToText, pageTitle, pinnedGet, readPage, readPages, webSearch, WebSearchError, webSearchReady, type WebSearchDeps, type WebResult } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
 
@@ -818,5 +818,16 @@ d("web search settings and the Test button", () => {
     // SearXNG with nothing set here or in the environment: Work AI's server.
     await h.db.update(organization).set({ gemSettings: { webProvider: "searxng" } });
     expect(await webSearchSetup(ctx({ provider: null, url: null, key: null }))).toMatchObject({ provider: "searxng", url: "http://searx.work", urlFrom: "work", key: null });
+  });
+
+  it("Work AI searches with Chat's provider, and falls back to its SearXNG server", async () => {
+    const box = createSecretBox(SECRET);
+    const ctx = { db: h.db, box, cfg: { webSearch: { provider: null, url: null, key: null } } } as unknown as AppContext;
+    await h.db.update(organization).set({ gemSettings: { webProvider: "ollama", webKeysEnc: { ollama: box.encrypt("ollama-work-key") } }, workSettings: { searxngUrl: "http://searx.work" } });
+    expect(await workWebSearchDeps(ctx)).toMatchObject({ provider: "ollama", key: "ollama-work-key" });
+    await h.db.update(organization).set({ gemSettings: { webProvider: "off" }, workSettings: { searxngUrl: "http://searx.work" } });
+    expect(await workWebSearchDeps(ctx)).toMatchObject({ provider: "searxng", url: "http://searx.work", key: null });
+    await h.db.update(organization).set({ gemSettings: { webProvider: "off" }, workSettings: { searxngUrl: null } });
+    expect(webSearchReady(await workWebSearchDeps(ctx))).toBe(false);
   });
 });

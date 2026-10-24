@@ -8,7 +8,7 @@ import { DEFAULT_GEM_SETTINGS, isOrgAdmin, type GemSettings, type Module, type W
 import { requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
 import { forbidden, HttpError } from "../errors";
 import { msg } from "../i18n";
-import type { WebSearchDeps } from "./web-search";
+import { webSearchReady, type WebSearchDeps } from "./web-search";
 import { resolveVideoSource, ytDlpStatus, type VideoDeps } from "./youtube";
 
 export async function gemStored(db: DB): Promise<Partial<GemSettingsStored>> {
@@ -129,4 +129,17 @@ export async function webSearchSetup(ctx: AppContext, provider?: WebProvider): P
 export async function webSearchDeps(ctx: AppContext): Promise<WebSearchDeps> {
   const s = await webSearchSetup(ctx);
   return { provider: s.provider, url: s.provider === "searxng" ? s.url : null, key: s.key, fetch: ctx.fetch, resolve: ctx.resolve };
+}
+
+/**
+ * What Work AI searches with: the same provider as chat, and the Work AI SearXNG address only
+ * when that provider isn't ready (an older setup that has a SearXNG server and nothing else).
+ */
+export async function workWebSearchDeps(ctx: AppContext): Promise<WebSearchDeps> {
+  const deps = await webSearchDeps(ctx);
+  if (webSearchReady(deps)) return deps;
+  const [o] = await ctx.db.select({ w: organization.workSettings }).from(organization).limit(1);
+  const url = o?.w?.searxngUrl ?? null;
+  if (url) return { provider: "searxng", url, key: null, fetch: ctx.fetch, resolve: ctx.resolve };
+  return deps;
 }

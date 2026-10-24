@@ -4,16 +4,18 @@
  *   POST /api/internal/work/llm/v1/chat/completions   OpenAI-compatible model gateway (quota, metering, live text)
  *   POST /api/internal/work/approvals                  ask a person before a risky action
  *   GET  /api/internal/work/approvals/:id?wait=25      long-poll for the decision
- *   POST /api/internal/work/search                     private web search (self-hosted SearXNG)
+ *   POST /api/internal/work/search                     web search, the same provider as chat
  *   POST /api/internal/work/fetch                      a public page's (or PDF's) main text, in parts (web_fetch)
  *   POST /api/internal/work/documents/search           the organization's documents (keyword + meaning search)
  *   GET  /api/internal/work/documents/:id?offset=      one document's text, in parts
  *   POST /api/internal/work/documents/save             a file from the task's folder into the person's documents
  *   POST /api/internal/work/browser                    the agent's browser
+ *   POST /api/internal/work/calculators/search         tested calculators that match a question
+ *   POST /api/internal/work/calculators/run            run one by id; the number comes from the calculator code
  */
-import { document, eq, sql, usageEvent, user, workTask } from "@aatmiq/db";
+import { and, document, eq, sql, usageEvent, user, workspaceMember, workTask } from "@aatmiq/db";
 import { estimateUsage, fetchWithKeys, openAiBase, thinkingParams } from "@aatmiq/model-gateway";
-import { estimateTokens } from "@aatmiq/shared";
+import { estimateTokens, isOrgAdmin } from "@aatmiq/shared";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -29,7 +31,9 @@ import { resolveModel } from "../services/models";
 import { quotaFor } from "../services/quota";
 import { getWorkSettings } from "../services/work";
 import { BrowserError } from "../services/browser";
-import { fetchPage, PageRefused } from "../services/web-search";
+import { dispatchCalculatorTool, saveChatCalculation } from "../services/calc-tool";
+import { getGemSettings, workWebSearchDeps } from "../services/gem";
+import { fetchPage, PageRefused, webSearch, WebSearchError, webSearchReady } from "../services/web-search";
 import { upstreamProxyFromEnv } from "../services/egress";
 
 const BASE = "/api/internal/work";
@@ -61,6 +65,14 @@ const mimeOf = (name: string) => MIME[name.split(".").pop()!.toLowerCase()] ?? "
 /** OpenAI-style error body, so the runtime reports a readable message. */
 function llmError(reply: FastifyReply, status: number, message: string, type = "aatmiq_error") {
   return reply.status(status).send({ error: { message, type } });
+}
+
+/** Ollama, behind LiteLLM, uses num_ctx as the context window for this call. */
+function contextRequest(provider: { baseUrl?: string | null }, contextLength: number | null): { num_ctx?: number } {
+  const host = provider.baseUrl ?? "";
+  if (!contextLength || contextLength <= 0) return {};
+  if (!host.includes("100.107.231.75") && !host.includes("desktop-adr28n2")) return {};
+  return { num_ctx: contextLength };
 }
 
 type OpenAiChunk = {
@@ -164,7 +176,9 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
             upstream = await fetchWithKeys(provider, `${openAiBase(provider)}/chat/completions`, {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ ...body, model: m.modelKey, ...(body.stream ? { stream_options: { include_usage: true } } : {}), ...thinking }),
+              // num_ctx asks Ollama (through LiteLLM) for this model's window. The server default is 16K,
+              // which fills up on a normal Work AI turn and the reply stops mid-sentence.
+              body: JSON.stringify({ ...body, model: m.modelKey, ...contextRequest(provider, m.contextLength), ...(body.stream ? { stream_options: { include_usage: true } } : {}), ...thinking }),
               signal: AbortSignal.any([abort.signal, attemptAbort.signal]),
             });
           } finally {
@@ -340,24 +354,16 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
   app.post(`${BASE}/search`, internal, async (req, reply) => {
     taskOf(req);
     const b = parse(searchSchema, req.body);
-    const settings = await getWorkSettings(db);
-    if (!settings.searxngUrl) return reply.status(503).send({ error: "Web search isn't set up. An admin can add a SearXNG server in Admin → Work AI." });
-    const url = new URL("search", settings.searxngUrl.replace(/\/?$/, "/"));
-    url.searchParams.set("q", b.query);
-    url.searchParams.set("format", "json");
-    url.searchParams.set("safesearch", "1");
+    const deps = await workWebSearchDeps(ctx);
+    if (!webSearchReady(deps)) return reply.status(503).send({ error: "Web search isn't set up. An admin can choose a provider in Admin → Settings, the same one Chat uses, or add a SearXNG server in Admin → Work AI." });
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(15_000), headers: { accept: "application/json" } });
-      if (!r.ok) throw new Error(`SearXNG answered ${r.status}`);
-      const json = (await r.json()) as { results?: { url?: string; title?: string; content?: string }[]; answers?: unknown[] };
-      const sources = (json.results ?? [])
-        .filter((x) => typeof x.url === "string")
-        .slice(0, b.maxResults)
-        .map((x) => ({ url: x.url!, title: x.title ?? x.url!, snippet: (x.content ?? "").slice(0, 600) }));
-      const answers = (json.answers ?? []).filter((a): a is string => typeof a === "string");
-      return { sources, ...(answers.length ? { content: answers.join("\n") } : {}), truncated: (json.results?.length ?? 0) > sources.length };
+      const results = await webSearch(deps, b.query, { max: b.maxResults });
+      const sources = results.map((r) => ({ url: r.url, title: r.title, snippet: r.snippet }));
+      const pages = results.filter((r) => r.content).map((r) => `${r.title}\n${r.url}\n${r.content}`);
+      return { sources, ...(pages.length ? { content: pages.join("\n\n") } : {}), truncated: false };
     } catch (e) {
-      return reply.status(502).send({ error: `Web search failed: ${e instanceof Error ? e.message : "unknown error"}` });
+      const why = e instanceof WebSearchError ? e.message : e instanceof Error ? e.message : "unknown error";
+      return reply.status(502).send({ error: `Web search failed: ${why}` });
     }
   });
 
@@ -481,5 +487,36 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       // The agent reads this and adjusts (a different element, confirm_submit, another page).
       return reply.status(422).send({ error: e instanceof BrowserError ? e.message : `The browser failed: ${(e as Error).message.split("\n")[0]}` });
     }
+  });
+
+  /* ───────────── Calculators (calculators_search, calculators_run) ───────────── */
+
+  const showBeta = async (t: ReturnType<typeof taskOf>) => {
+    const g = await getGemSettings(db);
+    if (!g.modules.calculators) throw new HttpError(403, "Calculators are turned off for this organization.", "module_off");
+    const [u] = await db.select({ orgRole: user.orgRole }).from(user).where(eq(user.id, t.userId));
+    if (u && isOrgAdmin(u.orgRole)) return g.betaCalculators;
+    const [m] = await db
+      .select({ sections: workspaceMember.sections })
+      .from(workspaceMember)
+      .where(and(eq(workspaceMember.workspaceId, t.workspaceId), eq(workspaceMember.userId, t.userId)));
+    if (!m?.sections.includes("calculators")) throw new HttpError(403, "Calculators are not enabled for you.", "forbidden");
+    return g.betaCalculators;
+  };
+
+  app.post(`${BASE}/calculators/search`, internal, async (req) => {
+    const t = taskOf(req);
+    const beta = await showBeta(t);
+    const b = parse(z.object({ query: z.string().trim().min(1).max(500) }), req.body);
+    return { text: dispatchCalculatorTool("calculators_search", { query: b.query }, beta).text };
+  });
+
+  app.post(`${BASE}/calculators/run`, internal, async (req) => {
+    const t = taskOf(req);
+    const beta = await showBeta(t);
+    const b = parse(z.object({ calculatorId: z.string().trim().min(1).max(80), inputs: z.unknown() }), req.body);
+    const out = dispatchCalculatorTool("calculators_run", { calculator_id: b.calculatorId, inputs_json: b.inputs }, beta);
+    if (out.calculation) await saveChatCalculation(db, t.userId, t.workspaceId, out.calculation, "work").catch(() => undefined);
+    return { text: out.text };
   });
 }

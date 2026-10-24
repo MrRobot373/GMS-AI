@@ -1,4 +1,4 @@
-/** Electronics, electrical power and power electronics beyond the release twenty (beta). */
+/** Electronics, electrical power and power electronics beyond the release twenty. */
 import type { CalculatorDef } from "../registry";
 import { def, fail, inp, nonneg, out, pos } from "./helpers";
 

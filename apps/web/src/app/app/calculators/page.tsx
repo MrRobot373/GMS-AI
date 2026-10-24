@@ -184,7 +184,7 @@ function CalculatorsPage() {
                 {current.id === "basic" || current.id === "scientific" ? (
                   <Keypad key={current.id} mode={current.id} />
                 ) : current.kind === "formula" ? (
-                  <FormulaCalculator c={current} prefill={prefill?.id === current.id ? prefill.inputs : null} />
+                  <FormulaCalculator key={current.id} c={current} prefill={prefill?.id === current.id ? prefill.inputs : null} />
                 ) : TOOLS[current.id] ? (
                   (() => {
                     const Tool = TOOLS[current.id]!;

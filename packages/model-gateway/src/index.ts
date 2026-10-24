@@ -6,8 +6,18 @@
 import { estimateTokens, type ProviderType } from "@aatmiq/shared";
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** Present on an assistant turn that called tools. */
+  tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
+  /** Present on a tool result, matching the call's id. */
+  tool_call_id?: string;
+}
+
+/** A function the model may call. OpenAI-compatible `tools` entry. */
+export interface FunctionTool {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
 }
 
 export interface ProviderConfig {
@@ -30,6 +40,8 @@ export type StreamEvent =
   | { type: "delta"; text: string }
   /** The model's thinking, before its answer (not part of the answer). */
   | { type: "reasoning"; text: string }
+  /** Assembled tool calls from this turn (arguments are the full JSON string). */
+  | { type: "tool_calls"; calls: { id: string; name: string; arguments: string }[] }
   | { type: "done"; usage: Usage; finishReason: string | null };
 
 export interface StreamOptions {
@@ -38,6 +50,8 @@ export interface StreamOptions {
   maxTokens?: number;
   /** Turn thinking on or off, for models that can switch it (undefined: the server's default). */
   thinking?: boolean;
+  /** Functions the model may call. Omitted when empty. */
+  tools?: FunctionTool[];
 }
 
 /**
@@ -214,6 +228,7 @@ async function* streamOpenAiCompatible(
       stream_options: { include_usage: true },
       ...(opts.temperature !== undefined && { temperature: opts.temperature }),
       ...(opts.maxTokens !== undefined && { max_tokens: opts.maxTokens }),
+      ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
       ...thinkingParams(cfg, opts.thinking),
     }),
   });
@@ -225,9 +240,18 @@ async function* streamOpenAiCompatible(
   let output = "";
   let usage: Usage | null = null;
   let finishReason: string | null = null;
+  const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
   for await (const data of parseSse(res.body)) {
     let json: {
-      choices?: { delta?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null }; finish_reason?: string | null }[];
+      choices?: {
+      delta?: {
+        content?: string | null;
+        reasoning_content?: string | null;
+        reasoning?: string | null;
+        tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[];
+      };
+      finish_reason?: string | null;
+    }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
     };
     try {
@@ -244,6 +268,14 @@ async function* streamOpenAiCompatible(
       output += text;
       yield { type: "delta", text };
     }
+    for (const part of choice?.delta?.tool_calls ?? []) {
+      const i = part.index ?? 0;
+      const cur = toolCalls.get(i) ?? { id: "", name: "", arguments: "" };
+      if (part.id) cur.id = part.id;
+      if (part.function?.name) cur.name += part.function.name;
+      if (part.function?.arguments) cur.arguments += part.function.arguments;
+      toolCalls.set(i, cur);
+    }
     if (choice?.finish_reason) finishReason = choice.finish_reason;
     if (json.usage && typeof json.usage.prompt_tokens === "number") {
       usage = {
@@ -252,6 +284,14 @@ async function* streamOpenAiCompatible(
         estimated: false,
       };
     }
+  }
+  if (toolCalls.size) {
+    yield {
+      type: "tool_calls",
+      calls: [...toolCalls.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([, c]) => c),
+    };
   }
   yield { type: "done", usage: usage ?? estimateUsage(messages, output), finishReason };
 }

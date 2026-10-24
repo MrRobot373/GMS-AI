@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { completeChat, embed, listModels, mockEmbed, modelInfo, openAiBase, streamChat, testProvider, thinkingParams } from "./index";
+import { completeChat, embed, listModels, mockEmbed, modelInfo, openAiBase, streamChat, testProvider, thinkingParams, type FunctionTool } from "./index";
 
 let server: Server;
 let base = "";
@@ -34,19 +34,29 @@ beforeAll(async () => {
     if (req.url === "/v1/chat/completions") {
       let raw = "";
       req.on("data", (c) => (raw += c));
-      req.on("end", () => bodies.push(JSON.parse(raw)));
-      res.setHeader("content-type", "text/event-stream");
-      // Thinking first (vLLM's field, then Ollama's), then the answer.
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "Let me see. " } }] })}\n\n`);
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning: "Greeting." } }] })}\n\n`);
-      const chunks = ["Hel", "lo ", "world"];
-      for (const c of chunks)
-        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`);
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
-      res.write(
-        `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 11, completion_tokens: 3 } })}\n\n`,
-      );
-      res.end("data: [DONE]\n\n");
+      req.on("end", () => {
+        const body = JSON.parse(raw) as { tools?: unknown; messages?: { content?: string }[] };
+        bodies.push(body);
+        res.setHeader("content-type", "text/event-stream");
+        const ask = body.messages?.at(-1)?.content;
+        if (body.tools && ask === "call-tool") {
+          const part = (delta: unknown) => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+          res.write(part({ tool_calls: [{ index: 0, id: "call_1", function: { name: "calculators_run", arguments: '{"calculator_' } }] }));
+          res.write(part({ tool_calls: [{ index: 0, function: { arguments: 'id":"ohms-law"}' } }] }));
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 8 } })}\n\n`);
+          res.end("data: [DONE]\n\n");
+          return;
+        }
+        // Thinking first (vLLM's field, then Ollama's), then the answer.
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "Let me see. " } }] })}\n\n`);
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning: "Greeting." } }] })}\n\n`);
+        const chunks = ["Hel", "lo ", "world"];
+        for (const c of chunks) res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`);
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
+        res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 11, completion_tokens: 3 } })}\n\n`);
+        res.end("data: [DONE]\n\n");
+      });
       return;
     }
     res.statusCode = 404;
@@ -78,6 +88,19 @@ describe("openai-compatible provider", () => {
     for await (const e of streamChat(cfg, "qwen-test", [{ role: "user", content: "hi" }])) events.push(e);
     expect(events.filter((e) => e.type === "reasoning").map((e) => (e as { text: string }).text)).toEqual(["Let me see. ", "Greeting."]);
     expect((await completeChat(cfg, "qwen-test", [{ role: "user", content: "hi" }])).text).toBe("Hello world");
+  });
+
+  it("sends tools and assembles a tool call that arrives in pieces", async () => {
+    const cfg = { type: "openai_compatible" as const, baseUrl: base };
+    const tools: FunctionTool[] = [{ type: "function", function: { name: "calculators_run", description: "Run", parameters: { type: "object" } } }];
+    const events = [];
+    for await (const e of streamChat(cfg, "qwen-test", [{ role: "user", content: "call-tool" }], { tools })) events.push(e);
+    expect(bodies.at(-1)).toMatchObject({ tools, tool_choice: "auto" });
+    expect(events.find((e) => e.type === "tool_calls")).toEqual({
+      type: "tool_calls",
+      calls: [{ id: "call_1", name: "calculators_run", arguments: '{"calculator_id":"ohms-law"}' }],
+    });
+    expect(events.at(-1)).toMatchObject({ type: "done", finishReason: "tool_calls" });
   });
 
   it("switches thinking per request: vLLM through the chat template, Ollama by reasoning effort", async () => {

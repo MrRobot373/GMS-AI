@@ -1,5 +1,5 @@
 import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
-import { streamChat, type ChatMessage } from "@aatmiq/model-gateway";
+import { GatewayError, streamChat, type ChatMessage } from "@aatmiq/model-gateway";
 import { AUTO_MODEL_ID, chatCreateSchema, chatUpdateSchema, estimateTokens, isOrgAdmin, PRODUCT_NAME, sendMessageSchema, type Routing } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
@@ -10,7 +10,7 @@ import { getProjectAccess } from "../services/projects";
 import { chooseModel, isSmallTalk } from "../services/router";
 import { quotaFor } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
-import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
+import { CALCULATOR_TOOLS, calcContext, dispatchCalculatorTool, findCalculation, saveChatCalculation } from "../services/calc-tool";
 import { getGemSettings, webSearchDeps } from "../services/gem";
 import { chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
 import { webSearchReady, type WebSearchDeps } from "../services/web-search";
@@ -390,9 +390,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     ]);
     const docContext = buildContext(retrieval.chunks, recollections);
 
-    // A numeric engineering question runs the tested GEM AI calculator; the model only explains it.
-    const calculation =
-      gem.modules.calculators && (!membership || membership.sections.includes("calculators") || isOrgAdmin(u.orgRole))
+    // Calculators: a question the rules can already match runs before the model speaks. The model
+    // can also call calculators_search and calculators_run itself when that misses.
+    const calcOn = gem.modules.calculators && (!membership || membership.sections.includes("calculators") || isOrgAdmin(u.orgRole));
+    let calculation = calcOn
         ? await findCalculation({
             text: content,
             showBeta: gem.betaCalculators,
@@ -403,7 +404,12 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
           }).catch(() => null)
         : null;
     if (calculation) await saveChatCalculation(db, u.id, c.workspaceId, calculation);
-    const calcSystem = calculation ? `\n\n${calcContext(calculation)}` : "";
+    const calcSystem = [
+      calculation ? `\n\n${calcContext(calculation)}` : "",
+      calcOn
+        ? "\n\nYou may call calculators_search and calculators_run. Those run tested formulas. When a question needs a calculated engineering number and none was already given above, call them instead of doing the arithmetic yourself. Explain a result exactly as given. If a calculator refuses the inputs, say why and do not invent a number."
+        : "",
+    ].join("");
     if (retrieval.embedTokens > 0) {
       await db.insert(usageEvent).values({
         workspaceId: c.workspaceId,
@@ -493,22 +499,62 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     let text = "";
     let error: string | null = null;
     let usage = { inputTokens: 0, outputTokens: 0, estimated: true };
-    try {
-      let thought = false;
-      for await (const ev of streamChat(provider, m.modelKey, messages, { signal: abort.signal, thinking })) {
-        if (ev.type === "delta") {
-          text += ev.text;
-          send("delta", { text: ev.text });
-        } else if (ev.type === "reasoning") {
-          // Thinking isn't shown, but people see that the model is working on it.
-          if (!thought) send("thinking", {});
-          thought = true;
-        } else {
-          usage = ev.usage;
+    const addUsage = (u: typeof usage) => {
+      usage = { inputTokens: usage.inputTokens + u.inputTokens, outputTokens: usage.outputTokens + u.outputTokens, estimated: usage.estimated && u.estimated };
+    };
+    // A provider that rejects the tools field is asked again without them.
+    let allowTools = calcOn;
+    const pending: ChatMessage[] = [];
+    let thought = false;
+    for (let round = 0; round < 4 && !error && !abort.signal.aborted; round++) {
+      let roundText = "";
+      let calls: { id: string; name: string; arguments: string }[] = [];
+      try {
+        for await (const ev of streamChat(provider, m.modelKey, [...messages, ...pending], { signal: abort.signal, thinking, tools: allowTools ? CALCULATOR_TOOLS : undefined })) {
+          if (ev.type === "delta") {
+            roundText += ev.text;
+            text += ev.text;
+            send("delta", { text: ev.text });
+          } else if (ev.type === "reasoning") {
+            // Thinking isn't shown, but people see that the model is working on it.
+            if (!thought) send("thinking", {});
+            thought = true;
+          } else if (ev.type === "tool_calls") {
+            calls = ev.calls;
+          } else {
+            addUsage(ev.usage);
+          }
         }
+      } catch (e) {
+        if (allowTools && e instanceof GatewayError && /Provider returned 400\b/.test(e.message)) {
+          allowTools = false;
+          round -= 1;
+          continue;
+        }
+        if (!abort.signal.aborted) error = e instanceof Error ? e.message : msg("The model failed to respond.");
+        break;
       }
-    } catch (e) {
-      if (!abort.signal.aborted) error = e instanceof Error ? e.message : msg("The model failed to respond.");
+      if (!allowTools || calls.length === 0) break;
+      pending.push({
+        role: "assistant",
+        content: roundText,
+        tool_calls: calls.map((c, i) => ({ id: c.id || `call_${round}_${i}`, type: "function" as const, function: { name: c.name, arguments: c.arguments || "{}" } })),
+      });
+      for (const [i, call] of calls.entries()) {
+        let args: unknown = {};
+        try {
+          args = JSON.parse(call.arguments || "{}");
+        } catch {
+          args = {};
+        }
+        const out = dispatchCalculatorTool(call.name, args, gem.betaCalculators);
+        if (out.calculation) {
+          calculation = out.calculation;
+          send("calculation", { calculation });
+          await saveChatCalculation(db, u.id, c.workspaceId, out.calculation).catch(() => undefined);
+        }
+        pending.push({ role: "tool", tool_call_id: call.id || `call_${round}_${i}`, content: out.text });
+      }
     }
     if (abort.signal.aborted && usage.outputTokens === 0) {
       usage = { inputTokens: messages.reduce((n, x) => n + Math.ceil(x.content.length / 4), 0), outputTokens: Math.ceil(text.length / 4), estimated: true };

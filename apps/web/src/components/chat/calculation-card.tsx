@@ -11,7 +11,7 @@ export interface ChatCalculation {
   name: string;
   status: "verified" | "beta";
   version: number;
-  via: "command" | "rules" | "model";
+  via: "command" | "rules" | "model" | "tool";
   inputs: { key: string; label: string; symbol?: string; value: number | number[]; unit: string; assumed?: boolean }[];
   outputs: { key: string; label: string; symbol?: string; value: number; unit: string }[];
   warnings: string[];

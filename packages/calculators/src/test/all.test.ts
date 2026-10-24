@@ -1,4 +1,4 @@
-/** Every calculator (release and beta): well-formed definitions and passing reference cases. */
+/** Every calculator: well-formed definitions and passing reference cases. */
 import { describe, expect, it } from "vitest";
 import { CALCULATORS } from "../defs";
 import { checkDefinition } from "../registry";
@@ -12,6 +12,10 @@ describe("all calculators", () => {
   });
   it("there are many of them", () => {
     expect(CALCULATORS.length).toBeGreaterThan(150);
+  });
+  it("every formula calculator is verified against at least five cases", () => {
+    const beta = CALCULATORS.filter((c) => c.status !== "verified" || c.refs.length < 5).map((c) => c.id);
+    expect(beta).toEqual([]);
   });
   for (const c of CALCULATORS) {
     it(`${c.id}: definition`, () => expect(checkDefinition(c)).toEqual([]));

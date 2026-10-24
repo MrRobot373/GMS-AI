@@ -9,6 +9,7 @@
  *  - web_fetch:         a page's main text, read by Aatmiq (public addresses only), in parts
  *  - browser_* tools:   a browser run by Aatmiq for pages that need JavaScript, clicks or forms
  *  - documents_* tools: search, read and save the organization's documents in Aatmiq
+ *  - calculators_* tools: search and run tested engineering formulas
  *
  * Everything talks to Aatmiq's internal API with the per-task token from $AATMIQ_TOKEN.
  * Failures fail closed: an unanswerable approval is "unavailable", which DSH treats as a denial.
@@ -16,6 +17,7 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { browserTools } from "./browser.mjs";
+import { calculatorTools } from "./calculators.mjs";
 import { documentTools } from "./documents.mjs";
 import { classifyRisk } from "./policy.mjs";
 import { cleanArgs, planReminder } from "./tooling.mjs";
@@ -141,6 +143,9 @@ export function apply(ctx, config) {
 
   // 6. The organization's documents in Aatmiq.
   if (config.documents !== false && defineTool) for (const t of documentTools(defineTool, call)) ctx.tools.register(t);
+
+  // 6b. Tested calculators, when this person may use them.
+  if (config.calculators && defineTool) for (const t of calculatorTools(defineTool, call)) ctx.tools.register(t);
 
   // 7. Web pages, read by Aatmiq (public addresses only), and what the agent is told about them.
   if (defineTool) {

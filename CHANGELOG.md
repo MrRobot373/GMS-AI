@@ -9,6 +9,13 @@ without one.
 
 ## Unreleased
 
+- **Skill platform, phase 0.** Twelve governance skills (routing, authoring, registry changes,
+  templates, artifact checks, permissions, evidence, workflows, audit, evaluation, injection
+  defense, and tool contracts) join the library at maturity `draft`. A catalog of 195 capabilities
+  records which names are installed, which are still handled by a current router, and which are
+  not skills yet. Code tasks load the Platform category with the other code skills.
+  [docs/08-skills.md](docs/08-skills.md), [docs/GMS_AI_ORGANIZATIONAL_SKILLS_BLUEPRINT.md](docs/GMS_AI_ORGANIZATIONAL_SKILLS_BLUEPRINT.md).
+
 - **GEM AI modules** ([docs/15-gem-ai.md](docs/15-gem-ai.md)), each switched on or off for the
   organization in Admin → Settings and per person in each workspace's member sections:
   - **Learning**: courses written by your model from a topic and a level, lesson by lesson, saved

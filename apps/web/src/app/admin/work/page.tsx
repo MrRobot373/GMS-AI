@@ -113,9 +113,9 @@ export default function AdminWorkPage() {
         </div>
       </Section>
 
-      <Section title={t("Web search")} description={t("Private search through your own SearXNG server. Queries never go to a third-party AI service.")}>
+      <Section title={t("Web search")} description={t("Work AI uses the same web search as Chat. Set the provider in Admin → Settings: SearXNG, Ollama, Brave, Tavily or Serper.")}>
         <Card className="space-y-3 p-5">
-          <Field label={t("SearXNG URL")} hint={t("For example http://searxng:8080 in the Docker stack (profile “search”). Leave empty to turn web search off.")}>
+          <Field label={t("SearXNG URL")} hint={t("Used only when the provider is SearXNG and Admin → Settings doesn't set its own address. Leave empty for Ollama, Brave, Tavily or Serper.")}>
             <div className="flex gap-2">
               <Input
                 value={form.searxngUrl ?? ""}
@@ -131,7 +131,7 @@ export default function AdminWorkPage() {
         </Card>
       </Section>
 
-      <Section title={t("Browser")} description={t("A real browser the agent can use for pages that need clicks, forms or JavaScript. It runs on this server, one per task.")}>
+      <Section title={t("Browser")} description={t("A real browser the agent can use for pages that need clicks, forms or JavaScript. It runs on this server, one per task, and does not need SearXNG.")}>
         <Card className="divide-y divide-border">
           <div className="flex items-start gap-4 p-5">
             <div className="min-w-0 flex-1">

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, Inbox, Plus, Users } from "lucide-react";
+import { WorkspaceIcon, WorkspaceIconPicker, workspaceIconTone } from "@/lib/workspace-icons";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -18,8 +19,6 @@ import type { WorkspaceRow } from "@/lib/types";
 
 
 import { useT } from "@/i18n";
-const ICONS = ["✦", "◆", "●", "▲", "■", "⬢", "✳", "☾"];
-
 export default function WorkspacesPage() {
   const t = useT();
   const { me } = useSession();
@@ -27,7 +26,7 @@ export default function WorkspacesPage() {
   const list = useQuery({ queryKey: ["admin-workspaces"], queryFn: () => get<WorkspaceRow[]>("/api/admin/workspaces") });
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState(ICONS[1]!);
+  const [icon, setIcon] = useState("blue:folder");
   const create = useMutation({
     mutationFn: () => post<WorkspaceRow>("/api/admin/workspaces", { name, icon }),
     onSuccess: () => {
@@ -63,7 +62,9 @@ export default function WorkspacesPage() {
               className="group rounded-xl border border-border bg-surface p-5 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-border-strong"
             >
               <div className="flex items-start justify-between">
-                <div className="flex size-9 items-center justify-center rounded-lg bg-surface-2 text-base">{w.icon ?? "◆"}</div>
+                <div className="flex size-9 items-center justify-center rounded-lg" style={{ background: workspaceIconTone(w.icon).soft }}>
+                  <WorkspaceIcon icon={w.icon} className="size-4" />
+                </div>
                 {w.pendingRequests > 0 && (
                   <Badge tone="warning">
                     <Inbox className="size-3" /> {w.pendingRequests}
@@ -101,20 +102,10 @@ export default function WorkspacesPage() {
           <Field label={t("Name")}>
             <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Engineering")} onKeyDown={(e) => e.key === "Enter" && name.trim() && create.mutate()} />
           </Field>
-          <Field label={t("Icon")}>
-            <div className="flex gap-1.5">
-              {ICONS.map((i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setIcon(i)}
-                  className={`flex size-9 items-center justify-center rounded-lg border text-base transition-colors ${icon === i ? "border-fg-subtle bg-surface-2" : "border-border hover:border-border-strong"}`}
-                >
-                  {i}
-                </button>
-              ))}
-            </div>
-          </Field>
+          <div className="space-y-1.5">
+            <span className="block text-[12.5px] font-medium text-fg-muted">{t("Icon")}</span>
+            <WorkspaceIconPicker value={icon} onChange={setIcon} />
+          </div>
         </div>
       </Dialog>
     </div>

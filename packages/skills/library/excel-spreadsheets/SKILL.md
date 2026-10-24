@@ -6,6 +6,10 @@ category: Data
 
 # Excel spreadsheets
 
+## Router
+
+This skill stays the router for its family. Use the `skill-router` skill when a narrower catalog name might apply. Do the work here unless that narrower skill is installed. A name that exists only in the catalog is not a skill.
+
 openpyxl and pandas are installed. Produce workbooks that look finished: headers styled, columns
 sized, numbers formatted, totals right.
 

@@ -6,6 +6,10 @@ category: Documents & writing
 
 # Presentations (.pptx)
 
+## Router
+
+This skill stays the router for its family. Use the `skill-router` skill when a narrower catalog name might apply. Do the work here unless that narrower skill is installed. A name that exists only in the catalog is not a skill.
+
 A good deck is a story: each slide makes one point, and the titles alone tell the story.
 
 ## 1. Storyline first

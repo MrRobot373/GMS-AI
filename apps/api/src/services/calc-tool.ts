@@ -15,7 +15,7 @@
  */
 import { calculatorHistory, type DB } from "@aatmiq/db";
 import { CalcError, calculatorCatalog, getCalculator, QUANTITIES, runCalculator, searchCalculators, unitOf, type CalculatorDef, type InputValue, type RunResult } from "@aatmiq/calculators";
-import { completeChat, type ProviderConfig } from "@aatmiq/model-gateway";
+import { completeChat, type FunctionTool, type ProviderConfig } from "@aatmiq/model-gateway";
 import { extractJson } from "@aatmiq/shared";
 
 export interface CalcToolResult {
@@ -23,7 +23,7 @@ export interface CalcToolResult {
   name: string;
   status: "verified" | "beta";
   version: number;
-  via: "command" | "rules" | "model";
+  via: "command" | "rules" | "model" | "tool";
   /** unit: what people read ("kΩ"); unitId: the unit's id ("kohm"). */
   inputs: { key: string; label: string; symbol?: string; value: number | number[]; unit: string; unitId: string; assumed?: boolean }[];
   outputs: { key: string; label: string; symbol?: string; value: number; unit: string }[];
@@ -402,7 +402,107 @@ export function calcContext(r: CalcToolResult): string {
   ].join("\n");
 }
 
-export async function saveChatCalculation(db: DB, userId: string, workspaceId: string, r: CalcToolResult) {
+/**
+ * What a model asked for by tool call. `inputs` is an object, or a JSON string of one: each value is
+ * a number (the input's own unit) or `{ value, unit }`. Beta calculators run only when `showBeta`.
+ */
+export function runCalculatorTool(id: string, inputs: unknown, showBeta: boolean): { text: string; calculation: CalcToolResult | null } {
+  const name = String(id ?? "").trim();
+  let def: CalculatorDef;
+  try {
+    def = getCalculator(name);
+  } catch (e) {
+    return { text: e instanceof CalcError ? e.message : `There's no calculator "${name}". Call calculators_search first.`, calculation: null };
+  }
+  if (def.status === "beta" && !showBeta) return { text: `"${def.name}" is not available.`, calculation: null };
+  const given = readToolInputs(inputs);
+  if (!given) return { text: 'inputs_json must be a JSON object. Each key is an input key, and each value is a number or {"value": number, "unit": "V"}.', calculation: null };
+  const r = attempt(def, given, "tool", []);
+  if (!r) return { text: "A required input is missing or doesn't match this calculator. Use the keys and units from calculators_search.", calculation: null };
+  return { text: calcContext(r), calculation: r };
+}
+
+/** Calculators a model can choose from, as plain text (ids, formulas, input keys). */
+export function searchCalculatorsTool(query: string, showBeta: boolean): string {
+  const formulas = calculatorCatalog().filter((c) => c.kind === "formula" && (c.status !== "beta" || showBeta));
+  const hits = searchCalculators(query, formulas).slice(0, 6);
+  if (!hits.length) return `No calculator matches "${query}". Try the quantity you want, such as current, torque or pressure drop.`;
+  return hits
+    .map((c) => {
+      const def = getCalculator(c.id);
+      const inputs = def.inputs.map((i) => `${i.key} (${i.label}${i.unit ? `, ${i.unit}` : ""}${i.optional ? ", optional" : ""})`).join("; ");
+      const pick = def.pick ? ` Give exactly ${def.pick.count} of: ${def.pick.keys.join(", ")}.` : "";
+      return [`id: ${def.id}`, `name: ${def.name}${def.status === "beta" ? " (beta)" : ""}`, `formula: ${def.formula.join("; ")}`, `inputs: ${inputs}.${pick}`].join("\n");
+    })
+    .join("\n\n");
+}
+
+/** The two tools Chat and Work AI give a model so it can run tested formulas. */
+export const CALCULATOR_TOOLS: FunctionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "calculators_search",
+      description: "Find a tested engineering calculator by what it computes (current, torque, pressure drop, heat). Returns ids, formulas and the input keys to pass to calculators_run.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: { query: { type: "string", description: "What to calculate, in plain words." } },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "calculators_run",
+      description: "Run a tested calculator by id. The number comes from code, not from you. Explain the result exactly as given. If it refuses the inputs, say why and do not invent a number.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          calculator_id: { type: "string", description: "The id from calculators_search, such as ohms-law." },
+          inputs_json: { type: "string", description: 'JSON object of input key to a number or {"value", "unit"}. Example: {"V":{"value":12,"unit":"V"},"R":4}' },
+        },
+        required: ["calculator_id", "inputs_json"],
+      },
+    },
+  },
+];
+
+/** calculators_search or calculators_run, from the arguments the model sent. */
+export function dispatchCalculatorTool(name: string, args: unknown, showBeta: boolean): { text: string; calculation: CalcToolResult | null } {
+  const a = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  if (name === "calculators_search") return { text: searchCalculatorsTool(String(a.query ?? ""), showBeta), calculation: null };
+  if (name === "calculators_run") return runCalculatorTool(String(a.calculator_id ?? a.calculatorId ?? ""), a.inputs_json ?? a.inputs, showBeta);
+  return { text: `Unknown tool ${name}. Use calculators_search or calculators_run.`, calculation: null };
+}
+
+function readToolInputs(raw: unknown): Record<string, InputValue> | null {
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return null;
+    try {
+      obj = JSON.parse(t);
+    } catch {
+      return null;
+    }
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  const given: Record<string, InputValue> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (typeof v === "number") given[k] = { value: v };
+    else if (Array.isArray(v) && v.every((x) => typeof x === "number")) given[k] = { value: v };
+    else if (v && typeof v === "object" && !Array.isArray(v) && typeof (v as { value?: unknown }).value === "number") {
+      const unit = (v as { unit?: unknown }).unit;
+      given[k] = { value: (v as { value: number }).value, unit: typeof unit === "string" ? unit : undefined };
+    } else return null;
+  }
+  return given;
+}
+
+export async function saveChatCalculation(db: DB, userId: string, workspaceId: string, r: CalcToolResult, source = "chat") {
   // A refusal has no result to keep; the chat message keeps it.
   if (r.refused) return;
   await db.insert(calculatorHistory).values({
@@ -413,6 +513,6 @@ export async function saveChatCalculation(db: DB, userId: string, workspaceId: s
     formulaVersion: r.version,
     inputs: Object.fromEntries(r.inputs.map((i) => [i.key, { value: i.value, unit: i.unitId }])),
     outputs: r.outputs,
-    source: "chat",
+    source,
   });
 }

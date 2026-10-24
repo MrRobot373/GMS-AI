@@ -1,11 +1,18 @@
-import { CalcError, type CalculatorDef, type InputDef, type OutputDef } from "../registry";
+import { CalcError, type CalculatorDef, type InputDef, type OutputDef, type RefCase } from "../registry";
+import { HAND } from "./handworked";
+import { HAND_REST } from "./handworked-rest";
+
+const EXTRA: Record<string, RefCase[]> = { ...HAND, ...HAND_REST };
 
 /** Short constructors for definitions. */
 export const inp = (key: string, label: string, quantity: string, unit?: string, extra: Partial<InputDef> = {}): InputDef => ({ key, label, quantity, unit, ...extra });
 export const out = (key: string, label: string, quantity: string, unit?: string, extra: Partial<OutputDef> = {}): OutputDef => ({ key, label, quantity, unit, ...extra });
 
 export function def(d: Omit<CalculatorDef, "version" | "status"> & { version?: number; status?: CalculatorDef["status"] }): CalculatorDef {
-  return { version: 1, status: "beta", ...d };
+  const more = (EXTRA[d.id] ?? []).filter((h) => !d.refs.some((r) => JSON.stringify(r.inputs) === JSON.stringify(h.inputs)));
+  const refs = [...d.refs, ...more];
+  // Verified means five reference cases worked from the stated formula. See handworked.ts.
+  return { version: 1, ...d, refs, status: refs.length >= 5 ? "verified" : "beta" };
 }
 
 /** Throw a domain error the person can act on. */

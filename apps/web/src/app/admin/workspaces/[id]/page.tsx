@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Archive, MoreHorizontal, RotateCcw, ShieldCheck, UserMinus, UserPlus } from "lucide-react";
+import { WorkspaceIcon, WorkspaceIconPicker, workspaceIconTone } from "@/lib/workspace-icons";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -63,7 +64,9 @@ export default function WorkspaceDetail() {
         <ArrowLeft className="size-3.5" /> {t("Workspaces")}
       </Link>
       <div className="flex items-center gap-3">
-        <div className="flex size-11 items-center justify-center rounded-xl bg-surface-2 text-lg">{ws.icon ?? "◆"}</div>
+        <div className="flex size-11 items-center justify-center rounded-xl" style={{ background: workspaceIconTone(ws.icon).soft }}>
+          <WorkspaceIcon icon={ws.icon} className="size-5" />
+        </div>
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{ws.name}</h1>
           <p className="text-sm text-fg-muted">
@@ -462,9 +465,10 @@ function Settings({ ws }: { ws: WorkspaceRow }) {
   const qc = useQueryClient();
   const router = useRouter();
   const [name, setName] = useState(ws.name);
+  const [icon, setIcon] = useState(ws.icon ?? "neutral:diamond");
   const [confirm, setConfirm] = useState(false);
   const save = useMutation({
-    mutationFn: () => patch(`/api/admin/workspaces/${ws.id}`, { name }),
+    mutationFn: () => patch(`/api/admin/workspaces/${ws.id}`, { name, icon }),
     onSuccess: () => {
       toast.success(t("Saved"));
       qc.invalidateQueries({ queryKey: ["admin-workspaces"] });
@@ -488,7 +492,11 @@ function Settings({ ws }: { ws: WorkspaceRow }) {
           <Field label={t("Name")}>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="max-w-sm" />
           </Field>
-          <Button variant="primary" disabled={name === ws.name || !name.trim()} loading={save.isPending} onClick={() => save.mutate()}>{t("Save")}</Button>
+          <div className="space-y-1.5">
+            <span className="block text-[12.5px] font-medium text-fg-muted">{t("Icon")}</span>
+            <WorkspaceIconPicker value={icon} onChange={setIcon} />
+          </div>
+          <Button variant="primary" disabled={!name.trim() || (name === ws.name && icon === (ws.icon ?? "neutral:diamond"))} loading={save.isPending} onClick={() => save.mutate()}>{t("Save")}</Button>
         </Card>
       </Section>
       <Section title={t("Archive workspace")}>

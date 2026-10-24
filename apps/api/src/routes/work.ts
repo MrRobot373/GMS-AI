@@ -19,6 +19,8 @@ import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { PROJECT_FOLDER } from "../services/project-work";
 import { getProjectAccess, requireProjectEdit } from "../services/projects";
 import { quotaFor } from "../services/quota";
+import { workWebSearchDeps } from "../services/gem";
+import { webSearchReady } from "../services/web-search";
 import { getWorkSettings, titleFrom, type WorkStreamEvent } from "../services/work";
 import { localeOf, tr } from "../i18n";
 
@@ -135,7 +137,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     if (req.query.workspaceId) await requireWorkSection(ctx, u, req.query.workspaceId);
     const s = await getWorkSettings(db);
-    return { webSearch: !!s.searxngUrl, approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser };
+    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser };
   });
 
   app.get<{ Querystring: { workspaceId?: string; q?: string } }>("/api/work/tasks", async (req) => {

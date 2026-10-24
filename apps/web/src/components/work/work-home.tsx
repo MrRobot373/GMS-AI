@@ -161,7 +161,7 @@ export function WorkHome() {
           {info.data && (
             <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11.5px] text-fg-subtle">
               <span>{info.data.approvals === "always" ? t("Asks before every change") : info.data.approvals === "never" ? t("Runs without asking") : t("Asks before risky actions")}</span>
-              <span>{info.data.webSearch ? t("Private web search on") : t("Web search off")}</span>
+              <span>{info.data.webSearch ? t("Web search on") : t("Web search off")}</span>
               <span>{t("Up to {maxConcurrentPerUser} tasks at once", { maxConcurrentPerUser: info.data.maxConcurrentPerUser })}</span>
             </div>
           )}

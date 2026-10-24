@@ -10,8 +10,11 @@ import { dirname, join } from "node:path";
 // Resolved through the package itself, so it works from source, tests, and a bundled API build.
 export const LIBRARY_DIR = join(dirname(createRequire(import.meta.url).resolve("@aatmiq/skills/package.json")), "library");
 
-export const LIBRARY_CATEGORIES = ["Software development", "Data", "Documents & writing", "Business", "Apps"] as const;
+export const LIBRARY_CATEGORIES = ["Software development", "Data", "Documents & writing", "Business", "Apps", "Platform"] as const;
 export type LibraryCategory = (typeof LIBRARY_CATEGORIES)[number];
+
+export const SKILL_RISK_LEVELS = ["low", "medium", "high", "restricted"] as const;
+export const SKILL_MATURITY_LEVELS = ["draft", "tested", "verified", "production", "restricted", "deprecated"] as const;
 
 export interface LibrarySkill {
   /** Folder and skill name, e.g. "code-review". */
@@ -20,6 +23,11 @@ export interface LibrarySkill {
   title: string;
   description: string;
   category: LibraryCategory;
+  /** Scalar contract fields. Absent on skills written before the organizational contract. */
+  version: string | null;
+  ownerTeam: string | null;
+  riskLevel: string | null;
+  maturity: string | null;
   /** Absolute path of the skill's folder. */
   dir: string;
   /** The SKILL.md instructions without frontmatter. */
@@ -28,11 +36,31 @@ export interface LibrarySkill {
   files: string[];
 }
 
+export interface SkillCatalogEntry {
+  name: string;
+  priority: "P0" | "P1" | "P2";
+  phase: number;
+  group: string;
+  purpose: string;
+  status: "installed" | "routed" | "proposed";
+  installedAs: string | null;
+  coveredBy: string | null;
+}
+
+export interface SkillCatalog {
+  blueprint: string;
+  prepared: string;
+  productionTarget: string;
+  entries: SkillCatalogEntry[];
+  /** Installed library skills that are not a catalog row or a current router for one. */
+  retainedLibrary: string[];
+}
+
 function frontmatter(text: string): { data: Record<string, string>; body: string } {
-  const m = /^---\n([\s\S]*?)\n---\n?/.exec(text);
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
   if (!m) return { data: {}, body: text };
   const data: Record<string, string> = {};
-  for (const line of m[1]!.split("\n")) {
+  for (const line of m[1]!.split(/\r?\n/)) {
     const kv = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line);
     if (!kv) continue;
     let v = kv[2]!.trim();
@@ -78,6 +106,10 @@ export function librarySkills(): LibrarySkill[] {
       title: /^#\s+(.+)$/m.exec(body)?.[1]?.trim() ?? data.name,
       description: data.description,
       category,
+      version: data.version || null,
+      ownerTeam: data.owner_team || null,
+      riskLevel: data.risk_level || null,
+      maturity: data.maturity || null,
       dir,
       body,
       files: listFiles(dir),
@@ -89,4 +121,10 @@ export function librarySkills(): LibrarySkill[] {
 
 export function librarySkill(slug: string): LibrarySkill | undefined {
   return librarySkills().find((s) => s.slug === slug);
+}
+
+/** The organizational catalog shipped with `skill-router`. Proposed names are not installed skills. */
+export function skillCatalog(): SkillCatalog {
+  const file = join(LIBRARY_DIR, "skill-router", "references", "catalog.json");
+  return JSON.parse(readFileSync(file, "utf8")) as SkillCatalog;
 }

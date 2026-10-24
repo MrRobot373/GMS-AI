@@ -7,7 +7,7 @@ import { JsonRpcLineTransport } from "@deepseek-ai/dsh-sdk-protocol";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, chmod, chown, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { access, chmod, chown, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { stripReminders } from "../../dsh-plugin/tooling.mjs";
 import { resolveFromHarness } from "../files";
@@ -234,17 +234,72 @@ export async function networkEnv(target: { uid?: number; gid?: number; dir?: str
   return out;
 }
 
+/**
+ * Put `extras` in front of `base`, skipping a directory that is already listed.
+ * Comparison ignores case and a trailing slash, so `C:\Windows\System32` and
+ * `c:\windows\system32\` are the same entry.
+ */
+export function prependPath(base: string | undefined, extras: string[], sep: string): string {
+  const keyOf = (dir: string) => dir.replace(/[\\/]+$/, "").trim().toLowerCase();
+  const have = new Set((base ?? "").split(sep).map(keyOf).filter(Boolean));
+  const add: string[] = [];
+  for (const dir of extras) {
+    const key = keyOf(dir);
+    if (!key || have.has(key)) continue;
+    have.add(key);
+    add.push(dir);
+  }
+  return [...add, base].filter((s) => s && s.length > 0).join(sep);
+}
+
+/**
+ * Directories a Windows task shell needs even when the API process was started with a short PATH:
+ * `cmd.exe`, Windows PowerShell, and a real Python (ahead of the Store alias, which PowerShell
+ * refuses to run inside a pipeline).
+ */
+export async function windowsPathExtras(): Promise<string[]> {
+  if (process.platform !== "win32") return [];
+  const systemRoot = process.env.SystemRoot || "C:\\Windows";
+  const extras = [join(systemRoot, "System32"), join(systemRoot, "System32", "WindowsPowerShell", "v1.0")];
+  const pyRoot = join(process.env.LOCALAPPDATA || "", "Programs", "Python");
+  const found = await readdir(pyRoot, { withFileTypes: true }).catch(() => []);
+  const installs = found
+    .filter((d) => d.isDirectory() && /^Python\d+/.test(d.name))
+    .map((d) => d.name)
+    .sort()
+    .reverse();
+  for (const name of installs) {
+    const dir = join(pyRoot, name);
+    if (await access(join(dir, "python.exe")).then(() => true, () => false)) extras.push(dir);
+  }
+  return extras;
+}
+
 /** Environment for the runtime: nothing from the API process leaks in (no database URL, no secrets). */
 async function runtimeEnv(spec: TaskSpec): Promise<NodeJS.ProcessEnv> {
+  const sep = process.platform === "win32" ? ";" : ":";
+  const systemRoot = process.env.SystemRoot || "C:\\Windows";
   return {
-    PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+    PATH: prependPath(process.env.PATH ?? (process.platform === "win32" ? "" : "/usr/local/bin:/usr/bin:/bin"), await windowsPathExtras(), sep),
     HOME: spec.homeDir,
     DSH_HOME: spec.homeDir,
     LANG: process.env.LANG ?? "C.UTF-8",
     TZ: process.env.TZ ?? "UTC",
+    // Python otherwise encodes stdout as the console code page and a check that prints a
+    // non-ASCII character dies, which the agent reads as a failed deliverable and rebuilds.
+    PYTHONIOENCODING: "utf-8",
+    PYTHONUTF8: "1",
     NODE_ENV: "production",
     DSH_PERMISSION_MODE: spec.sandbox === "off" ? "danger-full-access" : "workspace-write",
     AATMIQ_TOKEN: spec.token,
+    ...(process.platform === "win32"
+      ? {
+          SystemRoot: systemRoot,
+          ComSpec: join(systemRoot, "System32", "cmd.exe"),
+          PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD",
+          ...(process.env.LOCALAPPDATA ? { LOCALAPPDATA: process.env.LOCALAPPDATA } : {}),
+        }
+      : {}),
     ...(await networkEnv({ uid: spec.uid, gid: spec.gid, dir: join(spec.homeDir, "ca") })),
   };
 }
@@ -340,7 +395,9 @@ export function createDshEngine(opts: { launcher?: Launcher; initializeTimeoutMs
       });
       transport.start();
 
-      const timeout = opts.initializeTimeoutMs ?? 60_000;
+      // A cold start on Windows loads the runtime and every skill before this returns.
+      // 60 seconds was not enough: the process was alive and the task failed with nothing done.
+      const timeout = opts.initializeTimeoutMs ?? 180_000;
       try {
         await Promise.race([
           transport.request("initialize", { cwd: spec.workdir, provider: PROVIDER_ID, model: spec.model.key }),
@@ -354,6 +411,9 @@ export function createDshEngine(opts: { launcher?: Launcher; initializeTimeoutMs
         // The runtime's own last words explain more than "input closed".
         const tail = stderr.trim().split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 500);
         if (tail && !(e as Error).message.includes(tail)) throw new Error(`The agent runtime couldn't start: ${tail}`);
+        if ((e as Error).message === "The agent runtime didn't start in time.") {
+          throw new Error("The agent runtime was still starting when the time limit ran out. Send the task again.");
+        }
         throw e;
       }
 

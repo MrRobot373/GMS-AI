@@ -105,14 +105,14 @@ export async function workConfigRoutes(app: FastifyInstance, ctx: AppContext) {
     const off = new Set((await getWorkSettings(db)).disabledLibrarySkills);
     return librarySkills()
       .filter((s) => canManageWork(u) || !off.has(s.slug))
-      .map((s) => ({ slug: s.slug, name: s.title, description: s.description, category: s.category, files: s.files, enabled: !off.has(s.slug) }));
+      .map((s) => ({ slug: s.slug, name: s.title, description: s.description, category: s.category, version: s.version, ownerTeam: s.ownerTeam, riskLevel: s.riskLevel, maturity: s.maturity, files: s.files, enabled: !off.has(s.slug) }));
   });
 
   app.get<{ Params: { slug: string } }>("/api/work/skills/library/:slug", async (req) => {
     await requireUser(ctx, req);
     const s = librarySkill(req.params.slug);
     if (!s) throw notFound("Skill not found");
-    return { slug: s.slug, name: s.title, description: s.description, category: s.category, body: s.body, files: s.files };
+    return { slug: s.slug, name: s.title, description: s.description, category: s.category, version: s.version, ownerTeam: s.ownerTeam, riskLevel: s.riskLevel, maturity: s.maturity, body: s.body, files: s.files };
   });
 
   app.patch<{ Params: { slug: string } }>("/api/work/skills/library/:slug", async (req) => {

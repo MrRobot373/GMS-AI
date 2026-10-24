@@ -40,7 +40,7 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrig
 import { del, get, patch } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { ChatSummary } from "@/lib/types";
-import { MoveToProjectDialog, NewProjectDialog, ProjectIcon, useProjects } from "@/components/projects/projects";
+import { MoveToProjectDialog, NewProjectDialog } from "@/components/projects/projects";
 import { NotificationsButton } from "./notifications";
 import { SearchPalette } from "./search-palette";
 import { useCanUseModule, useSession } from "./session";
@@ -48,6 +48,7 @@ import { StatusIcon } from "@/components/work/parts";
 import { usePendingApprovals, useWorkTasks } from "@/lib/work";
 import { useCodeWorkspaces } from "@/lib/code";
 import { chatTitle } from "@/lib/format";
+import { WorkspaceIcon, workspaceIconTone } from "@/lib/workspace-icons";
 import { useT } from "@/i18n";
 
 export function useChats(workspaceId: string) {
@@ -58,20 +59,21 @@ export function useChats(workspaceId: string) {
   });
 }
 
-/** Colourful rounded tile for a workspace, derived from its name (like an org avatar). */
-export function WorkspaceTile({ name, className }: { name: string; icon?: string | null; className?: string }) {
+/** Rounded tile for a workspace. A chosen icon uses its color; otherwise the initial. */
+export function WorkspaceTile({ name, icon, className }: { name: string; icon?: string | null; className?: string }) {
   const hues = [190, 260, 330, 20, 140, 45, 210, 290];
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const a = hues[h % hues.length]!;
   const b = hues[(h >> 3) % hues.length]!;
+  const tone = icon ? workspaceIconTone(icon) : null;
   return (
     <span
       className={cn("flex size-5 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold text-white", className)}
-      style={{ background: `linear-gradient(135deg, oklch(0.72 0.15 ${a}), oklch(0.6 0.17 ${b}))` }}
+      style={tone ? { background: tone.soft } : { background: `linear-gradient(135deg, oklch(0.72 0.15 ${a}), oklch(0.6 0.17 ${b}))` }}
       aria-hidden
     >
-      {name.slice(0, 1).toUpperCase()}
+      {icon ? <WorkspaceIcon icon={icon} className="size-3" /> : name.slice(0, 1).toUpperCase()}
     </span>
   );
 }
@@ -83,6 +85,7 @@ function NavItem({
   active,
   soon,
   shortcut,
+  action,
 }: {
   href: string;
   icon: ReactNode;
@@ -90,13 +93,16 @@ function NavItem({
   active?: boolean;
   soon?: boolean;
   shortcut?: ReactNode;
+  /** Sits on the row, outside the link, so a click does not navigate. */
+  action?: ReactNode;
 }) {
   const t = useT();
-  return (
+  const link = (
     <Link
       href={href}
       className={cn(
         "group flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
+        action && "pr-8",
         active ? "bg-surface-2 text-fg" : soon ? "text-fg-subtle hover:bg-surface-2/70" : "text-fg-muted hover:bg-surface-2/70 hover:text-fg",
       )}
     >
@@ -106,6 +112,17 @@ function NavItem({
       {shortcut}
     </Link>
   );
+  if (!action) return link;
+  return (
+    <div className="relative">
+      {link}
+      <div className="absolute inset-y-0 right-1 flex items-center">{action}</div>
+    </div>
+  );
+}
+
+function GroupLabel({ children }: { children: ReactNode }) {
+  return <div className="px-2 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-fg-subtle first:pt-0">{children}</div>;
 }
 
 function SectionLabel({ children, open, onToggle, action }: { children: ReactNode; open?: boolean; onToggle?: () => void; action?: ReactNode }) {
@@ -131,10 +148,8 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const router = useRouter();
   const qc = useQueryClient();
   const chats = useChats(workspaceId);
-  const projects = useProjects(workspaceId);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [recentsOpen, setRecentsOpen] = useState(true);
-  const [projectsOpen, setProjectsOpen] = useState(true);
+  const [chatsOpen, setChatsOpen] = useState(true);
   const [newProject, setNewProject] = useState(false);
   const [moving, setMoving] = useState<ChatSummary | null>(null);
   const [renaming, setRenaming] = useState<ChatSummary | null>(null);
@@ -235,6 +250,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             <button className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-surface px-2 text-left transition-colors hover:border-border-strong">
               <WorkspaceTile name={workspace?.name ?? me.org.name} icon={workspace?.icon} />
               <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{workspace?.name ?? t("No workspace")}</span>
+              {workspace && <span className="shrink-0 text-[11px] text-fg-subtle">{t("team")}</span>}
               <ChevronsUpDown className="size-3.5 shrink-0 text-fg-subtle" />
             </button>
           </MenuTrigger>
@@ -280,68 +296,30 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
         </button>
       </div>
 
-      {/* Primary nav */}
-      <nav className="space-y-px px-2 pt-3">
-        <NavItem href="/app/chat" icon={<SquarePen />} active={pathname === "/app/chat"}>
-          {t("New chat")}
-        </NavItem>
-        {can("chat") && (
-          <NavItem href="/app/chat" icon={<MessageSquare />} active={pathname.startsWith("/app/chat/")}>
-            {t("Chat")}
+      {/* Primary nav: Ask, Do, Learn. Projects is listed once, with new-project on that row. */}
+      <nav className="px-2 pt-3">
+        <GroupLabel>{t("Ask")}</GroupLabel>
+        <div className="space-y-px">
+          <NavItem href="/app/chat" icon={<SquarePen />} active={pathname === "/app/chat"}>
+            {t("New chat")}
           </NavItem>
-        )}
-        {can("chat") && (
-          <NavItem href="/app/projects" icon={<FolderOpen />} active={pathname === "/app/projects"}>
-            {t("Projects")}
-          </NavItem>
-        )}
-        {can("chat") && (
-          <NavItem href="/app/documents" icon={<FileText />} active={pathname.startsWith("/app/documents")}>
-            {t("Documents")}
-          </NavItem>
-        )}
-        {can("work") && (
-          <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
-            {t("Work AI")}
-          </NavItem>
-        )}
-        {can("code") && (
-          <NavItem href="/app/code" icon={<Code2 />} active={pathname.startsWith("/app/code")}>
-            {t("Code")}
-          </NavItem>
-        )}
-        {/* GEM AI modules */}
-        {canLearn && (
-          <NavItem href="/app/learning" icon={<BookOpenCheck />} active={pathname.startsWith("/app/learning")}>
-            {t("Learning")}
-          </NavItem>
-        )}
-        {canCalc && (
-          <NavItem href="/app/calculators" icon={<Calculator />} active={pathname.startsWith("/app/calculators")}>
-            {t("Calculators")}
-          </NavItem>
-        )}
-        {canKnow && (
-          <NavItem href="/app/knowledge" icon={<Library />} active={pathname.startsWith("/app/knowledge")}>
-            {t("Knowledge")}
-          </NavItem>
-        )}
-      </nav>
-
-      {/* Chats */}
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        {can("chat") && (
-          <div className="mb-3">
-            <SectionLabel
-              open={projectsOpen}
-              onToggle={() => setProjectsOpen((o) => !o)}
+          {can("chat") && (
+            <NavItem href="/app/chat" icon={<MessageSquare />} active={pathname.startsWith("/app/chat/")}>
+              {t("Chat")}
+            </NavItem>
+          )}
+          {can("chat") && (
+            <NavItem
+              href="/app/projects"
+              icon={<FolderOpen />}
+              active={pathname.startsWith("/app/projects")}
               action={
                 <Tooltip content={t("New project")}>
                   <button
                     type="button"
                     aria-label={t("New project")}
                     onClick={() => setNewProject(true)}
-                    className="mr-1 rounded p-0.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
+                    className="rounded p-0.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
                   >
                     <Plus className="size-3.5" />
                   </button>
@@ -349,43 +327,57 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
               }
             >
               {t("Projects")}
-            </SectionLabel>
-            {projectsOpen && (
-              <div className="space-y-px">
-                {(projects.data ?? []).slice(0, 8).map((p) => {
-                  const active = pathname.startsWith(`/app/projects/${p.id}`);
-                  return (
-                    <Link
-                      key={p.id}
-                      href={`/app/projects/${p.id}`}
-                      className={cn(
-                        "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
-                        active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2/70 hover:text-fg",
-                      )}
-                    >
-                      <ProjectIcon color={p.color} />
-                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                    </Link>
-                  );
-                })}
-                {(projects.data?.length ?? 0) > 8 && (
-                  <Link href="/app/projects" className="flex h-8 items-center px-2 text-[12.5px] text-fg-subtle hover:text-fg">
-                    {t("See all {length}", { length: projects.data!.length })}
-                  </Link>
-                )}
-                {projects.data?.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setNewProject(true)}
-                    className="flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] text-fg-subtle transition-colors hover:bg-surface-2/70 hover:text-fg"
-                  >
-                    <Plus className="size-4" /> {t("New project")}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+            </NavItem>
+          )}
+          {can("chat") && (
+            <NavItem href="/app/documents" icon={<FileText />} active={pathname.startsWith("/app/documents")}>
+              {t("Documents")}
+            </NavItem>
+          )}
+        </div>
+        {(can("work") || can("code")) && (
+          <>
+            <GroupLabel>{t("Do")}</GroupLabel>
+            <div className="space-y-px">
+              {can("work") && (
+                <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
+                  {t("Work AI")}
+                </NavItem>
+              )}
+              {can("code") && (
+                <NavItem href="/app/code" icon={<Code2 />} active={pathname.startsWith("/app/code")}>
+                  {t("Code")}
+                </NavItem>
+              )}
+            </div>
+          </>
         )}
+        {(canLearn || canCalc || canKnow) && (
+          <>
+            <GroupLabel>{t("Learn")}</GroupLabel>
+            <div className="space-y-px">
+              {canLearn && (
+                <NavItem href="/app/learning" icon={<BookOpenCheck />} active={pathname.startsWith("/app/learning")}>
+                  {t("Learning")}
+                </NavItem>
+              )}
+              {canCalc && (
+                <NavItem href="/app/calculators" icon={<Calculator />} active={pathname.startsWith("/app/calculators")}>
+                  {t("Calculators")}
+                </NavItem>
+              )}
+              {canKnow && (
+                <NavItem href="/app/knowledge" icon={<Library />} active={pathname.startsWith("/app/knowledge")}>
+                  {t("Knowledge")}
+                </NavItem>
+              )}
+            </div>
+          </>
+        )}
+      </nav>
+
+      {/* Chats */}
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {inWork ? (
           <div className="mb-3">
             <SectionLabel>{t("Tasks")}</SectionLabel>
@@ -447,11 +439,11 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
           </div>
         )}
         {!inWork && !inCode && (
-        <SectionLabel open={recentsOpen} onToggle={() => setRecentsOpen((o) => !o)}>
-          {t("Recents")}
+        <SectionLabel open={chatsOpen} onToggle={() => setChatsOpen((o) => !o)}>
+          {t("Chats")}
         </SectionLabel>
         )}
-        {!inWork && !inCode && recentsOpen && (
+        {!inWork && !inCode && chatsOpen && (
           <div className="space-y-px">
             {chats.isLoading &&
               [70, 90, 60].map((w) => (

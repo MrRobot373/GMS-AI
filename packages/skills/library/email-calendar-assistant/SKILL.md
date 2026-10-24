@@ -6,6 +6,10 @@ category: Apps
 
 # Email and calendar assistant
 
+## Router
+
+This skill stays the router for its family. Use the `skill-router` skill when a narrower catalog name might apply. Do the work here unless that narrower skill is installed. A name that exists only in the catalog is not a skill.
+
 Works through the person's connected apps (Work AI → Connections). Their tools appear as
 `mcp__gmail__…`, `mcp__google-calendar__…` and so on; the brief lists which apps are connected and
 whose account. If the needed app isn't connected, say so and tell them to connect it in

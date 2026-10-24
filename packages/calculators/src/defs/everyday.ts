@@ -1,4 +1,4 @@
-/** Geometry, math, finance, health and everyday calculators (beta). */
+/** Geometry, math, finance, health and everyday calculators. */
 import type { CalculatorDef } from "../registry";
 import { def, fail, inp, nonneg, out, pos } from "./helpers";
 import { cagr, effectiveRate, futureValue, payment, presentValue } from "../finance";

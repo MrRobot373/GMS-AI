@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Fragment, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Fragment, useSyncExternalStore, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import type { Me, PublicStatus } from "@/lib/types";
 import manifest from "./manifest.json";
@@ -25,10 +25,17 @@ const ART = manifest as Record<string, Entry>;
 
 /** Off when the organization turned illustrations off; the landing page always shows them. */
 export function useIllustrations() {
-  // Read from the queries the app and the sign-in pages already make; this never fetches by itself.
-  const me = useQuery<Me>({ queryKey: ["me"], enabled: false });
-  const status = useQuery<PublicStatus>({ queryKey: ["public-status"], enabled: false });
-  return (me.data?.org.illustrations ?? status.data?.org.illustrations) !== false;
+  // Read the queries the app and the sign-in pages already make. This never fetches by itself.
+  const client = useQueryClient();
+  return useSyncExternalStore(
+    (onChange) => client.getQueryCache().subscribe(onChange),
+    () => {
+      const me = client.getQueryData<Me>(["me"]);
+      const status = client.getQueryData<PublicStatus>(["public-status"]);
+      return (me?.org.illustrations ?? status?.org.illustrations) !== false;
+    },
+    () => true,
+  );
 }
 
 /** Whether <Art name> will show something (so callers can keep their icon otherwise). */

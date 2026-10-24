@@ -18,12 +18,14 @@ import { cn } from "@/lib/cn";
 import { chatTitle, formatTokens, timeAgo } from "@/lib/format";
 import { applyTheme, readTheme, type ThemePref } from "@/lib/theme";
 import type { ChatSummary, QuotaStatus, TokenRequestRow } from "@/lib/types";
+import { USER_FAQ } from "@/components/help/user-faq";
+import { FaqList } from "@/components/help/faq-list";
 import { LOCALE_NAMES, LOCALES, msg, useSetLocale, useT, type Locale } from "@/i18n";
 
 const ROLE_NAMES = { owner: msg("owner"), admin: msg("admin"), member: msg("member") } as const;
 const REQUEST_STATUS = { pending: msg("pending"), approved: msg("approved"), denied: msg("denied") } as const;
 
-const TABS = [msg("Profile"), msg("Security"), msg("Appearance"), msg("Usage"), msg("Archived chats"), msg("Your data")] as const;
+const TABS = [msg("Profile"), msg("Security"), msg("Appearance"), msg("Usage"), msg("Archived chats"), msg("Your data"), msg("FAQ")] as const;
 
 export default function SettingsPage() {
   const t = useT();
@@ -32,13 +34,14 @@ export default function SettingsPage() {
     if (window.location.hash === "#usage") setTab("Usage");
     if (window.location.hash === "#archived") setTab("Archived chats");
     if (window.location.hash === "#security") setTab("Security");
+    if (window.location.hash === "#faq") setTab("FAQ");
   }, []);
   return (
     <div className="flex h-full min-h-0 flex-col">
       <TopBar icon={<Settings />} title={t("Settings")} />
       <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-2xl px-4 pt-10 pb-16 sm:px-6">
-        <PageHeader title={t("Settings")} description={t("Manage your profile, sign-in security, appearance, usage and archived chats.")} />
+        <PageHeader title={t("Settings")} description={t("Manage your profile, sign-in security, appearance, usage, archived chats and common questions.")} />
         <div className="mt-6 flex gap-1 overflow-x-auto border-b border-border">
           {TABS.map((x) => (
             <button
@@ -61,6 +64,7 @@ export default function SettingsPage() {
           {tab === "Usage" && <Usage />}
           {tab === "Archived chats" && <ArchivedChats />}
           {tab === "Your data" && <YourData />}
+          {tab === "FAQ" && <FaqList sections={USER_FAQ} />}
         </div>
       </div>
       </div>

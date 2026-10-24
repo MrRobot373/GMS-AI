@@ -1,4 +1,4 @@
-/** Physics, chemistry, chemical, aerospace, environmental, materials, instrumentation and computer engineering (beta). */
+/** Physics, chemistry, chemical, aerospace, environmental, materials, instrumentation and computer engineering. */
 import type { CalculatorDef } from "../registry";
 import { def, fail, G0, inp, nonneg, out, pos } from "./helpers";
 

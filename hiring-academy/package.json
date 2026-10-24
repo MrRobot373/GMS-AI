@@ -1,0 +1,14 @@
+{
+  "name": "hiring-academy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "One-page website and inquiry service for Hiring Academy, Pune, Maharashtra.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "nodemailer": "^6.9.13"
+  }
+}

@@ -6,6 +6,10 @@ category: Software development
 
 # UI/UX design
 
+## Router
+
+This skill stays the router for its family. Use the `skill-router` skill when a narrower catalog name might apply. Do the work here unless that narrower skill is installed. A name that exists only in the catalog is not a skill.
+
 Good interfaces are clear first and beautiful second. Design for the task the person is doing.
 
 ## 1. Start from the job, not the screen

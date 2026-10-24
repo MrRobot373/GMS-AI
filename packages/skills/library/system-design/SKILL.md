@@ -6,6 +6,10 @@ category: Software development
 
 # System design
 
+## Router
+
+This skill stays the router for its family. Use the `skill-router` skill when a narrower catalog name might apply. Do the work here unless that narrower skill is installed. A name that exists only in the catalog is not a skill.
+
 A design doc should let a reviewer decide whether to build it this way. Make the trade-offs explicit.
 
 ## 1. Requirements (write them down first)

@@ -6,6 +6,10 @@ category: Documents & writing
 
 # Word documents (.docx)
 
+## Router
+
+This skill stays the router for its family. Use the `skill-router` skill when a narrower catalog name might apply. Do the work here unless that narrower skill is installed. A name that exists only in the catalog is not a skill.
+
 python-docx is installed. The fastest reliable path: write the content in Markdown, then convert.
 
 ## Create

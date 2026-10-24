@@ -34,7 +34,7 @@ export const acceptInviteSchema = z.object({
 
 export const workspaceSchema = z.object({
   name: z.string().trim().min(1).max(60),
-  icon: z.string().max(8).optional(),
+  icon: z.string().max(40).optional(),
   description: z.string().max(280).optional(),
 });
 

@@ -8,7 +8,7 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDshEngine, mapEvent, networkEnv, notRunReason, readableBy, shellFailure } from "./dsh/engine";
+import { createDshEngine, mapEvent, networkEnv, notRunReason, prependPath, readableBy, shellFailure } from "./dsh/engine";
 import { buildPatch } from "./dsh/patch";
 import { APPROVAL_PRESETS } from "@aatmiq/shared";
 import { classifyRisk } from "./policy";
@@ -569,6 +569,20 @@ describe("patch", () => {
     expect(y).toContain("scratch/ folder");
     expect(y).toContain("documents_save) only when they ask for that");
     expect(y).toContain("the key results, the files you made, and anything unresolved");
+    expect(y).toContain("Check a deliverable once");
+    expect(y).not.toContain("calculators_run");
+  });
+  it("tells the agent to call the tested calculators when they are available", async () => {
+    const y = buildPatch({ ...(await spec()), calculators: true });
+    expect(y).toContain("calculators: true");
+    expect(y).toContain("use calculators_search and then calculators_run");
+  });
+});
+
+describe("shell path", () => {
+  it("puts required directories first and does not list one twice", () => {
+    expect(prependPath("C:\\Windows\\System32;C:\\Tools", ["D:\\Py", "c:\\windows\\system32\\"], ";")).toBe("D:\\Py;C:\\Windows\\System32;C:\\Tools");
+    expect(prependPath(undefined, ["/usr/bin"], ":")).toBe("/usr/bin");
   });
 });
 

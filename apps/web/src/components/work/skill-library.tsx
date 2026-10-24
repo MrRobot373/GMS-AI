@@ -18,11 +18,15 @@ interface LibrarySkill {
   name: string;
   description: string;
   category: string;
+  version: string | null;
+  ownerTeam: string | null;
+  riskLevel: string | null;
+  maturity: string | null;
   files: string[];
   enabled: boolean;
 }
 
-const CATEGORIES = ["Software development", "Data", "Documents & writing", "Business", "Apps"];
+const CATEGORIES = ["Software development", "Data", "Documents & writing", "Business", "Apps", "Platform"];
 
 /** Aatmiq's built-in skills: everyone can browse and read them; admins switch them on or off. */
 export function SkillLibrary({ canManage }: { canManage: boolean }) {
@@ -84,6 +88,7 @@ export function SkillLibrary({ canManage }: { canManage: boolean }) {
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setOpen(s)}>
                 <div className="flex items-center gap-2 text-[13.5px] text-fg">
                   {s.name}
+                  {s.maturity && <Badge>{s.maturity}</Badge>}
                   {!s.enabled && <Badge>{t("Off")}</Badge>}
                   {s.files.length > 0 && (
                     <span className="inline-flex items-center gap-1 text-[11.5px] text-fg-subtle">
@@ -110,6 +115,11 @@ function LibrarySkillDialog({ skill, onClose }: { skill: LibrarySkill; onClose: 
   const q = useQuery({ queryKey: ["skill-library", skill.slug], queryFn: () => get<{ body: string; files: string[] }>(`/api/work/skills/library/${skill.slug}`) });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={skill.name} description={skill.description} className="max-w-3xl">
+      {(skill.version || skill.maturity || skill.ownerTeam || skill.riskLevel) && (
+        <p className="mb-3 text-[12px] text-fg-subtle">
+          {[skill.version && `v${skill.version}`, skill.ownerTeam, skill.riskLevel && `${skill.riskLevel} risk`, skill.maturity].filter(Boolean).join(" · ")}
+        </p>
+      )}
       <div className="max-h-[65vh] overflow-y-auto pr-1" data-testid="library-skill-body">
         {q.data ? <Markdown content={q.data.body.replace(/^\s*# .*\n+/, "")} /> : <Skeleton className="h-60 rounded-lg" />}
         {!!q.data?.files.length && (

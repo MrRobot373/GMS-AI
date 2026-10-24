@@ -2,6 +2,7 @@
  * GEM AI Calculators (docs/15-gem-ai.md). The numbers come from @aatmiq/calculators, plain code
  * that the browser runs too; the server runs it again before anything is kept, so history only
  * ever holds results the tested functions produced. No model is called here.
+ * A formula calculator is verified once it has at least five reference cases.
  */
 import { and, calculatorFavorite, calculatorHistory, desc, eq } from "@aatmiq/db";
 import { calc, CalcError, calculatorCatalog, ExprError, getCalculator, runCalculator, TOOLS } from "@aatmiq/calculators";

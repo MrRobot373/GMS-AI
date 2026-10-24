@@ -1,4 +1,4 @@
-/** Mechanical, civil and structural, thermal and fluids (beta). */
+/** Mechanical, civil and structural, thermal and fluids. */
 import type { CalculatorDef } from "../registry";
 import { def, fail, G0, inp, nonneg, out, pos } from "./helpers";
 
