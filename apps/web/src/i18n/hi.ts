@@ -659,6 +659,7 @@ export const HI: Record<string, string> = {
   "A real browser the agent can use for pages that need clicks, forms or JavaScript. It runs on this server, one per task, and does not need SearXNG.": "एक असली ब्राउज़र जिसे एजेंट उन पेजों के लिए इस्तेमाल कर सकता है जिनमें क्लिक, फ़ॉर्म या JavaScript चाहिए। यह इसी सर्वर पर चलता है, हर टास्क के लिए एक, और SearXNG की ज़रूरत नहीं।",
   "({steps} steps, about {tokens} tokens)": "({steps} चरण, लगभग {tokens} टोकन)",
   "What the agent goes on from:": "एजेंट यहाँ से आगे बढ़ता है:",
+  "The model's memory was full, so the agent started over from the work so far: the request, its plan and the files in the folder.": "मॉडल की मेमोरी भर गई थी, इसलिए एजेंट ने अब तक के काम से फिर शुरुआत की: अनुरोध, उसकी योजना और फ़ोल्डर की फ़ाइलें।",
   "Stopped. Send a message to continue.": "रुक गया। जारी रखने के लिए संदेश भेजें।",
   "failed": "विफल",
   "failed, exit code {code}": "विफल, exit code {code}",

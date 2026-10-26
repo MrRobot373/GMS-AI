@@ -51,10 +51,18 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   const say = (t: string) => sse(res, [{ choices: [{ index: 0, delta: { content: t } }] }, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, usage]);
   // A model server that sends back nothing in the middle of the work, every time it's asked.
   if (last.role === "tool" && textOf(last.content).includes("blank-after-step")) return sse(res, [{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, usage]);
+  // A model whose generation breaks down into <unk> tokens, every time it's asked.
+  if (last.role === "tool" && textOf(last.content).includes("junk-after-step"))
+    return sse(res, [...Array.from({ length: 50 }, () => ({ choices: [{ index: 0, delta: { content: "<unk>".repeat(40) } }] })), { choices: [{ index: 0, delta: {}, finish_reason: "length" }] }, usage]);
   if (last.role === "tool") return say(`Result: ${textOf(last.content).trim().slice(0, 300)}`);
   const userText = (m: { content: unknown }) => textOf(m.content).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
   const ask = [...body.messages].reverse().filter((m) => m.role === "user").map(userText).find((t) => t && !/^Current runtime context/.test(t)) ?? "";
   const asked = ask.split("</earlier-conversation>").at(-1)!;
+  // A conversation the model's window can't take, however it's condensed.
+  if (body.messages.some((m) => textOf(m.content).includes("overflow-always"))) {
+    res.writeHead(400, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ error: { message: "Input length (99999) exceeds model's maximum context length (32768)." } }));
+  }
   // A busy model server: the first try is refused, like Ollama's "temporarily overloaded".
   if (asked.includes("busy-server") && !busyRefused) {
     busyRefused = true;
@@ -567,6 +575,22 @@ d("Work AI", () => {
     await waitStatus(r2.json.id, "completed", "failed");
     expect(modelRequests.slice(before).some((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("haven't run or opened it since")))).toBe(false);
   }, 60_000);
+
+  it("never passes on a reply that broke down into <unk> tokens: asks again, then carries on", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo junk-after-step" });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    expect(t.task.status).toBe("completed");
+    expect(JSON.stringify(t.events)).not.toContain("<unk>");
+    expect(t.task.result ?? "").not.toContain("<unk>");
+    expect(modelRequests.some((m) => m.some((x) => textOf(x.content).includes("<unk>")))).toBe(false);
+  }, 90_000);
+
+  it("starts over from the work so far when the window can't be freed, then says so plainly", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "Write the report overflow-always" });
+    const t = await waitStatus(r.json.id, "failed");
+    expect(t.events.filter((e) => e.kind === "context" && e.data.restarted)).toHaveLength(2);
+    expect(t.task.error).toContain("no longer fits in the model's context window");
+  }, 120_000);
 
   it("streams the timeline over SSE", async () => {
     const res = await fetch(`${apiUrl}/api/work/tasks/${taskId}/stream?after=2`, { headers: { cookie: owner.cookie } });

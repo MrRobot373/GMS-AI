@@ -126,6 +126,17 @@ const LONG_REQUEST_SHARE = 0.15;
 export const REQUEST_FOLDER = ".task";
 /** How many times one message may be sent back to keep going before the turn ends as it is. */
 const MAX_CONTINUES = 8;
+/** How many times one message may start over in a fresh runtime when its window can't be freed. */
+const MAX_FRESH_STARTS = 2;
+
+/**
+ * What a model emits when its generation breaks down (Nemotron once sent 163,869 characters of
+ * it as one reply). Not an answer: the model gateway asks again, and it's never shown or kept.
+ */
+export const withoutJunk = (text: string) => text.replace(/<unk>/g, "");
+
+/** A request the model's window can't take (the runtime's or the model server's words for it). */
+const OVERFLOW = /context_length_exceeded|maximum context length|context window/i;
 const DEFAULT_WINDOW = 32_768;
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -268,6 +279,8 @@ export class WorkRunner {
   private listeners = new Map<string, Set<Listener>>();
   private writes = new Map<string, Promise<unknown>>();
   private seqs = new Map<string, number>();
+  /** Fresh runtimes started for the current message because its window couldn't be freed. */
+  private freshStarts = new Map<string, number>();
   private approvalWaiters = new Map<string, Set<() => void>>();
   private engine: HarnessEngine;
   /** Container mode: Work AI tasks run here (Aatmiq Code's agent stays in the person's IDE workspace). */
@@ -424,6 +437,7 @@ export class WorkRunner {
   /** Queue the task's latest message: start (or continue) its runtime when the person has a free slot. */
   async submit(taskId: string, text: string): Promise<void> {
     await this.record(taskId, "user", { text });
+    this.freshStarts.delete(taskId);
     const l = this.live.get(taskId);
     if (l?.runtime?.alive && !l.cancelled) {
       clearTimeout(l.idleTimer);
@@ -716,12 +730,14 @@ export class WorkRunner {
   private async onEvent(l: Live, e: HarnessEvent) {
     const { taskId } = l;
     switch (e.type) {
-      case "assistant":
-        if (!e.text && e.toolCalls.length === 0) return;
+      case "assistant": {
+        const text = withoutJunk(e.text);
+        if (!text.trim() && e.toolCalls.length === 0) return;
         l.turnOutput = true;
-        if (e.text) l.lastAnswer = e.text;
-        await this.record(taskId, "assistant", { text: e.text, toolCalls: e.toolCalls });
+        if (text.trim()) l.lastAnswer = text;
+        await this.record(taskId, "assistant", { text, toolCalls: e.toolCalls });
         return;
+      }
       case "tool_call":
         l.turnOutput = true;
         l.usedTools = true;
@@ -772,15 +788,27 @@ export class WorkRunner {
           await this.sendTo(l, nudge);
           return;
         }
-        l.busy = false;
-        l.idleSince = Date.now();
         // completed, blocked (a person said no) and max-tokens all end with an answer to show.
         const ok = e.reason === "completed" || e.reason === "blocked" || e.reason === "max-tokens";
+        // The window couldn't be freed even by condensing: start over in a fresh runtime from the
+        // work so far (history sized to the window, the plan, the files), like a continued session.
+        const overflow = !ok && OVERFLOW.test(e.error ?? l.lastError ?? "");
+        if (overflow && (this.freshStarts.get(taskId) ?? 0) < MAX_FRESH_STARTS && !this.stopped) {
+          this.freshStarts.set(taskId, (this.freshStarts.get(taskId) ?? 0) + 1);
+          await this.record(taskId, "context", { restarted: true });
+          await this.release(taskId);
+          await this.setStatus(taskId, "queued", { error: null });
+          await this.pump();
+          return;
+        }
+        l.busy = false;
+        l.idleSince = Date.now();
         // The model sent back nothing (even after the proxy asked again): the runtime either calls that
         // an error in its own words or ends the turn as if done. Neither is a finished task.
         const empty = !l.turnOutput && (ok ? e.reason !== "blocked" : /no content|empty (response|reply)/i.test(e.error ?? ""));
-        const error =
-          l.lastError ??
+        const error = overflow
+          ? msg('The work no longer fits in the model\'s context window, even after older steps were condensed and the agent started over. Send "continue" to pick up from the files in the folder, or pick a model with a bigger context window.')
+          : l.lastError ??
           (empty
             ? e.reason === "max-tokens"
               ? msg("The model's context window was full, so it couldn't answer. Send the message again; older steps are condensed to make room.")

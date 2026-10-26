@@ -184,7 +184,12 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   20 % word for word; oversized old tool results are trimmed first. The timeline shows "Older steps
   were summarized…" each time. As a safety net, the model gateway answers a request bigger than the
   window with an overflow error in the words DSH recognizes (it then condenses and retries), and
-  lowers a reply limit that would run past the window.
+  lowers a reply limit that would run past the window. If the window still can't be freed, the
+  task starts over in a fresh runtime from the work so far (the request, history sized to the
+  window, the plan, the files), at most twice per message; the timeline says so, and only then does
+  the task fail, with a plain "no longer fits" message. A reply that broke down into `<unk>` tokens
+  (Nemotron once sent 163,869 characters of them) is asked for again and, if it stays that way,
+  reaches the runtime as an empty reply; `<unk>` is never shown or kept.
   The agent is told its window size and how to work within it: plan first with `todo_write`, get a
   small version working end to end, save each file as soon as it's written, write long files in
   parts, keep command output short, never print or search minified or vendor files, don't install

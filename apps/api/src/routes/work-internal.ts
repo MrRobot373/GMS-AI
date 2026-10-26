@@ -29,7 +29,7 @@ import { MAX_UPLOAD_BYTES } from "./documents";
 import { safePath } from "./work";
 import { resolveModel } from "../services/models";
 import { quotaFor } from "../services/quota";
-import { getWorkSettings } from "../services/work";
+import { getWorkSettings, withoutJunk } from "../services/work";
 import { BrowserError } from "../services/browser";
 import { dispatchCalculatorTool, saveChatCalculation } from "../services/calc-tool";
 import { getGemSettings, workWebSearchDeps } from "../services/gem";
@@ -299,8 +299,9 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
           const text = delta?.content;
           if (text) {
             output += text;
-            if (text.trim()) something = true;
-            work.pulse(t.taskId, "delta", { text });
+            const real = withoutJunk(text);
+            if (real.trim()) something = true;
+            if (real) work.pulse(t.taskId, "delta", { text: real });
           }
           // Reasoning models (gpt-oss, deepseek, qwen3…) think before answering; show that live too.
           // Thinking alone isn't an answer: a reply that only thinks is asked for again.
@@ -347,6 +348,16 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
           upstream = next;
           continue;
         }
+      }
+      // Still nothing but broken-down tokens after asking again: the runtime gets an empty reply (which
+      // it handles) instead of tens of thousands of them in its history.
+      if (!something && !headWritten && withoutJunk(output) !== output) {
+        writeHead(upstream);
+        const id = `chatcmpl-empty-${Date.now()}`;
+        res.write(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", model: m.modelKey, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        held = [];
+        break;
       }
       if (held.length || !headWritten) flush();
       break;

@@ -82,7 +82,9 @@ type Item =
   | { kind: "error"; key: string; text: string }
   | { kind: "stopped"; key: string }
   /** Older steps were condensed to make room in the model's context window. */
-  | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number };
+  | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number }
+  /** The window couldn't be freed, so the agent started over from the work so far. */
+  | { kind: "restarted"; key: string };
 
 function buildTimeline(events: WorkEvent[]) {
   const items: Item[] = [];
@@ -130,6 +132,7 @@ function buildTimeline(events: WorkEvent[]) {
         break;
       case "context":
         if (d.compacted) items.push({ kind: "compacted", key: `x${e.seq}`, summary: d.summary ?? "", steps: d.steps ?? 0, tokens: d.tokens ?? 0 });
+        if (d.restarted) items.push({ kind: "restarted", key: `r${e.seq}` });
         break;
       case "status":
         status = d.status;
@@ -643,6 +646,13 @@ function TimelineItem({
       );
     case "compacted":
       return <CompactedNote item={item} />;
+    case "restarted":
+      return (
+        <div className="mb-5 flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-[12.5px] text-fg-subtle" data-testid="task-restarted">
+          <Layers className="size-3.5 shrink-0" />
+          {t("The model's memory was full, so the agent started over from the work so far: the request, its plan and the files in the folder.")}
+        </div>
+      );
   }
 }
 

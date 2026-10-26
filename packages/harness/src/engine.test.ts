@@ -35,6 +35,8 @@ let modelSystem = "";
 /** Report usage like a real server (about 4 characters a token), and remember each request's size. */
 let realUsage = false;
 const requestTokens: number[] = [];
+/** The reply limit each request carried (max_tokens or max_completion_tokens). */
+const replyLimits: (number | undefined)[] = [];
 
 function sse(res: import("node:http").ServerResponse, chunks: unknown[]) {
   res.writeHead(200, { "content-type": "text/event-stream" });
@@ -53,6 +55,8 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   const last = body.messages.at(-1)!;
   const promptTokens = Math.ceil(JSON.stringify({ messages: body.messages, tools: body.tools ?? [] }).length / 4);
   if (realUsage) requestTokens.push(promptTokens);
+  const limits = body as { max_tokens?: number; max_completion_tokens?: number };
+  replyLimits.push(limits.max_tokens ?? limits.max_completion_tokens);
   const usage = { choices: [], usage: { prompt_tokens: realUsage ? promptTokens : 50, completion_tokens: 10 } };
   const askAt = body.messages.findLastIndex((m) => m.role === "user" && !/^Current runtime context/.test(text(m.content)));
   const ask = text(body.messages[askAt]?.content);
@@ -702,6 +706,7 @@ describe("DeepSeek Harness engine", () => {
     const script = Array.from({ length: 10 }, (_, i) => ["bash", { description: `Step ${i + 1}`, command: `python3 -c "print('step${i + 1} ' + 'a' * 6000)"` }]);
     realUsage = true;
     requestTokens.length = 0;
+    replyLimits.length = 0;
     try {
       const { events } = await runTurn(`script: ${JSON.stringify(script)}`, s);
       const compacted = events.find((e) => e.type === "compacted") as { summary: string; steps: number; tokens: number } | undefined;
@@ -710,6 +715,9 @@ describe("DeepSeek Harness engine", () => {
       expect(compacted?.tokens).toBeGreaterThan(1000);
       // No request the model saw came near the window.
       expect(Math.max(...requestTokens)).toBeLessThan(16_384 - 4096);
+      // Every request carries the reply limit for this window, so a runaway reply stops there.
+      expect(replyLimits).toContain(4096);
+      expect(Math.max(...replyLimits.map((n) => n ?? Infinity))).toBeLessThanOrEqual(4096);
       expect(events.some((e) => e.type === "turn_end")).toBe(true);
     } finally {
       realUsage = false;

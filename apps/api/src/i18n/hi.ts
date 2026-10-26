@@ -172,6 +172,7 @@ export const HI: Record<string, string> = {
   "Work AI isn't included in your organization's license.": "Work AI आपके संगठन के लाइसेंस में शामिल नहीं है।",
   "Use five fields: minute hour day month weekday": "पाँच फ़ील्ड इस्तेमाल करें: मिनट घंटा दिन महीना हफ़्ते का दिन",
   "Work AI is not enabled for you. Ask your admin.": "आपके लिए Work AI चालू नहीं है। अपने एडमिन से पूछें।",
+  'The work no longer fits in the model\'s context window, even after older steps were condensed and the agent started over. Send "continue" to pick up from the files in the folder, or pick a model with a bigger context window.': 'पुराने चरणों का सारांश बनाने और एजेंट के फिर से शुरू करने के बाद भी काम मॉडल की कॉन्टेक्स्ट विंडो में नहीं समा रहा। फ़ोल्डर की फ़ाइलों से आगे बढ़ाने के लिए "continue" भेजें, या बड़ी कॉन्टेक्स्ट विंडो वाला मॉडल चुनें।',
   "The model's context window was full, so it couldn't answer. Send the message again; older steps are condensed to make room.": "मॉडल की कॉन्टेक्स्ट विंडो भरी हुई थी, इसलिए वह जवाब नहीं दे सका। संदेश फिर से भेजें; जगह बनाने के लिए पुराने चरण संक्षेप में कर दिए जाते हैं।",
   'Stopped with {count} of {total} planned steps not done: {steps}. Send a message (for example "continue") to pick up from there.': 'योजना के {total} में से {count} चरण पूरे किए बिना रुक गया: {steps}। वहीं से आगे बढ़ाने के लिए एक संदेश भेजें (जैसे "continue")।',
   "The model sent back an empty answer, so nothing was done. Send the task again, or pick another model.": "मॉडल ने खाली जवाब भेजा, इसलिए कुछ नहीं हुआ। टास्क फिर से भेजें, या कोई दूसरा मॉडल चुनें।",
