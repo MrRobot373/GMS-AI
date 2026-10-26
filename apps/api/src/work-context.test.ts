@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fitWindow } from "./routes/work-internal";
-import { answerLeftHanging, folderSummary, openStepsNudge, requestPointer, unfinishedNote } from "./services/work";
+import { answerLeftHanging, folderSummary, openStepsNudge, requestPointer, triesCode, unfinishedNote, writesCode } from "./services/work";
 
 describe("a model request and the context window", () => {
   const messages = (chars: number) => [{ role: "user", content: "x".repeat(chars) }];
@@ -44,6 +44,16 @@ describe("long requests and unfinished plans", () => {
     expect(answerLeftHanging("Result: hello-work")).toBe(false);
     expect(answerLeftHanging("Done. The game is in index.html.")).toBe(false);
     expect(answerLeftHanging("```js\nconst a = 1;\n```")).toBe(false);
+  });
+  it("knows writing code from trying it", () => {
+    expect(writesCode("write", { file_path: "ridge-riders/src/world/vehicle.js" })).toBe(true);
+    expect(writesCode("edit", { file_path: "game/index.html" })).toBe(true);
+    expect(writesCode("write", { file_path: "README.md" })).toBe(false);
+    expect(writesCode("read", { file_path: "main.py" })).toBe(false);
+    expect(triesCode("browser_open", { url: "game/index.html" })).toBe(true);
+    expect(triesCode("bash", { command: "node --check src/main.js" })).toBe(true);
+    expect(triesCode("bash", { command: "python3 report.py" })).toBe(true);
+    expect(triesCode("bash", { command: "ls -la && cat index.html" })).toBe(false);
   });
   it("lists the open steps when the agent stops early, and names them when the task stops unfinished", () => {
     const open = [{ content: "Write the game scene", status: "in_progress" }, { content: "Write index.html", status: "pending" }];

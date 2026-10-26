@@ -91,6 +91,9 @@ interface Live {
    * this message's business; a question answered in passing leaves an older plan alone.
    */
   planActive?: boolean;
+  /** This message wrote code and hasn't run or opened it since; the agent was already told once. */
+  untried?: boolean;
+  tryNudged?: boolean;
   /** The model's context window, in tokens: long requests and restart history are sized to it. */
   contextWindow?: number;
   /** Where the agent works and as whom (the browser uses the same). */
@@ -182,6 +185,28 @@ export function unfinishedNote(open: PlanItem[], total: number): string {
 
 /** After the model sent back nothing in the middle of the work (a glitch of the model server, not an answer). */
 const RESUME_NUDGE = "Your last reply came back empty. Continue the task from where you stopped.";
+
+/** File types that are programs or pages: written, they should be run or opened before the work is called done. */
+const CODE_FILE = /\.(?:html?|m?js|cjs|jsx|tsx?|py|sh|ps1|go|rs|java|kt|cs|cpp|cc|c|rb|php|sql)$/i;
+/** Commands that run, test or check code (not ones that only look at files). */
+const RUNS_CODE = /\b(?:node|python3?|py|npm|npx|pnpm|yarn|bun|deno|pytest|jest|vitest|tsc|go|cargo|java|javac|dotnet|ruby|php|bash|sh|make|playwright)\b/;
+
+/** A call that writes a program or page. */
+export function writesCode(name: string, args: unknown): boolean {
+  const path = (args as { file_path?: unknown } | null)?.file_path;
+  return (name === "write" || name === "edit") && typeof path === "string" && CODE_FILE.test(path);
+}
+
+/** A call that runs or opens code: a command that runs something, or the browser on a page. */
+export function triesCode(name: string, args: unknown): boolean {
+  if (name === "browser_open" || name === "browser_press" || name === "browser_click_at") return true;
+  const command = (args as { command?: unknown } | null)?.command;
+  return (name === "bash" || name === "pwsh") && typeof command === "string" && RUNS_CODE.test(command);
+}
+
+/** After code was written and never run or opened. */
+const TRY_NUDGE =
+  "You wrote code in this task but haven't run or opened it since. Try it now before you finish: run it, or for a web page, app or game open it with browser_open by its path (like game/index.html) and fix any script errors it shows. Then give your summary, saying what you checked.";
 
 const CUT_OFF_NUDGE = "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence. Write a long file in several smaller parts.";
 
@@ -490,6 +515,8 @@ export class WorkRunner {
     l.continues = 0;
     l.idleNudge = false;
     l.planActive = false;
+    l.untried = false;
+    l.tryNudged = false;
     // The answer to show is this turn's; the plan stays (the runtime keeps its todo list too).
     l.lastAnswer = "";
     await this.setStatus(l.taskId, "running", { error: null });
@@ -699,6 +726,8 @@ export class WorkRunner {
         l.turnOutput = true;
         l.usedTools = true;
         l.planActive = true;
+        if (writesCode(e.name, e.args)) l.untried = true;
+        else if (triesCode(e.name, e.args)) l.untried = false;
         await this.record(taskId, "tool_call", { callId: e.callId, name: e.name, args: e.args as Record<string, unknown> });
         return;
       case "tool_result":
@@ -730,10 +759,13 @@ export class WorkRunner {
         const planOpen = e.reason === "completed" && open.length > 0 && (!!l.usedTools || !l.idleNudge);
         // An empty reply after real work this round is the model server's glitch: carry on.
         const blank = e.reason !== "completed" && e.reason !== "blocked" && !!l.usedTools && /no content|empty (response|reply)/i.test(e.error ?? "");
-        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : null;
+        // Code written and never tried: sent back once to try it (a model's "it works" isn't a check).
+        const untried = e.reason === "completed" && !!l.untried && !l.tryNudged;
+        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : untried ? TRY_NUDGE : null;
         if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
           l.continues = (l.continues ?? 0) + 1;
           l.idleNudge = !l.usedTools;
+          if (nudge === TRY_NUDGE) l.tryNudged = true;
           l.busy = true;
           l.usedTools = false;
           await this.setStatus(taskId, "running");

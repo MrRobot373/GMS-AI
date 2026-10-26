@@ -555,6 +555,19 @@ d("Work AI", () => {
     expect(t.task.result).toContain("Your last reply came back empty");
   }, 60_000);
 
+  it("sends the agent back once to try code it wrote and never ran", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'use write {"file_path":"app.js","content":"console.log(1)"}' });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    const tryAsks = modelRequests.filter((m) => m.at(-1)?.role === "user" && textOf(m.at(-1)!.content).includes("haven't run or opened it since"));
+    expect(tryAsks.length).toBe(1);
+    expect(t.task.status).toBe("completed");
+    // Writing a document isn't code: nothing to try.
+    const before = modelRequests.length;
+    const r2 = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'use write {"file_path":"notes.md","content":"# Notes"}' });
+    await waitStatus(r2.json.id, "completed", "failed");
+    expect(modelRequests.slice(before).some((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("haven't run or opened it since")))).toBe(false);
+  }, 60_000);
+
   it("streams the timeline over SSE", async () => {
     const res = await fetch(`${apiUrl}/api/work/tasks/${taskId}/stream?after=2`, { headers: { cookie: owner.cookie } });
     const reader = res.body!.getReader();

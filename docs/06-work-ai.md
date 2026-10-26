@@ -164,7 +164,9 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   "continue") to pick up from there." A reply that plainly stops halfway (ending on `:`, `,` or a
   dash, or inside a code block) or one cut at its length limit is sent back the same way, and so is
   a turn the model server ended with an empty reply after real work ("continue from where you
-  stopped"); an empty reply with nothing done before it still fails the task. The stored result is
+  stopped"); an empty reply with nothing done before it still fails the task. When the agent wrote code
+  (`.js`, `.html`, `.py`…) in this message and never ran it or opened it afterwards (a command that
+  runs something, or `browser_open`), it's sent back once to try it before it finishes. The stored result is
   this message's answer, never an earlier one.
 - **The context window.** Every budget is a share of the model's own context length (Admin →
   Models; `contextBudget` in packages/harness/src/dsh/patch.ts), so big jobs work on small windows:
