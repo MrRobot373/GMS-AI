@@ -135,9 +135,10 @@ const MAX_FRESH_STARTS = 2;
 
 /**
  * What a model emits when its generation breaks down (Nemotron once sent 163,869 characters of
- * it as one reply). Not an answer: the model gateway asks again, and it's never shown or kept.
+ * <unk> as one reply), and reasoning tags that leak into an answer (`</think>`). Not part of an
+ * answer: the model gateway asks again for a reply of only <unk>, and none of it is shown or kept.
  */
-export const withoutJunk = (text: string) => text.replace(/<unk>/g, "");
+export const withoutJunk = (text: string) => text.replace(/<unk>/g, "").replace(/<think>[\s\S]*?<\/think>|<\/?think>/g, "");
 
 /** The skill list is in every request: on a small window it gets this share, the most relevant skills first. */
 const SKILL_LIST_SHARE = 0.03;

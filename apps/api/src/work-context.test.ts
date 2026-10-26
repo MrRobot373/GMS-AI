@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fitWindow } from "./routes/work-internal";
-import { answerLeftHanging, folderSummary, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, writesCode } from "./services/work";
+import { answerLeftHanging, folderSummary, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
 
 describe("a model request and the context window", () => {
   const messages = (chars: number) => [{ role: "user", content: "x".repeat(chars) }];
@@ -44,6 +44,11 @@ describe("long requests and unfinished plans", () => {
     expect(answerLeftHanging("Result: hello-work")).toBe(false);
     expect(answerLeftHanging("Done. The game is in index.html.")).toBe(false);
     expect(answerLeftHanging("```js\nconst a = 1;\n```")).toBe(false);
+  });
+  it("keeps broken-down tokens and leaked reasoning tags out of answers", () => {
+    expect(withoutJunk("All tasks are completed.\n\n</think>\n\n## Summary")).toBe("All tasks are completed.\n\n\n\n## Summary");
+    expect(withoutJunk("<think>Let me plan.</think>Done.")).toBe("Done.");
+    expect(withoutJunk("<unk><unk>")).toBe("");
   });
   it("knows writing code from trying it", () => {
     expect(writesCode("write", { file_path: "ridge-riders/src/world/vehicle.js" })).toBe(true);
