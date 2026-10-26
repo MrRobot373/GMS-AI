@@ -11,7 +11,9 @@
  *
  * Pages the agent built are opened from the task folder under http://task.local/, so it can try
  * them the way a person would: script errors come back with each view, and on those pages it can
- * press keys and click at a point (a canvas game has no elements to number).
+ * press keys and click at a point (a canvas game has no elements to number), read the text a page
+ * drew on its canvas (with where it is), and evaluate an expression in the page to check its state.
+ * A model that can't see screenshots isn't blind there.
  */
 import { chown, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -33,6 +35,41 @@ const LOCAL_MAX_BYTES = 20 * 1024 * 1024;
 /** Script errors kept per view, and how much of each. */
 const MAX_ERRORS = 10;
 const ERROR_CHARS = 300;
+/** How long an expression may run, and how much of its result comes back. */
+const EVAL_TIMEOUT_MS = 5_000;
+const EVAL_CHARS = 4_000;
+/** Canvas text counts as on screen when drawn this close to the newest (the latest frames of a game that redraws). */
+const CANVAS_TEXT_MS = 250;
+const MAX_CANVAS_TEXTS = 40;
+
+/**
+ * Runs in pages from the task folder: remembers the text a page draws on a canvas and where (in
+ * page pixels, for browser_click_at), since canvas text isn't in the page's DOM.
+ */
+const CANVAS_TEXT_HOOK = `(() => {
+  if (location.origin !== ${JSON.stringify(LOCAL_ORIGIN)}) return;
+  const seen = new Map();
+  Object.defineProperty(window, "__aatmiqCanvasText", { value: seen });
+  const proto = window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype;
+  if (!proto) return;
+  for (const name of ["fillText", "strokeText"]) {
+    const original = proto[name];
+    proto[name] = function (text, x, y, ...rest) {
+      try {
+        const t = String(text).trim();
+        if (t) {
+          const m = this.getTransform();
+          const r = this.canvas.getBoundingClientRect();
+          const sx = r.width / (this.canvas.width || 1), sy = r.height / (this.canvas.height || 1);
+          seen.delete(t);
+          seen.set(t, { x: Math.round((m.a * x + m.c * y + m.e) * sx + r.left), y: Math.round((m.b * x + m.d * y + m.f) * sy + r.top), at: performance.now() });
+          if (seen.size > 300) seen.delete(seen.keys().next().value);
+        }
+      } catch {}
+      return original.call(this, text, x, y, ...rest);
+    };
+  }
+})();`;
 const LOCAL_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".htm": "text/html; charset=utf-8",
@@ -106,6 +143,10 @@ export interface PageView {
   downloads: string[];
   /** Script errors on the page since the last action. */
   errors?: string[];
+  /** Pages from the task folder: text drawn on a canvas in its latest frames, with where it is ("START at 640,330"). */
+  canvasText?: string[];
+  /** browser_eval: the expression's value, as JSON. */
+  result?: string;
 }
 
 /** Find the system's Chromium: BROWSER_PATH, the image's /usr/bin/chromium, or Playwright's own copy. */
@@ -339,6 +380,7 @@ export class BrowserService {
     context.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
     // Only web pages: no file://, chrome:// or other schemes, whatever a page links to.
     await context.route(/^(?!https?:|data:|blob:|about:)/i, (route) => route.abort("accessdenied"));
+    await context.addInitScript(CANVAS_TEXT_HOOK);
     // The task's own files, for trying what the agent built. Nothing under task.local reaches the network.
     await context.route(`${LOCAL_ORIGIN}/**`, async (route) => {
       const file = await localFile(target.workdir, new URL(route.request().url()).pathname);
@@ -443,6 +485,22 @@ export class BrowserService {
     const text = ((await s.page.evaluate(SNAPSHOT).catch(() => "")) as string) || "";
     const downloads = s.downloads.splice(0);
     const errors = s.errors.splice(0);
+    const canvasText = s.page.url().startsWith(`${LOCAL_ORIGIN}/`)
+      ? (((await s.page
+          .evaluate(
+            ([ms, max]) => {
+              const seen = (window as unknown as { __aatmiqCanvasText?: Map<string, { x: number; y: number; at: number }> }).__aatmiqCanvasText;
+              if (!seen) return [];
+              const newest = Math.max(...[...seen.values()].map((v) => v.at));
+              return [...seen.entries()]
+                .filter(([, v]) => newest - v.at <= ms)
+                .slice(-max)
+                .map(([t, v]) => `${t.slice(0, 80)} at ${v.x},${v.y}`);
+            },
+            [CANVAS_TEXT_MS, MAX_CANVAS_TEXTS] as const,
+          )
+          .catch(() => [])) as string[]))
+      : [];
     return {
       url: s.page.url(),
       title: await s.page.title().catch(() => ""),
@@ -450,6 +508,7 @@ export class BrowserService {
       truncated: text.length > MAX_TEXT,
       downloads,
       ...(errors.length ? { errors } : {}),
+      ...(canvasText.length ? { canvasText } : {}),
     };
   }
 
@@ -635,6 +694,33 @@ export class BrowserService {
       await this.explain(e);
     }
     return this.view(s);
+  }
+
+  /**
+   * Evaluate a JavaScript expression in a page from the task folder (its state: the current scene,
+   * a score, whether a function exists) and return its value as JSON, with the page view.
+   */
+  async evaluate(taskId: string, target: () => Promise<BrowserTarget>, expression: string): Promise<PageView> {
+    const s = await this.session(taskId, target);
+    this.local(s);
+    let result: string;
+    try {
+      const run = s.page.evaluate(async (expr) => {
+        const value = await (0, eval)(expr);
+        if (value === undefined) return "undefined";
+        try {
+          return JSON.stringify(value, (_k, v) => (typeof v === "function" ? `[function ${v.name || ""}]` : v), 1) ?? String(value);
+        } catch {
+          return String(value);
+        }
+      }, expression);
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new BrowserError(`The expression didn't finish in ${EVAL_TIMEOUT_MS / 1000} seconds.`)), EVAL_TIMEOUT_MS));
+      result = await Promise.race([run, timeout]);
+    } catch (e) {
+      if (e instanceof BrowserError) throw e;
+      throw new BrowserError(`The expression failed: ${(e instanceof Error ? e.message : String(e)).split("\n")[0]!.replace(/^page\.evaluate: /, "").slice(0, 300)}`);
+    }
+    return { ...(await this.view(s)), result: result.length > EVAL_CHARS ? `${result.slice(0, EVAL_CHARS)}… (${result.length - EVAL_CHARS} more characters)` : result };
   }
 
   async back(taskId: string, target: () => Promise<BrowserTarget>): Promise<PageView> {

@@ -79,7 +79,7 @@ function contextRules(window: number, browser: boolean): string[] {
     "If the person's request is saved in a file under .task/, read it fully before planning and read the relevant section again before you build each part.",
     "When one file uses what another defines (a function, an object's property, an element id), check the other file really defines it under that name (grep for it) before relying on it: after older steps are condensed you can't trust your memory of it.",
     browser
-      ? "Before you call a program done, try it. Run what can be run; for a web page, app or game, open it with browser_open by its path in your folder (like game/index.html), fix every script error it reports, and use browser_press, browser_click_at and browser_screenshot to check it really responds."
+      ? "Before you call a program done, try it. Run what can be run; for a web page, app or game, open it with browser_open by its path in your folder (like game/index.html), fix every script error it reports, and use browser_press, browser_click_at and browser_screenshot to check it really responds. A page drawn on a canvas has no readable text: the page view lists the text drawn on the canvas with where it is, browser_eval reads the page's state (the current scene, a position, a score), and read_image shows a screenshot if you can see images. Play it the way a person would and check that what should happen does."
       : "Before you call a program done, try it: run what can be run, and at least check every script parses (for example node --check on each JavaScript file).",
     "Before your final answer, check your plan: every step done, or say plainly which ones are not and why. Never call something working that you haven't tried.",
   ];

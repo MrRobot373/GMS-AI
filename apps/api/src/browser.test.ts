@@ -273,6 +273,38 @@ const chrome = findChromium();
     await browser.close("t4");
   }, 60_000);
 
+  it("lets an agent that can't see play a canvas game: drawn text with where it is, and the page's state", async () => {
+    const mine = () => target({ profileDir: join(work, "..", "profile-t6") });
+    await mkdir(join(work, "canvas"), { recursive: true });
+    await writeFile(
+      join(work, "canvas", "index.html"),
+      `<!doctype html><title>Canvas game</title><body style="margin:0"><canvas id="c" width="640" height="360" style="width:1280px;height:720px"></canvas><script>
+      window.Game = { scene: "menu", clicks: 0 };
+      const ctx = document.getElementById("c").getContext("2d");
+      function frame() {
+        ctx.clearRect(0, 0, 640, 360);
+        ctx.fillText(Game.scene === "menu" ? "START" : "Distance: 0 m", 320, 165);
+        requestAnimationFrame(frame);
+      }
+      frame();
+      document.getElementById("c").addEventListener("click", (e) => { Game.clicks++; if (Math.abs(e.offsetX - 640) < 60 && Math.abs(e.offsetY - 330) < 30) Game.scene = "level"; });
+      </script></body>`,
+    );
+    const v = await browser.open("t6", mine(), "canvas/index.html");
+    // The canvas is drawn at twice its size: positions are page pixels, ready for browser_click_at.
+    expect(v.canvasText).toEqual(["START at 640,330"]);
+    const after = await browser.clickAt("t6", mine(), 640, 330);
+    expect(after.canvasText).toEqual(["Distance: 0 m at 640,330"]);
+    expect((await browser.evaluate("t6", mine(), "Game")).result).toBe('{\n "scene": "level",\n "clicks": 1\n}');
+    expect((await browser.evaluate("t6", mine(), "typeof Game.start")).result).toBe('"undefined"');
+    await expect(browser.evaluate("t6", mine(), "RR.Input.mousePos")).rejects.toThrow("The expression failed: ReferenceError: RR is not defined");
+    await expect(browser.evaluate("t6", mine(), "new Promise(() => {})")).rejects.toThrow("didn't finish");
+    // Only on the task's own pages.
+    await browser.open("t6", mine(), base);
+    await expect(browser.evaluate("t6", mine(), "document.cookie")).rejects.toThrow("pages from your working folder only");
+    await browser.close("t6");
+  }, 60_000);
+
   it("serves only files inside the task folder, links followed", async () => {
     const outside = await mkdtemp(join(tmpdir(), "aatmiq-outside-"));
     await writeFile(join(outside, "secret.txt"), "top-secret");

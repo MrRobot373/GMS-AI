@@ -269,7 +269,7 @@ Limits, to know when deploying:
 ### Browser
 
 `browser_open`, `browser_click`, `browser_type`, `browser_select`, `browser_back`, `browser_read`,
-`browser_screenshot`, `browser_press` and `browser_click_at`, registered by the Aatmiq DSH plugin when the browser is on. Each call goes
+`browser_screenshot`, `browser_press`, `browser_click_at` and `browser_eval`, registered by the Aatmiq DSH plugin when the browser is on. Each call goes
 to `/api/internal/work/browser` with the task token; the browser belongs to the API, never to the
 agent.
 
@@ -294,8 +294,12 @@ agent.
   lists the page's script errors (uncaught exceptions and console errors), so a script that uses a
   name no file defines shows up at once. On those pages only, `browser_press` presses a key (held up
   to 5 s, like a player holding the gas) and `browser_click_at` clicks at a point (a canvas has no
-  numbered elements); elsewhere they're refused, since they could submit a form unasked. The agent
-  is told to try a web page, app or game this way before calling it done.
+  numbered elements); elsewhere they're refused, since they could submit a form unasked. For a
+  model that can't see screenshots, a canvas isn't blank: the page view lists the text drawn on the
+  canvas in its latest frames with where it is (`START at 640,330`, ready for `browser_click_at`),
+  and `browser_eval` evaluates an expression in the page (`RR.Game.currentScene.name`) and returns
+  its value as JSON, within 5 s, 4,000 characters at most. The agent is told to try a web page, app
+  or game this way before calling it done.
 - **Approvals**: reading never asks. A click or Enter that would submit a form is held until the
   agent repeats it with `confirm_submit: true`, which asks the person under *before risky actions*;
   under *before every change* every page action asks; *never* asks nothing.

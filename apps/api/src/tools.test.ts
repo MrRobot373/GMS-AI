@@ -291,7 +291,7 @@ d("Work AI tools", () => {
     // The owner is an org admin and Calculators is on by default, so the tested calculators come too.
     "calculators_search", "calculators_run",
   ];
-  const BROWSER_TOOLS = ["browser_open", "browser_click", "browser_type", "browser_select", "browser_back", "browser_read", "browser_screenshot", "browser_press", "browser_click_at"];
+  const BROWSER_TOOLS = ["browser_open", "browser_click", "browser_type", "browser_select", "browser_back", "browser_read", "browser_screenshot", "browser_press", "browser_click_at", "browser_eval"];
 
   it("offers every tool", async () => {
     const t = await run(workspaceId, []);

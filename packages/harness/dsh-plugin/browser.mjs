@@ -12,6 +12,8 @@ export function formatView(v) {
   if (v.url) lines.push(`URL: ${v.url}`);
   if (v.downloads?.length) lines.push(`Downloaded: ${v.downloads.join(", ")}`);
   if (v.errors?.length) lines.push("Script errors on the page:", ...v.errors.map((e) => `- ${e}`));
+  if (v.result !== undefined) lines.push("Result:", v.result);
+  if (v.canvasText?.length) lines.push("Text drawn on the canvas (with where it is, for browser_click_at):", ...v.canvasText.map((t) => `- ${t}`));
   lines.push("", v.text || "(the page has no readable text)");
   if (v.truncated) {
     const next = (v.offset ?? 0) + (v.text?.length ?? 0);
@@ -81,9 +83,15 @@ export function browserTools(defineTool, browser) {
     ),
     tool(
       "browser_click_at",
-      "Click at a point on a page from your working folder, in pixels from the top left of the 1280×900 view (for a canvas game or drawing that has no numbered elements). Take a screenshot first to find the point.",
+      "Click at a point on a page from your working folder, in pixels from the top left of the 1280×900 view (for a canvas game or drawing that has no numbered elements). The page view lists the text drawn on the canvas with where it is; or take a screenshot to find the point.",
       { x: { type: "number", required: true, description: "Pixels from the left." }, y: { type: "number", required: true, description: "Pixels from the top." } },
       (a, signal) => view({ action: "click_at", x: Number(a.x), y: Number(a.y) }, signal),
+    ),
+    tool(
+      "browser_eval",
+      "Evaluate a JavaScript expression in a page from your working folder and get its value as JSON: the state of a game or app you built (the current scene, the score, a vehicle's speed), or whether something is defined. Use it when the page is drawn on a canvas and you can't see screenshots.",
+      { expression: { type: "string", required: true, description: "One expression, like RR.Game.currentScene.name or JSON.stringify(RR.Scenes.Level.vehicle.position). It may await a promise." } },
+      (a, signal) => view({ action: "eval", expression: String(a.expression ?? "") }, signal),
     ),
     tool(
       "browser_read",
