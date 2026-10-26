@@ -671,11 +671,12 @@ export class BrowserService {
     if (!/^(?:(?:Shift|Control|Alt|Meta)\+)*[A-Za-z0-9]{1,20}$/.test(key))
       throw new BrowserError("Name one key, like ArrowRight, Enter, Space, KeyW or Shift+Tab.");
     try {
+      // A plain press lasts as long as a person's: a game that reads keys once a frame misses an instant one.
       if (holdMs > 0) {
         await s.page.keyboard.down(key);
         await s.page.waitForTimeout(holdMs);
         await s.page.keyboard.up(key);
-      } else await s.page.keyboard.press(key);
+      } else await s.page.keyboard.press(key, { delay: 100 });
       await s.page.waitForTimeout(300);
     } catch (e) {
       await this.explain(e);

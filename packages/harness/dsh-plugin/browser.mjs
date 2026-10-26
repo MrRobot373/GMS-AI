@@ -77,7 +77,7 @@ export function browserTools(defineTool, browser) {
       "Press a key on a page from your working folder (to try a game or app you built), optionally holding it down. Returns the page view and any script errors; take a screenshot to see the result.",
       {
         key: { type: "string", required: true, description: "One key: ArrowRight, ArrowLeft, ArrowUp, ArrowDown, Enter, Space, Escape, KeyW, Digit1…, optionally with Shift+ or Control+." },
-        hold_ms: { type: "integer", description: "Hold the key this long in milliseconds (0–5000), as a player holds the gas. Default: a single press." },
+        hold_ms: { type: "integer", description: "Hold the key this long in milliseconds (0–5000), as a player holds the gas. Default: a normal press (0.1 s)." },
       },
       (a, signal) => view({ action: "press", key: String(a.key ?? ""), holdMs: Math.max(0, Math.min(5000, Number(a.hold_ms ?? 0) || 0)) }, signal),
     ),
