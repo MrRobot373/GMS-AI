@@ -255,6 +255,7 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       }
       const text = json.choices?.[0]?.message?.content ?? "";
       if (text) work.pulse(t.taskId, "delta", { text });
+      work.noteContext(t.taskId, json.usage?.prompt_tokens ?? inputGuess, m.contextLength ?? 32_768);
       await meter(
         json.usage?.prompt_tokens != null
           ? { inputTokens: json.usage.prompt_tokens, outputTokens: json.usage.completion_tokens ?? 0, estimated: false }
@@ -364,6 +365,9 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     }
     finished = true;
     res.end();
+    // What this request put in the model's window: the server's count, or the estimate.
+    const counted = usage as { inputTokens: number; estimated: boolean } | null;
+    work.noteContext(t.taskId, counted && !counted.estimated ? counted.inputTokens : inputGuess, m.contextLength ?? 32_768);
     await meter(usage ?? { inputTokens: inputGuess, outputTokens: estimateTokens(output), estimated: true }, status);
   });
 

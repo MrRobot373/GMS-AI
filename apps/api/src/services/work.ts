@@ -48,8 +48,8 @@ export function restartNote(saved: string[]): string {
   return `${base} Files already saved are still here: ${saved.join(", ")}. Send a message to continue.`;
 }
 import { randomBytes } from "node:crypto";
-import { appendFile, chmod, chown, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { appendFile, chmod, chown, cp, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import { notify, type AppContext } from "../context";
 import { msg } from "../i18n";
 import { resolveModel } from "./models";
@@ -96,6 +96,10 @@ interface Live {
   tryNudged?: boolean;
   /** The model's context window, in tokens: long requests and restart history are sized to it. */
   contextWindow?: number;
+  /** Files the agent read or changed, oldest first (re-injected after condensing). */
+  recentFiles?: Map<string, number>;
+  /** The latest model request's size: tokens in the window, for the context meter. */
+  context?: { used: number; window: number };
   /** Where the agent works and as whom (the browser uses the same). */
   workdir?: string;
   runUid?: number;
@@ -134,6 +138,112 @@ const MAX_FRESH_STARTS = 2;
  * it as one reply). Not an answer: the model gateway asks again, and it's never shown or kept.
  */
 export const withoutJunk = (text: string) => text.replace(/<unk>/g, "");
+
+/** The skill list is in every request: on a small window it gets this share, the most relevant skills first. */
+const SKILL_LIST_SHARE = 0.03;
+/**
+ * After older steps are condensed, the files the agent touched most recently go back in (as
+ * Claude Code does), so it doesn't read them all again: at most this many, each up to the first
+ * share of the window and all together the second (capped at 5,000 and 25,000 tokens); a bigger
+ * file is named, not repeated.
+ */
+const REINJECT_FILES = 5;
+const REINJECT_FILE_SHARE = 0.03;
+const REINJECT_TOTAL_SHARE = 0.06;
+const REINJECT_FILE_MAX = 5_000;
+const REINJECT_TOTAL_MAX = 25_000;
+/** Tools whose `file_path` is a file the agent is working with. */
+const FILE_TOOLS = new Set(["read", "write", "edit"]);
+
+/** Words of four or more letters, cut to five so "games" meets "game" and "physics" meets "physical". */
+const stems = (text: string) => new Set((text.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []).map((w) => w.slice(0, 5)));
+
+/**
+ * The library skills to list when the list must fit `budget` tokens: the ones that share the most
+ * telling words with the request (a word few skills use, like "canvas", counts more than one most
+ * use, like "file"), then the rest in library order while the budget lasts, kept in library order.
+ * All of them when they fit.
+ */
+export function pickSkills<T extends { slug: string; description: string }>(skills: T[], request: string, budget: number): T[] {
+  const cost = (sk: T) => estimateTokens(`${sk.slug}: ${sk.description}`) + 12;
+  if (skills.reduce((n, sk) => n + cost(sk), 0) <= budget) return skills;
+  const asked = stems(request);
+  const words = skills.map((sk) => stems(`${sk.slug.replace(/-/g, " ")} ${sk.description}`));
+  const used = new Map<string, number>();
+  for (const ws of words) for (const w of ws) used.set(w, (used.get(w) ?? 0) + 1);
+  // Words a tenth of the skills or more use ("when", "with", "file") tell nothing; a long description
+  // doesn't win by length alone.
+  const telling = (w: string) => used.get(w)! <= Math.max(1, skills.length * 0.1);
+  const ranked = skills
+    .map((sk, i) => {
+      const hits = [...words[i]!].filter((w) => asked.has(w) && telling(w));
+      return { sk, i, score: hits.reduce((n, w) => n + Math.log(skills.length / used.get(w)!), 0) / Math.sqrt(Math.max(1, words[i]!.size)) };
+    })
+    .sort((a, b) => b.score - a.score || a.i - b.i);
+  // Real matches first; what's left of the budget goes to the rest in library order, so a vague first
+  // message ("hello") still leaves the agent a good set to choose from.
+  const floor = (ranked[0]?.score ?? 0) * 0.25;
+  const order = [...ranked.filter((r) => r.score > 0 && r.score >= floor), ...ranked.filter((r) => !(r.score > 0 && r.score >= floor)).sort((a, b) => a.i - b.i)];
+  const keep = new Set<number>();
+  let spent = 0;
+  for (const r of order) {
+    if (spent + cost(r.sk) > budget) continue;
+    spent += cost(r.sk);
+    keep.add(r.i);
+  }
+  return skills.filter((_, i) => keep.has(i));
+}
+
+/**
+ * After condensing: the files the agent touched most recently, as they are on disk now (newest
+ * first, within the window's budget; a bigger one by name only), and its plan. Null when there's
+ * nothing to give back.
+ */
+export async function reinjection(l: {
+workdir?: string;
+recentFiles?: Map<string, number>;
+contextWindow?: number;
+plan: PlanItem[] | null;
+}): Promise<{ text: string; files: string[] } | null> {
+  if (!l.workdir || !l.recentFiles?.size) return null;
+  const window = l.contextWindow ?? DEFAULT_WINDOW;
+  const perFile = Math.min(REINJECT_FILE_MAX, Math.floor(window * REINJECT_FILE_SHARE));
+  let left = Math.min(REINJECT_TOTAL_MAX, Math.floor(window * REINJECT_TOTAL_SHARE));
+  const root = await realpath(l.workdir).catch(() => l.workdir!);
+  const parts: string[] = [];
+  const files: string[] = [];
+  for (const path of [...l.recentFiles.keys()].reverse()) {
+    if (files.length >= REINJECT_FILES) break;
+    const full = resolve(root, path);
+    const real = await realpath(full).catch(() => null);
+    // Only the task's own folder, links followed.
+    if (!real || (real !== root && !real.startsWith(`${root}${sep}`))) continue;
+    const info = await stat(real).catch(() => null);
+    if (!info?.isFile()) continue;
+    const rel = relative(root, real).split(sep).join("/");
+    if (files.includes(rel)) continue;
+    const text = info.size <= perFile * 8 ? await readFile(real, "utf8").catch(() => null) : null;
+    const tokens = text === null ? Infinity : estimateTokens(text);
+    if (text !== null && !looksBinary(text) && tokens <= perFile && tokens <= left) {
+      parts.push(`<file path="${rel}">\n${text}\n</file>`);
+      left -= tokens;
+    } else parts.push(`- ${rel} (${info.size.toLocaleString("en-US")} bytes; read the part you need)`);
+    files.push(rel);
+  }
+  if (!files.length) return null;
+  const open = (l.plan ?? []).map((i) => `- [${i.status}] ${i.content}`);
+  return {
+    files,
+    text: [
+      "Older steps were just condensed. So you don't have to read them again, these are the files you worked on most recently, as they are on disk now:",
+      "",
+      ...parts,
+      ...(open.length ? ["", "Your plan:", ...open] : []),
+      "",
+      "Carry on from where you were.",
+    ].join("\n"),
+  };
+}
 
 /** A request the model's window can't take (the runtime's or the model server's words for it). */
 const OVERFLOW = /context_length_exceeded|maximum context length|context window/i;
@@ -588,7 +698,17 @@ export class WorkRunner {
       l.runUid = this.isolated ? (runUid ?? undefined) : undefined;
       await mkdir(this.dir, { recursive: true });
       // The coding agent gets the library's engineering, data and app skills; Work AI gets them all.
-      const skillsDir = await this.writeSkills(task.userId, join(homeDir, "skills"), settings.disabledLibrarySkills, code ? CODE_LIBRARY : undefined);
+      // On a small window the skill list (in every request) is cut to the skills that fit the request.
+      const asked = await db
+        .select({ data: workEvent.data })
+        .from(workEvent)
+        .where(and(eq(workEvent.taskId, taskId), eq(workEvent.kind, "user")))
+        .orderBy(asc(workEvent.seq));
+      const request = [asked[0], asked.at(-1)].map((e) => String(e?.data.text ?? "")).join("\n");
+      const skillsDir = await this.writeSkills(task.userId, join(homeDir, "skills"), settings.disabledLibrarySkills, code ? CODE_LIBRARY : undefined, {
+        request,
+        budget: Math.floor(l.contextWindow * SKILL_LIST_SHARE),
+      });
       await this.prepareFolder(taskId, runUid);
       if (code) await this.ctx.code.prepare(task.userId, workdir);
       const [org] = await db.select({ productName: organization.productName }).from(organization).limit(1);
@@ -727,6 +847,18 @@ export class WorkRunner {
     return requestPointer(path, text);
   }
 
+  /** The latest model request's size, from the model gateway: shown as the task's context meter. */
+  noteContext(taskId: string, used: number, window: number) {
+    const l = this.live.get(taskId);
+    if (l) l.context = { used, window };
+    this.pulse(taskId, "context", { used, window });
+  }
+
+  /** The context meter of a running task, for the task page. */
+  contextOf(taskId: string): { used: number; window: number } | null {
+    return this.live.get(taskId)?.context ?? null;
+  }
+
   private async onEvent(l: Live, e: HarnessEvent) {
     const { taskId } = l;
     switch (e.type) {
@@ -742,6 +874,15 @@ export class WorkRunner {
         l.turnOutput = true;
         l.usedTools = true;
         l.planActive = true;
+        {
+          const path = (e.args as { file_path?: unknown } | null)?.file_path;
+          if (FILE_TOOLS.has(e.name) && typeof path === "string" && path.trim()) {
+            const files = (l.recentFiles ??= new Map());
+            files.delete(path);
+            files.set(path, Date.now());
+            if (files.size > 50) files.delete(files.keys().next().value!);
+          }
+        }
         if (writesCode(e.name, e.args)) l.untried = true;
         else if (triesCode(e.name, e.args)) l.untried = false;
         await this.record(taskId, "tool_call", { callId: e.callId, name: e.name, args: e.args as Record<string, unknown> });
@@ -761,10 +902,14 @@ export class WorkRunner {
         l.planActive = true;
         await this.record(taskId, "plan", { items: e.items });
         return;
-      case "compacted":
+      case "compacted": {
         // What the agent goes on from, for people to read (like Claude Code's "continued from" summary).
         await this.record(taskId, "context", { compacted: true, summary: clip(e.summary, MAX_TOOL_TEXT), steps: e.steps, tokens: e.tokens });
+        const back = await reinjection(l);
+        if (back && l.runtime?.alive) await this.sendTo(l, back.text);
+        if (back) await this.record(taskId, "context", { reinjected: back.files });
         return;
+      }
       case "turn_end": {
         if (l.cancelled) return;
         // Not finished yet: a sentence cut off after tools, a reply that hit its length limit, or a
@@ -1067,14 +1212,23 @@ export class WorkRunner {
    * Org skills, the person's own, and the enabled built-in library, as SKILL.md folders the runtime
    * discovers. A skill the organization or person wrote wins over a library skill of the same name.
    */
-  private async writeSkills(userId: string, dir: string, disabledLibrary: string[], categories?: readonly LibraryCategory[]): Promise<string | null> {
+  private async writeSkills(
+    userId: string,
+    dir: string,
+    disabledLibrary: string[],
+    categories?: readonly LibraryCategory[],
+    fit?: { request: string; budget: number },
+  ): Promise<string | null> {
     const rows = await this.ctx.db
       .select()
       .from(skill)
       .where(and(eq(skill.enabled, true), or(eq(skill.scope, "org"), and(eq(skill.scope, "personal"), eq(skill.ownerId, userId)))));
     await rm(dir, { recursive: true, force: true });
     const off = new Set(disabledLibrary);
-    const library = librarySkills().filter((s) => !off.has(s.slug) && (!categories || categories.includes(s.category)));
+    const offered = librarySkills().filter((s) => !off.has(s.slug) && (!categories || categories.includes(s.category)));
+    // The organization's and the person's own skills always; the library's within what's left.
+    const own = rows.reduce((n, s) => n + estimateTokens(`${s.slug || s.name}: ${s.description}`) + 12, 0);
+    const library = fit ? pickSkills(offered, fit.request, Math.max(0, fit.budget - own)) : offered;
     if (rows.length === 0 && library.length === 0) return null;
     await mkdir(dir, { recursive: true });
     const used = new Set<string>();

@@ -39,6 +39,8 @@ export interface WorkEvent {
 }
 
 export interface WorkTaskDetail {
+  /** How full the model's context window is (a running task only). */
+  context?: { used: number; window: number } | null;
   task: WorkTaskSummary & { workspaceId: string; sessionId: string | null; projectId: string | null; sharedToProject: boolean };
   events: WorkEvent[];
   live: boolean;

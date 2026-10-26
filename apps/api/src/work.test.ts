@@ -383,6 +383,15 @@ d("Work AI", () => {
     await waitStatus(r.json.id, "completed", "failed");
   }, 90_000);
 
+  it("shows how full the model's context window is", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "hello there" });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    const detail = (await call("GET", `/api/work/tasks/${r.json.id}`)).json;
+    expect(t.task.status).toBe("completed");
+    // The fake model reports 100 prompt tokens; the model has no context length set, so 32K is assumed.
+    expect(detail.context).toEqual({ used: 100, window: 32_768 });
+  }, 60_000);
+
   it("finishes a task whose plan is done", async () => {
     const todos = [{ content: "Write the note", status: "completed" }];
     const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: `use todo_write ${JSON.stringify({ todos })}` });
@@ -654,8 +663,11 @@ d("Work AI", () => {
     expect(one.json.body).toContain("## Done when");
 
     expect((await call("PATCH", "/api/work/skills/library/seo", { enabled: false })).json).toEqual({ slug: "seo", enabled: false });
+    // A window big enough for the whole list (on a small one only the skills that fit the request are listed).
+    await db.update(model).set({ contextLength: 131_072 }).where(eq(model.modelKey, "fake-agent"));
     const t = await call("POST", "/api/work/tasks", { workspaceId, prompt: "hello library" });
     await waitStatus(t.json.id, "completed");
+    await db.update(model).set({ contextLength: null }).where(eq(model.modelKey, "fake-agent"));
     const seen = JSON.stringify(modelRequests.at(-1));
     expect(seen).toContain("`word-documents`");
     expect(seen).toContain("`code-review`");

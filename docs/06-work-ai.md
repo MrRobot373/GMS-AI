@@ -181,8 +181,21 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   window it never condensed anything: the history grew until the model server cut the prompt
   (Ollama does that silently) and the agent lost its task. Now, before each step, DSH condenses the
   oldest steps into a checkpoint summary once the request passes the threshold, keeping the newest
-  20 % word for word; oversized old tool results are trimmed first. The timeline shows "Older steps
-  were summarized…" each time. As a safety net, the model gateway answers a request bigger than the
+  20 % word for word. Before that, every tool result longer than a quarter of the window in
+  characters (8,192 on 32K, up to 65,536) is cut to its start and end, which often frees enough room
+  without a summary. The timeline shows "Older steps were summarized…" each time; opening it shows
+  the summary the agent goes on from.
+  Then, as Claude Code does, the files the agent read or changed most recently go back in as they
+  are on disk now (at most 5, each up to 3 % of the window and all together 6 %, capped at 5,000 and
+  25,000 tokens; a bigger file by name only), with its plan, so it doesn't read them all again. The
+  note lists them.
+  The task page shows a context meter while the task runs ("Context 62% · 20.3K of 32.8K"): the
+  latest request's size, from the model server's own count.
+  **What's in every request** (measured on a 32K model with the full library): tool definitions about
+  5,450 tokens (34 tools), the system prompt about 1,600, the skill list about 2,800 (71 skills).
+  The skill list is the part that scales: on a window where it would take more than 3 %, only the
+  skills that match the request are listed (words few skills use count most; the organization's own
+  skills always), so on 32K it is about 950 tokens. From 128K up every skill is listed. As a safety net, the model gateway answers a request bigger than the
   window with an overflow error in the words DSH recognizes (it then condenses and retries), and
   lowers a reply limit that would run past the window. If the window still can't be freed, the
   task starts over in a fresh runtime from the work so far (the request, history sized to the

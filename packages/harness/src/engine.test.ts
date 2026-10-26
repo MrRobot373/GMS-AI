@@ -597,7 +597,8 @@ describe("context window", () => {
     expect(b.threshold).toBe(20_276);
     expect(b.threshold).toBeGreaterThan((b.window - b.maxOutput) * b.retainRatio);
     // A big window keeps its replies and summaries bounded.
-    expect(contextBudget(262_144)).toMatchObject({ maxOutput: 32_768, summaryTokens: 8192, threshold: 209_715 });
+    expect(contextBudget(262_144)).toMatchObject({ maxOutput: 32_768, summaryTokens: 8192, threshold: 209_715, pruneChars: 65_536 });
+    expect(contextBudget(32_768).pruneChars).toBe(8192);
     // A small one still leaves room to work.
     const small = contextBudget(8192);
     expect(small.threshold).toBeGreaterThan(0);
@@ -607,6 +608,7 @@ describe("context window", () => {
     const rows = parse(buildPatch({ ...(await spec()), model: { key: "main", name: "Qwen", contextWindow: 32_768 } })) as any[];
     const compaction = rows.find((r) => r.id === "compaction-basic");
     expect(compaction).toMatchObject({ name: "@deepseek-ai/dsh-compaction-basic", config: { thresholdRatio: 0.8, headroomTokens: 4300, retainRatio: 0.2, maxTokens: 3276 } });
+    expect(rows.find((r) => r.id === "tool-result-pruner")).toMatchObject({ config: { thresholdChars: 8192, headChars: 4096, tailChars: 1024 } });
     const llm = rows.find((r) => r.id === "llm-pi-ai");
     expect(llm.config.providers.aatmiq.models[0]).toMatchObject({ contextWindow: 32_768, maxTokens: 8192 });
     const persona = rows.find((r) => r.id === "system-prompt").config.personaPrefix as string;

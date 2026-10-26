@@ -82,7 +82,7 @@ type Item =
   | { kind: "error"; key: string; text: string }
   | { kind: "stopped"; key: string }
   /** Older steps were condensed to make room in the model's context window. */
-  | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number }
+  | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number; reinjected?: string[] }
   /** The window couldn't be freed, so the agent started over from the work so far. */
   | { kind: "restarted"; key: string };
 
@@ -133,6 +133,10 @@ function buildTimeline(events: WorkEvent[]) {
       case "context":
         if (d.compacted) items.push({ kind: "compacted", key: `x${e.seq}`, summary: d.summary ?? "", steps: d.steps ?? 0, tokens: d.tokens ?? 0 });
         if (d.restarted) items.push({ kind: "restarted", key: `r${e.seq}` });
+        if (Array.isArray(d.reinjected)) {
+          const note = items.findLast((i) => i.kind === "compacted");
+          if (note?.kind === "compacted") note.reinjected = d.reinjected;
+        }
         break;
       case "status":
         status = d.status;
@@ -172,6 +176,11 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [events, setEvents] = useState<WorkEvent[]>([]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState("");
+  // The context meter: the latest model request's size against the window (like Claude Code's /context).
+  const [context, setContext] = useState<{ used: number; window: number } | null>(null);
+  useEffect(() => {
+    if (detail.data?.context) setContext(detail.data.context);
+  }, [detail.data?.context]);
   const [input, setInput] = useState("");
   const [panel, setPanel] = useState<"progress" | "files" | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -231,6 +240,8 @@ export function TaskView({ taskId }: { taskId: string }) {
               setDraft((d) => d + ev.data.text);
             } else if (ev.event === "reasoning") {
               setThinking((t) => (t + ev.data.text).slice(-2000));
+            } else if (ev.event === "context") {
+              setContext(ev.data as { used: number; window: number });
             } else if (ev.event === "files") {
               void qc.invalidateQueries({ queryKey: ["work-files", taskId] });
             }
@@ -496,6 +507,19 @@ export function TaskView({ taskId }: { taskId: string }) {
               <div className="mt-2 flex flex-wrap justify-center gap-x-3 text-[11.5px] text-fg-subtle" data-testid="task-footer">
                 <span>{code ? t("Works in your Code workspace {workspace}.", { workspace: code.name }) : t("Runs in a private folder on your organization's servers.")}</span>
                 {task && task.inputTokens + task.outputTokens > 0 && <span className="tabular-nums">{t("{count} tokens", { count: formatTokens(task.inputTokens + task.outputTokens) })}</span>}
+                {active && context && context.window > 0 && (
+                  <span
+                    className="tabular-nums"
+                    title={t("How much of the model's context window the last step used. Older steps are summarized before it fills up.")}
+                    data-testid="task-context"
+                  >
+                    {t("Context {percent}% · {used} of {window}", {
+                      percent: Math.min(100, Math.round((context.used / context.window) * 100)),
+                      used: formatTokens(context.used),
+                      window: formatTokens(context.window),
+                    })}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -674,6 +698,9 @@ function CompactedNote({ item }: { item: Extract<Item, { kind: "compacted" }> })
         <div className="mt-2 border-t border-border pt-2 text-fg" data-testid="task-compacted-summary">
           <p className="mb-1.5 text-fg-subtle">{t("What the agent goes on from:")}</p>
           <Markdown content={item.summary} lineBreaks />
+          {!!item.reinjected?.length && (
+            <p className="mt-2 text-fg-subtle">{t("Files given back to it as they are now: {files}", { files: item.reinjected.join(", ") })}</p>
+          )}
         </div>
       )}
     </div>

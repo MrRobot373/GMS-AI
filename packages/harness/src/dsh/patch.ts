@@ -21,13 +21,17 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, M
  *   that summary call's own instructions and answer.
  * - Compaction starts when a request would pass `thresholdRatio` of the window (or the window minus
  *   the reply and the headroom, if smaller) and keeps the newest `retainRatio` of it word for word.
+ * - `pruneChars`: tool results longer than this are cut to their start and end first.
  */
 export function contextBudget(window: number) {
   const maxOutput = clamp(window / 4, 1024, 32_768);
   const summaryTokens = clamp(window / 10, 512, 8192);
   const headroom = summaryTokens + 1024;
   const threshold = Math.min(Math.floor(window * 0.8), window - maxOutput - headroom);
-  return { window, maxOutput, summaryTokens, headroom, thresholdRatio: 0.8, retainRatio: 0.2, threshold };
+  // Before summarizing, every tool result longer than this (characters) is cut to its start and end;
+  // often that frees enough room by itself. A quarter of the window: 8,192 on 32K, as DSH's default.
+  const pruneChars = clamp(window / 4, 2048, 65_536);
+  return { window, maxOutput, summaryTokens, headroom, thresholdRatio: 0.8, retainRatio: 0.2, threshold, pruneChars };
 }
 
 /** Rows from the stock profile that must not run inside a private, multi-user deployment. */
@@ -155,6 +159,11 @@ export function buildPatch(spec: TaskSpec): string {
         compactionRetries: 2,
         maxOverflowRetries: 2,
       },
+    },
+    {
+      id: "tool-result-pruner",
+      name: "@deepseek-ai/dsh-compaction-tool-result-pruner",
+      config: { thresholdChars: budget.pruneChars, headChars: Math.floor(budget.pruneChars / 2), tailChars: Math.floor(budget.pruneChars / 8) },
     },
     { id: "web", name: "@deepseek-ai/dsh-web", config: { searchProvider: PROVIDER_ID, fetchProvider: "http" } },
     // web_search stays DSH's; web_fetch is Aatmiq's (dsh-plugin/web.mjs): a page's main text, in parts, PDFs too.

@@ -219,6 +219,8 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       task: t.error ? { ...t, error: tr(localeOf(req), t.error) } : t,
       events,
       live: work.isLive(t.id),
+      // How full the model's context window is right now (a running task only).
+      context: work.contextOf(t.id),
       own,
       ownerName: owner?.name ?? null,
       project: access ? { id: access.project.id, name: access.project.name, color: access.project.color, canEdit: access.canEdit } : null,
