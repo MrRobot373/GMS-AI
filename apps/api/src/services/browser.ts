@@ -7,7 +7,8 @@
  *
  * Pages come back as text with numbered elements ("[4] button "Sign in""), which the agent uses
  * to click or type. A click or Enter that would submit a form is held until the agent repeats it
- * with confirm_submit, which the approval policy turns into a question for the person.
+ * with confirm_submit, which the approval policy turns into a question for the person. Not on the
+ * task's own pages when the form stays there (an app it built saving in the page): nothing leaves.
  *
  * Pages the agent built are opened from the task folder under http://task.local/, so it can try
  * them the way a person would: script errors come back with each view, and on those pages it can
@@ -268,6 +269,30 @@ const SUBMITS = String.raw`(e, enter) => {
 async function submits(page: Page, ref: number, enter: boolean): Promise<boolean> {
   const expr = `(${SUBMITS})(document.querySelector('[data-aatmiq-ref="${Number(ref)}"]'), ${enter ? "true" : "false"})`;
   return ((await page.evaluate(expr).catch(() => false)) as boolean) === true;
+}
+
+/** Runs in the page: where would submitting the form of this element send its data (an absolute address)? */
+const SUBMIT_TARGET = String.raw`(e) => {
+  const form = e.form || e.closest("form");
+  // formaction only when the element sets it: otherwise Chromium reports the page's own address.
+  const to = (e.hasAttribute && e.hasAttribute("formaction") ? e.formAction : form && form.action) || location.href;
+  try {
+    return new URL(to, location.href).href;
+  } catch {
+    return "";
+  }
+}`;
+
+/**
+ * Whether submitting from element [ref] stays on the task's own pages (a page from its folder, a
+ * form that saves in the page or posts to another of its pages). Such a submit sends nothing
+ * anywhere, so it needs no confirmation; a form that posts to an outside address still does.
+ */
+async function staysInTask(page: Page, ref: number): Promise<boolean> {
+  if (!page.url().startsWith(`${LOCAL_ORIGIN}/`)) return false;
+  const expr = `(${SUBMIT_TARGET})(document.querySelector('[data-aatmiq-ref="${Number(ref)}"]'))`;
+  const to = (await page.evaluate(expr).catch(() => "")) as string;
+  return to.startsWith(`${LOCAL_ORIGIN}/`);
 }
 
 interface Session {
@@ -613,7 +638,7 @@ export class BrowserService {
   ): Promise<PageView> {
     const s = await this.session(taskId, target);
     const el = await this.exists(s, ref);
-    if (!confirmSubmit && (await submits(s.page, ref, false)))
+    if (!confirmSubmit && (await submits(s.page, ref, false)) && !(await staysInTask(s.page, ref)))
       throw new BrowserError(
         `[${ref}] submits a form. If that's what the task needs, call browser_click again with confirm_submit: true.`,
       );
@@ -635,7 +660,7 @@ export class BrowserService {
   ): Promise<PageView> {
     const s = await this.session(taskId, target);
     const el = await this.exists(s, ref);
-    if (submit && !confirmSubmit && (await submits(s.page, ref, true)))
+    if (submit && !confirmSubmit && (await submits(s.page, ref, true)) && !(await staysInTask(s.page, ref)))
       throw new BrowserError(
         `Pressing Enter in [${ref}] submits a form. If that's what the task needs, call browser_type again with confirm_submit: true.`,
       );

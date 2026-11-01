@@ -617,6 +617,9 @@ describe("context window", () => {
     expect(persona).toContain("never print or search minified or vendor files");
     expect(persona).toContain("saved in a file under .task/");
     expect(persona).toContain("Keep a notes file, .task/notes.md, as your memory");
+    expect(persona).toContain("Check it against what was asked, requirement by requirement");
+    expect(persona).toContain("Open that file (downloads are in your working folder under downloads/) and read it");
+    expect(persona).toContain("Don't leave files in the working folder that only signal you're done");
     expect(persona).toContain("check the other file really defines it under that name");
     expect(persona).toContain("node --check");
     const withBrowser = parse(buildPatch({ ...(await spec()), browser: true })) as any[];

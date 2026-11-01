@@ -93,7 +93,10 @@ interface Live {
   planActive?: boolean;
   /** This message wrote code and hasn't run or opened it since; the agent was already told once. */
   untried?: boolean;
-  tryNudged?: boolean;
+  /** This message wrote code at all: it's checked against the request before it ends. */
+  wroteCode?: boolean;
+  /** The agent was already sent back once to check its work against the request. */
+  verifyNudged?: boolean;
   /** The model's context window, in tokens: long requests and restart history are sized to it. */
   contextWindow?: number;
   /** Files the agent read or changed, oldest first (re-injected after condensing). */
@@ -427,9 +430,20 @@ export function triesCode(name: string, args: unknown): boolean {
   return (name === "bash" || name === "pwsh") && typeof command === "string" && RUNS_CODE.test(command);
 }
 
+/**
+ * Before a task that wrote code ends: go through the request one requirement at a time and prove
+ * each (a model that tries its program once still says "all done" about an export nobody opened,
+ * a list in the wrong order, a stray line on the page).
+ */
+const VERIFY_NUDGE = [
+  "Before you finish, check your work against what was asked, one requirement at a time. Take the request's list (reread it from your notes or the saved request file) and for each item do something that proves it: run it, open the page and use the feature, or read what it produced.",
+  "If your program writes a file (an export, a report, a download), open that file and read its content: check its format, and that your own program can read it back. Check order, totals, wording and every case the request names, not only that nothing crashes. Read the finished page for text that shouldn't be there.",
+  "Fix what you find, then check it again. Delete files you made only to signal you're done or to test (DONE, finish.txt, test pages) unless the person asked for them.",
+  "Then give your summary: for each requirement, how you checked it, and what you couldn't check.",
+].join(" ");
+
 /** After code was written and never run or opened. */
-const TRY_NUDGE =
-  "You wrote code in this task but haven't run or opened it since. Try it now before you finish: run it, or for a web page, app or game open it with browser_open by its path (like game/index.html) and fix any script errors it shows. Then give your summary, saying what you checked.";
+const TRY_NUDGE = `You wrote code in this task but haven't run or opened it since. Try it now: run it, or for a web page, app or game open it with browser_open by its path (like game/index.html) and fix any script errors it shows. ${VERIFY_NUDGE}`;
 
 const CUT_OFF_NUDGE = "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence. Write a long file in several smaller parts.";
 
@@ -742,7 +756,8 @@ export class WorkRunner {
     l.idleNudge = false;
     l.planActive = false;
     l.untried = false;
-    l.tryNudged = false;
+    l.wroteCode = false;
+    l.verifyNudged = false;
     // The answer to show is this turn's; the plan stays (the runtime keeps its todo list too).
     l.lastAnswer = "";
     await this.setStatus(l.taskId, "running", { error: null });
@@ -989,8 +1004,10 @@ export class WorkRunner {
             if (files.size > 50) files.delete(files.keys().next().value!);
           }
         }
-        if (writesCode(e.name, e.args)) l.untried = true;
-        else if (triesCode(e.name, e.args)) l.untried = false;
+        if (writesCode(e.name, e.args)) {
+          l.untried = true;
+          l.wroteCode = true;
+        } else if (triesCode(e.name, e.args)) l.untried = false;
         await this.record(taskId, "tool_call", { callId: e.callId, name: e.name, args: e.args as Record<string, unknown> });
         return;
       case "tool_result":
@@ -1026,13 +1043,14 @@ export class WorkRunner {
         const planOpen = e.reason === "completed" && open.length > 0 && (!!l.usedTools || !l.idleNudge);
         // An empty reply after real work this round is the model server's glitch: carry on.
         const blank = e.reason !== "completed" && e.reason !== "blocked" && !!l.usedTools && /no content|empty (response|reply)/i.test(e.error ?? "");
-        // Code written and never tried: sent back once to try it (a model's "it works" isn't a check).
-        const untried = e.reason === "completed" && !!l.untried && !l.tryNudged;
-        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : untried ? TRY_NUDGE : null;
+        // Code written: sent back once to check it against the request, and to try it if it never ran
+        // (a model's "it works" isn't a check).
+        const verify = e.reason === "completed" && !!l.wroteCode && !l.verifyNudged;
+        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
         if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
           l.continues = (l.continues ?? 0) + 1;
           l.idleNudge = !l.usedTools;
-          if (nudge === TRY_NUDGE) l.tryNudged = true;
+          if (nudge === TRY_NUDGE || nudge === VERIFY_NUDGE) l.verifyNudged = true;
           l.busy = true;
           l.usedTools = false;
           await this.setStatus(taskId, "running");

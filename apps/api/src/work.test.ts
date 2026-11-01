@@ -54,6 +54,18 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   // A model whose generation breaks down into <unk> tokens, every time it's asked.
   if (last.role === "tool" && textOf(last.content).includes("junk-after-step"))
     return sse(res, [...Array.from({ length: 50 }, () => ({ choices: [{ index: 0, delta: { content: "<unk>".repeat(40) } }] })), { choices: [{ index: 0, delta: {}, finish_reason: "length" }] }, usage]);
+  // "script: [[tool, args], …]": those calls one after another, then "Done.".
+  const askAt = body.messages.findLastIndex((m) => m.role === "user" && !/^Current runtime context|^<system-reminder>/.test(textOf(m.content).trim()));
+  const script = /^script: (.+)/s.exec(textOf(body.messages[askAt]?.content).trim());
+  if (script) {
+    const next = (JSON.parse(script[1]!) as [string, unknown][])[body.messages.slice(askAt).filter((m) => m.role === "tool").length];
+    if (!next) return say("Done.");
+    return sse(res, [
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, type: "function", function: { name: next[0], arguments: JSON.stringify(next[1]) } }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+      usage,
+    ]);
+  }
   if (last.role === "tool") return say(`Result: ${textOf(last.content).trim().slice(0, 300)}`);
   const userText = (m: { content: unknown }) => textOf(m.content).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
   const ask = [...body.messages].reverse().filter((m) => m.role === "user").map(userText).find((t) => t && !/^Current runtime context/.test(t)) ?? "";
@@ -580,12 +592,23 @@ d("Work AI", () => {
     const t = await waitStatus(r.json.id, "completed", "failed");
     const tryAsks = modelRequests.filter((m) => m.at(-1)?.role === "user" && textOf(m.at(-1)!.content).includes("haven't run or opened it since"));
     expect(tryAsks.length).toBe(1);
+    expect(textOf(tryAsks[0]!.at(-1)!.content)).toContain("one requirement at a time");
     expect(t.task.status).toBe("completed");
     // Writing a document isn't code: nothing to try.
     const before = modelRequests.length;
     const r2 = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'use write {"file_path":"notes.md","content":"# Notes"}' });
     await waitStatus(r2.json.id, "completed", "failed");
-    expect(modelRequests.slice(before).some((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("haven't run or opened it since")))).toBe(false);
+    expect(modelRequests.slice(before).some((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("one requirement at a time")))).toBe(false);
+  }, 60_000);
+
+  it("checks code that did run against the request once, without asking to run it", async () => {
+    const before = modelRequests.length;
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'script: [["write", {"file_path":"tool.py","content":"print(1)"}], ["bash", {"description":"Run it","command":"python3 tool.py"}]]' });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    const asks = modelRequests.slice(before).filter((m) => m.at(-1)?.role === "user" && textOf(m.at(-1)!.content).includes("one requirement at a time"));
+    expect(asks.length).toBe(1);
+    expect(textOf(asks[0]!.at(-1)!.content)).not.toContain("haven't run or opened it since");
+    expect(t.task.status).toBe("completed");
   }, 60_000);
 
   it("never passes on a reply that broke down into <unk> tokens: asks again, then carries on", async () => {

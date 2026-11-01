@@ -9,6 +9,11 @@ without one.
 
 ## Unreleased
 
+- **Work AI checks what it built against the request.** A task that wrote code is sent back once
+  before it ends to prove each requirement (use each feature, open and read the files the program
+  produces, check order and totals), clean up files that only signal "done", and report how it
+  checked. Forms on the task's own pages that save in the page no longer ask the person to approve
+  every click.
 - **Work AI manages its context window** ([docs/06-work-ai.md](docs/06-work-ai.md#how-it-works)).
   Big jobs on small windows (a 32K model) no longer fill up and stop: older steps are condensed
   into a summary before the window fills (DSH's stock settings never did that below 64K), the

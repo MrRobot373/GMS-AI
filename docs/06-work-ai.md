@@ -165,9 +165,15 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   dash, or inside a code block) or one cut at its length limit is sent back the same way, and so is
   a turn the model server ended with an empty reply after real work ("continue from where you
   stopped"); an empty reply with nothing done before it still fails the task. When the agent wrote code
-  (`.js`, `.html`, `.py`…) in this message and never ran it or opened it afterwards (a command that
-  runs something, or `browser_open`), it's sent back once to try it before it finishes. The stored result is
-  this message's answer, never an earlier one.
+  (`.js`, `.html`, `.py`…) in this message it's sent back **once**, before it finishes, to check its
+  work against the request one requirement at a time: use each feature, read what the program
+  produces (an exported file, a report, the finished page), check order, totals and wording, delete
+  files it made only to signal "done" or to test, and say in its summary how it checked each item
+  and what it couldn't. If it never ran or opened the code (a command that runs something, or
+  `browser_open`), the same message first asks it to try it. (A live run had called an expense
+  tracker finished with a CSV export nobody opened: every row began with a stray quote, so the app
+  couldn't read its own export, and the list ran oldest first.) The stored result is this
+  message's answer, never an earlier one.
 - **The context window.** Every budget is a share of the model's own context length (Admin →
   Models; `contextBudget` in packages/harness/src/dsh/patch.ts), so big jobs work on small windows:
 
@@ -332,7 +338,11 @@ agent.
   or game this way before calling it done.
 - **Approvals**: reading never asks. A click or Enter that would submit a form is held until the
   agent repeats it with `confirm_submit: true`, which asks the person under *before risky actions*;
-  under *before every change* every page action asks; *never* asks nothing.
+  under *before every change* every page action asks; *never* asks nothing. Not held: a form on one
+  of the task's own pages whose data stays there (an app it built, saving in the page, or posting to
+  another of its pages), since nothing leaves. A live run of an expense tracker had asked 15 times,
+  once per click on its own "Add" button. A form that posts to an outside address is held as on any
+  website (the check reads the form's action, or the button's `formaction`).
 - The Docker image includes Chromium (about 1 GB more). Elsewhere, set `BROWSER_PATH`; without a
   browser the setting is greyed out and the tools aren't offered.
 

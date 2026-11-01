@@ -305,6 +305,32 @@ const chrome = findChromium();
     await browser.close("t6");
   }, 60_000);
 
+  it("doesn't hold a form on the task's own pages that stays there; one that posts outside still waits", async () => {
+    const mine = () => target({ profileDir: join(work, "..", "profile-t7") });
+    await mkdir(join(work, "forms"), { recursive: true });
+    await writeFile(
+      join(work, "forms", "index.html"),
+      `<!doctype html><title>Forms</title><body>
+      <form id="own" onsubmit="event.preventDefault(); document.getElementById('out').textContent = 'saved ' + this.elements.v.value">
+        <input name="v" aria-label="Value"><button id="save">Save it</button></form>
+      <form action="http://elsewhere.test/collect" method="post"><input name="v" aria-label="Outside value"><button>Send away</button></form>
+      <form action="next.html"><input name="q" aria-label="Local search"><button>Go on</button></form>
+      <p id="out"></p></body>`,
+    );
+    await writeFile(join(work, "forms", "next.html"), "<!doctype html><title>Next</title><h1>Next page</h1>");
+    const v = await browser.open("t7", mine(), "forms/index.html");
+    const ref = (label: string) => Number(new RegExp(`\\[(\\d+)\\] [a-z]+ "${label}"`).exec(v.text)![1]);
+    // A form that saves in the page: no confirmation needed.
+    await browser.type("t7", mine(), ref("Value"), "42", false, false);
+    expect((await browser.click("t7", mine(), ref("Save it"), false)).text).toContain("saved 42");
+    // A form that posts to an outside address is held, as on any website.
+    await expect(browser.click("t7", mine(), ref("Send away"), false)).rejects.toThrow("submits a form");
+    await expect(browser.type("t7", mine(), ref("Outside value"), "x", true, false)).rejects.toThrow("confirm_submit: true");
+    // A form to another of the task's own pages goes through, and Enter in its field too.
+    expect((await browser.click("t7", mine(), ref("Go on"), false)).text).toContain("Next page");
+    await browser.close("t7");
+  }, 60_000);
+
   it("serves only files inside the task folder, links followed", async () => {
     const outside = await mkdtemp(join(tmpdir(), "aatmiq-outside-"));
     await writeFile(join(outside, "secret.txt"), "top-secret");
