@@ -663,6 +663,7 @@ export const HI: Record<string, string> = {
   "How much of the model's context window the last step used. Older steps are summarized before it fills up.": "पिछले चरण ने मॉडल की कॉन्टेक्स्ट विंडो का कितना हिस्सा इस्तेमाल किया। इसके भरने से पहले पुराने चरणों का सारांश बना दिया जाता है।",
   "Context {percent}% · {used} of {window}": "कॉन्टेक्स्ट {percent}% · {window} में से {used}",
   "Files given back to it as they are now: {files}": "मौजूदा रूप में उसे वापस दी गई फ़ाइलें: {files}",
+  "Its notes file was given back to it.": "उसकी नोट्स फ़ाइल उसे वापस दी गई।",
   "Stopped. Send a message to continue.": "रुक गया। जारी रखने के लिए संदेश भेजें।",
   "failed": "विफल",
   "failed, exit code {code}": "विफल, exit code {code}",

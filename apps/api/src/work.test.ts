@@ -372,6 +372,8 @@ d("Work AI", () => {
 
     // A runtime started again (after it was stopped) hears the plan and what's in the folder.
     await writeFile(join(workDir, r.json.id, "files", "vehicles.js"), "export const vehicles = [];\n");
+    await mkdir(join(workDir, r.json.id, "files", ".task"), { recursive: true });
+    await writeFile(join(workDir, r.json.id, "files", ".task", "notes.md"), "# Contracts\n- Vehicle.speed() -> km/h\n");
     await (app.workRunner as unknown as { release(id: string): Promise<void> }).release(r.json.id);
     const before = modelRequests.length;
     await call("POST", `/api/work/tasks/${r.json.id}/messages`, { prompt: "continue" });
@@ -380,6 +382,7 @@ d("Work AI", () => {
     expect(seed).toContain("Your plan when it stopped");
     expect(seed).toContain("- [in_progress] Gather the numbers");
     expect(seed).toContain("Files in your working folder now:\nvehicles.js (28 bytes)");
+    expect(seed).toContain("Your notes (.task/notes.md):\n# Contracts\n- Vehicle.speed() -> km/h");
     await waitStatus(r.json.id, "completed", "failed");
   }, 90_000);
 

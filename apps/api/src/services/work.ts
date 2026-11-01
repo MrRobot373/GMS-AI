@@ -153,6 +153,14 @@ const REINJECT_FILE_SHARE = 0.03;
 const REINJECT_TOTAL_SHARE = 0.06;
 const REINJECT_FILE_MAX = 5_000;
 const REINJECT_TOTAL_MAX = 25_000;
+/**
+ * The agent's own memory file, like Claude Code's CLAUDE.md: the names, interfaces and decisions
+ * its files must agree on, kept in the working folder and read back after every condensing and
+ * restart (so a function one file defines isn't called by another name three files later).
+ */
+export const NOTES_FILE = ".task/notes.md";
+const NOTES_SHARE = 0.04;
+const NOTES_MAX = 3_000;
 /** Tools whose `file_path` is a file the agent is working with. */
 const FILE_TOOLS = new Set(["read", "write", "edit"]);
 
@@ -205,15 +213,17 @@ workdir?: string;
 recentFiles?: Map<string, number>;
 contextWindow?: number;
 plan: PlanItem[] | null;
-}): Promise<{ text: string; files: string[] } | null> {
-  if (!l.workdir || !l.recentFiles?.size) return null;
+}): Promise<{ text: string; files: string[]; notes: boolean } | null> {
+  if (!l.workdir) return null;
   const window = l.contextWindow ?? DEFAULT_WINDOW;
+  const notes = await notesText(l.workdir, window);
+  if (!l.recentFiles?.size && !notes) return null;
   const perFile = Math.min(REINJECT_FILE_MAX, Math.floor(window * REINJECT_FILE_SHARE));
   let left = Math.min(REINJECT_TOTAL_MAX, Math.floor(window * REINJECT_TOTAL_SHARE));
   const root = await realpath(l.workdir).catch(() => l.workdir!);
   const parts: string[] = [];
   const files: string[] = [];
-  for (const path of [...l.recentFiles.keys()].reverse()) {
+  for (const path of [...(l.recentFiles?.keys() ?? [])].reverse()) {
     if (files.length >= REINJECT_FILES) break;
     const full = resolve(root, path);
     const real = await realpath(full).catch(() => null);
@@ -231,19 +241,28 @@ plan: PlanItem[] | null;
     } else parts.push(`- ${rel} (${info.size.toLocaleString("en-US")} bytes; read the part you need)`);
     files.push(rel);
   }
-  if (!files.length) return null;
+  if (!files.length && !notes) return null;
   const open = (l.plan ?? []).map((i) => `- [${i.status}] ${i.content}`);
   return {
     files,
+    notes: !!notes,
     text: [
-      "Older steps were just condensed. So you don't have to read them again, these are the files you worked on most recently, as they are on disk now:",
-      "",
-      ...parts,
+      "Older steps were just condensed.",
+      ...(notes ? ["", `Your notes (${NOTES_FILE}, your memory of the names and decisions your files agree on):`, notes] : []),
+      ...(parts.length ? ["", "So you don't have to read them again, these are the files you worked on most recently, as they are on disk now:", "", ...parts] : []),
       ...(open.length ? ["", "Your plan:", ...open] : []),
       "",
       "Carry on from where you were.",
     ].join("\n"),
   };
+}
+
+/** The agent's notes file as it is now, cut to a share of the window (the start is kept); null when there are none. */
+export async function notesText(workdir: string, window: number): Promise<string | null> {
+  const text = await readFile(join(workdir, NOTES_FILE), "utf8").catch(() => null);
+  if (!text?.trim()) return null;
+  const chars = Math.min(NOTES_MAX, Math.floor(window * NOTES_SHARE)) * 4;
+  return text.length > chars ? `${text.slice(0, chars).trimEnd()}\n… (the rest of the notes is in ${NOTES_FILE})` : text.trim();
 }
 
 /** A request the model's window can't take (the runtime's or the model server's words for it). */
@@ -806,6 +825,7 @@ export class WorkRunner {
     let history = lines.join("\n");
     if (history.length > seedChars) history = `…${history.slice(-seedChars)}`;
     const files = l.workdir ? await folderSummary(l.workdir) : [];
+    const notes = l.workdir ? await notesText(l.workdir, window) : null;
     return [
       "This task continues an earlier conversation. Files you created are still in your working folder.",
       "<earlier-conversation>",
@@ -814,6 +834,7 @@ export class WorkRunner {
       ...(plan.length
         ? ["", "Your plan when it stopped (write it again with todo_write, keeping finished steps completed):", ...plan.map((i) => `- [${i.status}] ${i.content}`)]
         : []),
+      ...(notes ? ["", `Your notes (${NOTES_FILE}):`, notes] : []),
       ...(files.length ? ["", "Files in your working folder now:", ...files] : []),
       "",
       prompt,
@@ -908,7 +929,7 @@ export class WorkRunner {
         await this.record(taskId, "context", { compacted: true, summary: clip(e.summary, MAX_TOOL_TEXT), steps: e.steps, tokens: e.tokens });
         const back = await reinjection(l);
         if (back && l.runtime?.alive) await this.sendTo(l, back.text);
-        if (back) await this.record(taskId, "context", { reinjected: back.files });
+        if (back) await this.record(taskId, "context", { reinjected: back.files, notes: back.notes });
         return;
       }
       case "turn_end": {

@@ -82,7 +82,7 @@ type Item =
   | { kind: "error"; key: string; text: string }
   | { kind: "stopped"; key: string }
   /** Older steps were condensed to make room in the model's context window. */
-  | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number; reinjected?: string[] }
+  | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number; reinjected?: string[]; notes?: boolean }
   /** The window couldn't be freed, so the agent started over from the work so far. */
   | { kind: "restarted"; key: string };
 
@@ -135,7 +135,10 @@ function buildTimeline(events: WorkEvent[]) {
         if (d.restarted) items.push({ kind: "restarted", key: `r${e.seq}` });
         if (Array.isArray(d.reinjected)) {
           const note = items.findLast((i) => i.kind === "compacted");
-          if (note?.kind === "compacted") note.reinjected = d.reinjected;
+          if (note?.kind === "compacted") {
+            note.reinjected = d.reinjected;
+            note.notes = !!d.notes;
+          }
         }
         break;
       case "status":
@@ -698,6 +701,7 @@ function CompactedNote({ item }: { item: Extract<Item, { kind: "compacted" }> })
         <div className="mt-2 border-t border-border pt-2 text-fg" data-testid="task-compacted-summary">
           <p className="mb-1.5 text-fg-subtle">{t("What the agent goes on from:")}</p>
           <Markdown content={item.summary} lineBreaks />
+          {item.notes && <p className="mt-2 text-fg-subtle">{t("Its notes file was given back to it.")}</p>}
           {!!item.reinjected?.length && (
             <p className="mt-2 text-fg-subtle">{t("Files given back to it as they are now: {files}", { files: item.reinjected.join(", ") })}</p>
           )}

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fitWindow } from "./routes/work-internal";
-import { answerLeftHanging, folderSummary, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
+import { answerLeftHanging, folderSummary, notesText, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
 
 describe("a model request and the context window", () => {
   const messages = (chars: number) => [{ role: "user", content: "x".repeat(chars) }];
@@ -92,6 +92,25 @@ describe("keeping the fixed part of the window small, and giving back what conde
     expect(pickSkills(skills, "hello", 60).map((s) => s.slug)).toEqual(["code-review", "game-development"]);
     // Library order is kept among the ones chosen.
     expect(pickSkills(skills, "a polished web page for the game", 70).map((s) => s.slug)).toEqual(["game-development", "frontend-design"]);
+  });
+
+  it("gives back the agent's notes file first, even when it touched no files since", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "notes-"));
+    expect(await reinjection({ workdir: dir, recentFiles: new Map(), contextWindow: 32_768, plan: null })).toBeNull();
+    await mkdir(join(dir, ".task"));
+    await writeFile(join(dir, ".task/notes.md"), "# Contracts\n- RR.Input.justPressed(code) -> boolean\n- RR.Input.mousePos = { x, y }\n");
+    const back = await reinjection({ workdir: dir, recentFiles: new Map(), contextWindow: 32_768, plan: [{ content: "Write the menu", status: "pending" }] });
+    expect(back?.notes).toBe(true);
+    expect(back?.files).toEqual([]);
+    expect(back?.text).toContain("Your notes (.task/notes.md");
+    expect(back?.text).toContain("RR.Input.justPressed(code) -> boolean");
+    expect(back?.text).toContain("Your plan:\n- [pending] Write the menu");
+    // Long notes are cut to a share of the window (the start kept) and say where the rest is.
+    await writeFile(join(dir, ".task/notes.md"), `# Contracts\n${"- a name and its shape\n".repeat(2000)}`);
+    const cut = (await notesText(dir, 32_768))!;
+    expect(cut.length).toBeLessThan(5400);
+    expect(cut.startsWith("# Contracts")).toBe(true);
+    expect(cut).toContain("the rest of the notes is in .task/notes.md");
   });
 
   it("gives back the files touched most recently, within the window's budget; a big one by name", async () => {

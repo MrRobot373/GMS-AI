@@ -185,6 +185,12 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   characters (8,192 on 32K, up to 65,536) is cut to its start and end, which often frees enough room
   without a summary. The timeline shows "Older steps were summarized…" each time; opening it shows
   the summary the agent goes on from.
+  Like Claude Code's CLAUDE.md, the agent keeps a **notes file**, `.task/notes.md`: the names and
+  shapes its files must agree on (each module's functions and properties exactly as spelled,
+  element ids, data formats), decisions, what is left. It is read back first after every condensing
+  (up to 4 % of the window, 3,000 tokens at most) and in the history of a restarted task. The live
+  runs showed why: games broke because one file called `wasJustPressed` what another defined as
+  `justPressed`, and condensing had erased the memory of the name.
   Then, as Claude Code does, the files the agent read or changed most recently go back in as they
   are on disk now (at most 5, each up to 3 % of the window and all together 6 %, capped at 5,000 and
   25,000 tokens; a bigger file by name only), with its plan, so it doesn't read them all again. The
