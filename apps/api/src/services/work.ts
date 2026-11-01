@@ -161,6 +161,11 @@ const REINJECT_TOTAL_MAX = 25_000;
 export const NOTES_FILE = ".task/notes.md";
 const NOTES_SHARE = 0.04;
 const NOTES_MAX = 3_000;
+/** An index of the names the task's code defines is given back too: this share of the window, 2,000 tokens at most. */
+const INDEX_SHARE = 0.05;
+const INDEX_MAX = 2_000;
+const INDEX_FILES = 80;
+const INDEX_FILE_BYTES = 200_000;
 /** Tools whose `file_path` is a file the agent is working with. */
 const FILE_TOOLS = new Set(["read", "write", "edit"]);
 
@@ -217,7 +222,8 @@ plan: PlanItem[] | null;
   if (!l.workdir) return null;
   const window = l.contextWindow ?? DEFAULT_WINDOW;
   const notes = await notesText(l.workdir, window);
-  if (!l.recentFiles?.size && !notes) return null;
+  const names = await symbolIndex(l.workdir, window);
+  if (!l.recentFiles?.size && !notes && !names.length) return null;
   const perFile = Math.min(REINJECT_FILE_MAX, Math.floor(window * REINJECT_FILE_SHARE));
   let left = Math.min(REINJECT_TOTAL_MAX, Math.floor(window * REINJECT_TOTAL_SHARE));
   const root = await realpath(l.workdir).catch(() => l.workdir!);
@@ -241,7 +247,7 @@ plan: PlanItem[] | null;
     } else parts.push(`- ${rel} (${info.size.toLocaleString("en-US")} bytes; read the part you need)`);
     files.push(rel);
   }
-  if (!files.length && !notes) return null;
+  if (!files.length && !notes && !names.length) return null;
   const open = (l.plan ?? []).map((i) => `- [${i.status}] ${i.content}`);
   return {
     files,
@@ -249,12 +255,88 @@ plan: PlanItem[] | null;
     text: [
       "Older steps were just condensed.",
       ...(notes ? ["", `Your notes (${NOTES_FILE}, your memory of the names and decisions your files agree on):`, notes] : []),
+      ...(names.length ? ["", "What your code files define right now (call these by exactly these names; a name not listed here, check with grep before you use it):", ...names] : []),
       ...(parts.length ? ["", "So you don't have to read them again, these are the files you worked on most recently, as they are on disk now:", "", ...parts] : []),
       ...(open.length ? ["", "Your plan:", ...open] : []),
       "",
       "Carry on from where you were.",
     ].join("\n"),
   };
+}
+
+const NOT_NAMES = new Set(["if", "for", "while", "switch", "catch", "function", "return", "else", "with", "do", "try", "typeof", "await", "super", "new", "constructor"]);
+
+/**
+ * The names a code file defines, with their parameters ("justPressed(code)", "RR.Input.mousePos",
+ * "class Vehicle"): what other files must call them by. A light scan for JavaScript, TypeScript
+ * and Python, not a parser: it can miss a name or list one twice, never invent a file's content.
+ */
+export function definedNames(path: string, code: string): string[] {
+  const out = new Set<string>();
+  const props = new Set<string>();
+  const add = (name: string, params?: string) => {
+    if (NOT_NAMES.has(name)) return;
+    const args = params === undefined ? "" : `(${params.replace(/\s+/g, " ").trim().slice(0, 40)})`;
+    out.add(`${name}${args}`);
+  };
+  if (/\.py$/i.test(path)) {
+    for (const m of code.matchAll(/^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/gm)) add(m[1]!, m[2]);
+    for (const m of code.matchAll(/^\s*class\s+([A-Za-z_]\w*)/gm)) add(`class ${m[1]}`);
+    return [...out];
+  }
+  for (const m of code.matchAll(/^\s*(?:export\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/gm)) add(m[1]!, m[2]);
+  for (const m of code.matchAll(/^\s*(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_$][\w$]*)/gm)) add(`class ${m[1]}`);
+  // Namespace members: RR.Input = {…}, RR.Input.justPressed = function (code) {…}, window.X = …
+  // (a name that starts in capitals, window, module or exports; `ctx.fillStyle = …` is a use, not a definition).
+  for (const m of code.matchAll(/^\s*((?:window|module|exports|self|globalThis|[A-Z][\w$]*)(?:\.[A-Za-z_$][\w$]*)+)\s*=\s*(?:async\s*)?(?:function\s*\*?\s*[\w$]*\s*\(([^)]*)\)|\(([^)]*)\)\s*=>|([A-Za-z_$][\w$]*)\s*=>)?/gm)) add(m[1]!, m[2] ?? m[3] ?? m[4]);
+  // Methods of classes and object literals: name(args) {, name: function (args), name: (args) =>
+  for (const m of code.matchAll(/^[ \t]{2,}(?:static\s+|async\s+|get\s+|set\s+)*([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{/gm)) add(m[1]!, m[2]);
+  for (const m of code.matchAll(/^[ \t]{2,}([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?(?:function\s*\*?\s*[\w$]*\s*)?\(([^)]*)\)\s*(?:=>|\{)/gm)) add(m[1]!, m[2]);
+  // Top-level constants and variables.
+  for (const m of code.matchAll(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm)) add(m[1]!);
+  // Instance properties other files read (this.fuel = …): one level only, listed together.
+  for (const m of code.matchAll(/\bthis\.([A-Za-z_$][\w$]*)\s*=(?!=)/g)) props.add(m[1]!);
+  const list = [...out];
+  if (props.size) list.push(`instance {${[...props].slice(0, 14).join(", ")}${props.size > 14 ? ", …" : ""}}`);
+  return list;
+}
+
+/** The names the task's code files define, one line per file, newest files first; [] when none. */
+export async function symbolIndex(workdir: string, window: number, recent: string[] = []): Promise<string[]> {
+  const root = await realpath(workdir).catch(() => workdir);
+  const found: { rel: string; time: number }[] = [];
+  const walk = async (dir: string, depth: number) => {
+    for (const e of (await readdir(dir, { withFileTypes: true }).catch(() => [])).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (found.length >= INDEX_FILES * 3) return;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (!SUMMARY_SKIP.has(e.name) && e.name !== "scratch" && e.name !== "vendor" && !e.name.startsWith(".") && depth < 5) await walk(full, depth + 1);
+      } else if (e.isFile() && /\.(?:m?js|cjs|jsx|tsx?|py)$/i.test(e.name) && !/\.min\.|\.d\.ts$/i.test(e.name)) {
+        const info = await stat(full).catch(() => null);
+        if (info && info.size <= INDEX_FILE_BYTES) found.push({ rel: relative(root, full).split(sep).join("/"), time: info.mtimeMs });
+      }
+    }
+  };
+  await walk(root, 0);
+  found.sort((a, b) => b.time - a.time);
+  const lines: string[] = [];
+  let left = Math.min(INDEX_MAX, Math.floor(window * INDEX_SHARE));
+  for (const f of found.slice(0, INDEX_FILES)) {
+    const code = await readFile(join(root, f.rel), "utf8").catch(() => "");
+    const names = definedNames(f.rel, code);
+    if (!names.length) continue;
+    const line = `${f.rel}: ${names.join(", ")}`;
+    const cost = estimateTokens(line);
+    if (cost > left) {
+      // A long file keeps its first names rather than none.
+      const short = line.slice(0, Math.max(0, left * 4 - 4)).replace(/,[^,]*$/, "");
+      if (left > 30 && short.length > f.rel.length + 4) lines.push(`${short}, …`);
+      break;
+    }
+    lines.push(line);
+    left -= cost;
+  }
+  return lines;
 }
 
 /** The agent's notes file as it is now, cut to a share of the window (the start is kept); null when there are none. */
@@ -826,6 +908,7 @@ export class WorkRunner {
     if (history.length > seedChars) history = `…${history.slice(-seedChars)}`;
     const files = l.workdir ? await folderSummary(l.workdir) : [];
     const notes = l.workdir ? await notesText(l.workdir, window) : null;
+    const names = l.workdir ? await symbolIndex(l.workdir, window) : [];
     return [
       "This task continues an earlier conversation. Files you created are still in your working folder.",
       "<earlier-conversation>",
@@ -835,6 +918,7 @@ export class WorkRunner {
         ? ["", "Your plan when it stopped (write it again with todo_write, keeping finished steps completed):", ...plan.map((i) => `- [${i.status}] ${i.content}`)]
         : []),
       ...(notes ? ["", `Your notes (${NOTES_FILE}):`, notes] : []),
+      ...(names.length ? ["", "What your code files define now:", ...names] : []),
       ...(files.length ? ["", "Files in your working folder now:", ...files] : []),
       "",
       prompt,

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fitWindow } from "./routes/work-internal";
-import { answerLeftHanging, folderSummary, notesText, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
+import { answerLeftHanging, definedNames, folderSummary, notesText, symbolIndex, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
 
 describe("a model request and the context window", () => {
   const messages = (chars: number) => [{ role: "user", content: "x".repeat(chars) }];
@@ -94,6 +94,46 @@ describe("keeping the fixed part of the window small, and giving back what conde
     expect(pickSkills(skills, "a polished web page for the game", 70).map((s) => s.slug)).toEqual(["game-development", "frontend-design"]);
   });
 
+  it("lists what code defines, by the names other files must use: functions, classes, namespace members, methods", () => {
+    const js = `window.RR = window.RR || {};
+RR.Input = { keys: {} };
+RR.Input.justPressed = function (code) { return !!this.keys[code]; };
+RR.Vehicle = class {
+  constructor(id) { this.fuel = 100; this.x = 0; this.ctx.font = "12px"; }
+  update(dt, level) { ctx.fillStyle = "red"; if (dt) { return 1; } }
+  static create(id) {}
+};
+function mulberry32(a) { return a; }
+const GRAVITY = 9.81;
+const Menu = {
+  enter() {},
+  draw: (ctx) => {},
+  select: function (i) {},
+};
+ctx.fillStyle = "x";`;
+    const names = definedNames("src/a.js", js);
+    expect(names).toEqual(expect.arrayContaining(["RR.Input", "RR.Input.justPressed(code)", "mulberry32(a)", "GRAVITY", "update(dt, level)", "create(id)", "enter()", "draw(ctx)", "select(i)", "instance {fuel, x}"]));
+    // A use is not a definition, and keywords are not names.
+    expect(names.join(" ")).not.toMatch(/fillStyle|ctx\.font|\bif\(/);
+    expect(definedNames("tool.py", "class Report:\n  def build(self, rows):\n    pass\nasync def main(): pass")).toEqual(["build(self, rows)", "main()", "class Report"]);
+  });
+
+  it("indexes a folder: newest files first, no vendor, scratch or minified code, within the window's share", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "index-"));
+    await mkdir(join(dir, "src"));
+    await mkdir(join(dir, "vendor"));
+    await mkdir(join(dir, "scratch"));
+    await writeFile(join(dir, "src/input.js"), "RR.Input = {};\nRR.Input.justPressed = function (code) {};\n");
+    await writeFile(join(dir, "vendor/phaser.min.js"), "function a(b){}");
+    await writeFile(join(dir, "scratch/check.js"), "function check(){}");
+    await writeFile(join(dir, "notes.md"), "function notCode(){}");
+    expect(await symbolIndex(dir, 32_768)).toEqual(["src/input.js: RR.Input, RR.Input.justPressed(code)"]);
+    await writeFile(join(dir, "src/big.js"), Array.from({ length: 400 }, (_, i) => `function name${i}(a, b) {}`).join("\n"));
+    const small = await symbolIndex(dir, 4_096);
+    expect(small.join("\n").length).toBeLessThanOrEqual(4_096 * 0.05 * 4 + 20);
+    expect(small[0]).toMatch(/^src\/(big|input)\.js: /);
+  });
+
   it("gives back the agent's notes file first, even when it touched no files since", async () => {
     const dir = await mkdtemp(join(tmpdir(), "notes-"));
     expect(await reinjection({ workdir: dir, recentFiles: new Map(), contextWindow: 32_768, plan: null })).toBeNull();
@@ -102,6 +142,7 @@ describe("keeping the fixed part of the window small, and giving back what conde
     const back = await reinjection({ workdir: dir, recentFiles: new Map(), contextWindow: 32_768, plan: [{ content: "Write the menu", status: "pending" }] });
     expect(back?.notes).toBe(true);
     expect(back?.files).toEqual([]);
+    expect(back?.text).not.toContain("What your code files define");
     expect(back?.text).toContain("Your notes (.task/notes.md");
     expect(back?.text).toContain("RR.Input.justPressed(code) -> boolean");
     expect(back?.text).toContain("Your plan:\n- [pending] Write the menu");
@@ -118,18 +159,25 @@ describe("keeping the fixed part of the window small, and giving back what conde
     await mkdir(join(dir, "src"));
     await writeFile(join(dir, "src/input.js"), "RR.Input = { mousePos: { x: 0, y: 0 } };\n");
     await writeFile(join(dir, "src/vehicle.js"), "x".repeat(20_000));
-    await writeFile(join(dir, "old.js"), "// first file\n");
+    await writeFile(join(dir, "old.js"), "function oldThing(a) {}\n");
     const outside = await mkdtemp(join(tmpdir(), "outside-"));
     await writeFile(join(outside, "secret.txt"), "top-secret");
     await symlink(join(outside, "secret.txt"), join(dir, "leak.txt"));
     const recentFiles = new Map([["old.js", 1], ["leak.txt", 2], [join(dir, "src/vehicle.js"), 3], ["src/input.js", 4]]);
     const back = await reinjection({ workdir: dir, recentFiles, contextWindow: 32_768, plan: [{ content: "Write the menu", status: "pending" }] });
     expect(back?.files).toEqual(["src/input.js", "src/vehicle.js", "old.js"]);
+    // What the code defines comes back too, so a name can't drift while the files are out of view.
+    expect(back?.text).toContain("What your code files define right now");
+    expect(back?.text).toContain("old.js: ");
     expect(back?.text).toContain('<file path="src/input.js">\nRR.Input = { mousePos: { x: 0, y: 0 } };');
     expect(back?.text).toContain("- src/vehicle.js (20,000 bytes; read the part you need)");
     expect(back?.text).not.toContain("top-secret");
     expect(back?.text).toContain("Your plan:\n- [pending] Write the menu");
-    expect(await reinjection({ workdir: dir, recentFiles: new Map(), contextWindow: 32_768, plan: null })).toBeNull();
+    // Nothing touched and nothing written: nothing to give back. Code in the folder is indexed even when no file was touched.
+    expect(await reinjection({ workdir: await mkdtemp(join(tmpdir(), "empty-")), recentFiles: new Map(), contextWindow: 32_768, plan: null })).toBeNull();
+    const indexed = await reinjection({ workdir: dir, recentFiles: new Map(), contextWindow: 32_768, plan: null });
+    expect(indexed?.files).toEqual([]);
+    expect(indexed?.text).toContain("src/input.js: ");
   });
 });
 
