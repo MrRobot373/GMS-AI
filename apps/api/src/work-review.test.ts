@@ -99,7 +99,7 @@ describe("what goes back to the builder, and what is kept", () => {
     expect(text).toContain("Not right:\n- R4 Newest first\n    found: oldest first");
     expect(text).toContain("Could not be tested");
     expect(text).toContain("- R3 The export reads back in");
-    expect(text).toContain("Leftovers to delete: DONE, finish.txt");
+    expect(text).toContain("move into scratch/): DONE, finish.txt");
     expect(text).toContain("You cannot edit it");
     expect(text).not.toContain("R1");
   });

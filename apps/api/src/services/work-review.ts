@@ -161,7 +161,7 @@ export function feedbackText(o: Outcome, round: number, opts: { source?: string;
     `${source} (round ${round} of ${opts.rounds ?? MAX_REVIEW_ROUNDS}) found that the work does not yet meet the checklist. Fix each of these, then try it yourself and finish again with a short summary.`,
     ...(o.failed.length ? ["", "Not right:", ...o.failed.map((i) => `- ${i.id} ${i.requirement}\n    found: ${cut(i.observed, 400)}`)] : []),
     ...(o.untested.length ? ["", "Could not be tested (make sure it can be used and shows its result):", ...o.untested.map((i) => `- ${i.id} ${i.requirement}\n    ${cut(i.observed, 200)}`)] : []),
-    ...(o.hygiene?.status === "fail" ? ["", `Leftovers to delete: ${cut(o.hygiene.observed, 300).replace(/^leftover files: /, "")}`] : []),
+    ...(o.hygiene?.status === "fail" ? ["", `Leftovers to delete (or, for work files like scripts and backups, move into scratch/): ${cut(o.hygiene.observed, 300).replace(/^leftover files: /, "")}`] : []),
     ...(o.consistency?.status === "fail" ? ["", `Figures that don't come from the workbook: ${cut(o.consistency.observed, 500)}`] : []),
     "",
     `The checklist is in ${ACCEPTANCE_FILE} with each item's state. You cannot edit it.`,

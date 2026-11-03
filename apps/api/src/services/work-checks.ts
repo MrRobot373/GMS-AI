@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 import vm from "node:vm";
 import { librarySkill } from "@aatmiq/skills";
 import type { BrowserService } from "./browser";
-import type { Acceptance, AcceptanceItem } from "./work-spec";
+import { OFFICE_FILE, type Acceptance, type AcceptanceItem } from "./work-spec";
 
 export interface CheckResult {
   id: string;
@@ -242,17 +242,30 @@ const SIGNAL_DATA = /^(test|tmp|temp|scratch)[-_]?\w*\.csv$/i;
 export async function strayFiles(workdir: string, a: Acceptance): Promise<string[]> {
   const named = new Set(a.items.flatMap((i) => ("path" in i.check ? [i.check.path.toLowerCase()] : "page" in i.check ? [i.check.page.toLowerCase()] : [])));
   const out: string[] = [];
+  // When what the person asked for is Excel, PowerPoint, Word or PDF files, the scripts, backups,
+  // outlines and chart pictures made on the way are not part of it: the top of the folder holds the files.
+  const officeJob =
+    a.items.some((i) => i.check.kind === "office_audit") &&
+    !a.items.some((i) => i.check.kind === "page_loads_clean" || i.check.kind === "file_parses" || (i.check.kind === "path_exists" && !OFFICE_FILE.test(i.check.path)));
+  if (officeJob) {
+    for (const e of await readdir(workdir, { withFileTypes: true }).catch(() => [])) {
+      if (e.name.startsWith(".") || ["scratch", "downloads", "screenshots"].includes(e.name)) continue;
+      if (e.isDirectory()) {
+        if (/^(tmp|temp)$/i.test(e.name)) out.push(`${e.name}/`);
+      } else if (!named.has(e.name.toLowerCase()) && !OFFICE_FILE.test(e.name) && !/^readme/i.test(e.name)) out.push(e.name);
+    }
+  }
   const look = async (dir: string, depth: number) => {
     for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
       if (e.name.startsWith(".") || ["node_modules", "scratch", "downloads", "screenshots", "vendor"].includes(e.name)) continue;
       const rel = relative(workdir, join(dir, e.name)).split(sep).join("/");
       if (e.isDirectory()) {
         if (depth < 1) await look(join(dir, e.name), depth + 1);
-      } else if ((SIGNAL_FILE.test(e.name) || SIGNAL_PAGE.test(e.name) || SIGNAL_DATA.test(e.name)) && !named.has(rel.toLowerCase()) && !/^readme/i.test(e.name)) out.push(rel);
+      } else if ((SIGNAL_FILE.test(e.name) || SIGNAL_PAGE.test(e.name) || SIGNAL_DATA.test(e.name)) && !named.has(rel.toLowerCase()) && !/^readme/i.test(e.name) && !out.includes(rel)) out.push(rel);
     }
   };
   await look(workdir, 0);
-  return out.slice(0, 10);
+  return out.slice(0, 12);
 }
 
 /** The id the leftovers check goes by in a review (it isn't one of the request's requirements). */

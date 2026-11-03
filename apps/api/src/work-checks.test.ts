@@ -113,6 +113,23 @@ describe("leftover files", () => {
   });
 });
 
+describe("leftovers in a folder of office files", () => {
+  it("the scripts, backups, outlines and pictures made on the way are leftovers; the files asked for and scratch/ are not", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "stray-office-"));
+    await mkdir(join(dir, "scratch"), { recursive: true });
+    await mkdir(join(dir, "tmp"), { recursive: true });
+    for (const f of ["Sales.xlsx", "Review.pptx", "README.md", "scratch/make.py", "verify_fix2.py", "Sales.xlsx.backup", "outline.md", "chart.png", "tmp/x.txt", ".task/state.json"]) {
+      await mkdir(join(dir, f, ".."), { recursive: true });
+      await writeFile(join(dir, f), "x");
+    }
+    const office = listOf({ kind: "office_audit", path: "Sales.xlsx" }, { kind: "office_audit", path: "Review.pptx" });
+    expect((await strayFiles(dir, office)).sort()).toEqual(["Sales.xlsx.backup", "chart.png", "outline.md", "tmp/", "verify_fix2.py"]);
+    // A software job keeps its code at the top of the folder.
+    const software = listOf({ kind: "path_exists", path: "index.html" }, { kind: "office_audit", path: "Sales.xlsx" });
+    expect(await strayFiles(dir, software)).toEqual([]);
+  });
+});
+
 const chrome = findChromium();
 (chrome ? describe : describe.skip)("a page opens clean, in the browser", () => {
   let egress: EgressProxy;
