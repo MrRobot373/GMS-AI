@@ -864,7 +864,7 @@ d("Work AI", () => {
   it("ships the built-in skill library; admins can switch skills off", async () => {
     const lib = (await call("GET", "/api/work/skills/library")).json as { slug: string; category: string; enabled: boolean; files: string[] }[];
     expect(lib.length).toBeGreaterThanOrEqual(50);
-    expect(lib.find((s) => s.slug === "excel-spreadsheets")).toMatchObject({ category: "Data", enabled: true, files: ["scripts/xlsx_helpers.py"] });
+    expect(lib.find((s) => s.slug === "excel-spreadsheets")).toMatchObject({ category: "Data", enabled: true, files: ["scripts/xlsx_helpers.py", "scripts/xlsx_values.py"] });
     const one = await call("GET", "/api/work/skills/library/code-review");
     expect(one.json.body).toContain("## Done when");
 

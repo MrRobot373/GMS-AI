@@ -39,7 +39,7 @@ CELL_REF = re.compile(r"(?<![:\w.$])(?:(?:'([^']+)'|([A-Za-z_][\w.]*))!)?\$?([A-
 ERROR_VALUES = {"#DIV/0!", "#REF!", "#NAME?", "#VALUE!", "#N/A", "#NUM!", "#NULL!", "Err:502", "Err:504", "Err:508", "Err:522"}
 # Words that mean a generator printed a failed value or left a placeholder.
 LEFTOVER = re.compile(
-    r"\{\{.*?\}\}|\$\{[^}]*\}|\{%.*?%\}|\{[A-Za-z_][\w.]*\([^}]*\)[^}]*\}|<<[A-Z_ ]+>>|\bNaN\b|\bnan%|\bundefined\b|\bnull%|\bTODO\b|\bTBD\b|\bFIXME\b|lorem ipsum|\bINSERT [A-Z ]+ HERE\b|\[\s*(?:placeholder|insert[^\]]*)\]",
+    r"\{\{.*?\}\}|\$\{[^}]*\}|\{%.*?%\}|\{[A-Za-z_][\w.]*\([^}]*\)[^}]*\}|<<[A-Z_ ]+>>|\bNaN\b|\bnan%|\bundefined\b|\bnull%|\bTODO\b|\bTBD\b|\bFIXME\b|lorem ipsum|\bINSERT [A-Z ]+ HERE\b|\[\s*(?:placeholder|insert[^\]]*)\]|\[\s*(?:date|name|company|client|month|year|amount|number|x{1,4}|\.\.\.|tbd|tba)\s*\]|(?<![\w-])--(?:cover|no-header|no-footer|title|font|size|accent|require|agree)\b",
     re.I,
 )
 SCRIPTS = {

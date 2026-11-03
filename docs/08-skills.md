@@ -99,7 +99,7 @@ in `coveredBy`. Maturity stays `draft` until the cases have been run in a real t
 | `charts-visualization` — Charts and visualization | making charts (bar, line, pie, scatter) with matplotlib: choosing the chart, clean styling, labels, saving PNG/SVG. Has a helper. | `chart_style.py` |
 | `data-analysis` — Data analysis | analyzing CSV/Excel/JSON data with pandas: exploring, grouping, trends, comparisons, checked numbers and saved results. | – |
 | `data-cleaning` — Data cleaning | data is messy: duplicates, missing values, inconsistent spellings, mixed date/number formats, merging lists. Has a profiler. | `profile_data.py` |
-| `excel-spreadsheets` — Excel spreadsheets | creating, reading or editing Excel (.xlsx): formatted sheets, formulas, totals, charts, cleaning messy sheets. Has a helper. | `xlsx_helpers.py` |
+| `excel-spreadsheets` — Excel spreadsheets | creating, reading or editing Excel (.xlsx): formatted sheets, formulas, totals, charts, cleaning messy sheets. Has a helper. | `xlsx_helpers.py`, `xlsx_values.py` |
 | `financial-analysis` — Financial analysis | business finance: P&L, budget vs actual, cash flow and runway, margins, break-even, forecasts, pricing math, ratios. | – |
 | `kpi-report` — KPI report and dashboard | producing a recurring KPI report or dashboard: period comparisons, targets, highlights, as Markdown, Excel or HTML. | – |
 

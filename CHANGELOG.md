@@ -34,6 +34,12 @@ without one.
   real contents field with page numbers, a cover, header and footer, captioned figures and numbered
   lists that restart. The production image installs LibreOffice and poppler for this (about 400 MB;
   `--build-arg OFFICE_TOOLS=false` leaves them out).
+  A live re-run of the same brief (4 review rounds, 71 minutes) now delivers a deck with native charts and
+  notes on every slide, a report with a real contents field and 6 pages, and ends honestly "30 of 36
+  requirements met" with the rest named, instead of looking done. The audit also fails a table of
+  SUMIFS that all calculate to 0 (a criterion that reads an empty cell), `[date]`-style placeholders and
+  a leaked `--cover`; the planner can't turn "built from the same numbers" into "linked"; a round that
+  breaks what passed before is told so; and work files left beside office deliverables are flagged.
 
 - **Work AI builds to a checklist and is reviewed by someone who didn't build it**
   ([docs/19-work-ai-reliability-plan.md](docs/19-work-ai-reliability-plan.md)). A build request gets an

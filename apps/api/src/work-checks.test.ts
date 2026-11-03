@@ -261,6 +261,17 @@ d.save(sys.argv[1] + "/bad.docx")`,
     expect(by.R1).toMatchObject({ status: "fail" });
     expect(by.R1!.observed).toContain("typed text");
     expect(by.R1!.observed).toContain("datetime.now()");
+    // Fill-in placeholders and a command-line flag that leaked into the text are leftovers too.
+    py(
+      `import sys
+from docx import Document
+d = Document(); d.add_heading("Plan", 1); d.add_paragraph("Finalize the budget by [date]. Prepared by [Name]."); d.add_paragraph("--cover"); d.save(sys.argv[1] + "/leaks.docx")`,
+      dir,
+    );
+    const leaks = (await runChecks(listOf({ kind: "office_audit", path: "leaks.docx" }), { workdir: dir, browserKey: "k", profileDir: join(dir, "p") })).find((r) => r.id === "R1")!;
+    expect(leaks.status).toBe("fail");
+    expect(leaks.observed).toContain('"[date]"');
+    expect(leaks.observed).toContain('"--cover"');
     expect(by.R2).toMatchObject({ status: "pass" });
   }, 240_000);
 
