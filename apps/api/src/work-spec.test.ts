@@ -52,6 +52,50 @@ describe("what asks for files to be made", () => {
   });
 });
 
+describe("files named in a checklist are audited, with what the checklist asks of them", () => {
+  // The planner's own wording from the Northwind run (a bare path check for each file, "10‑12" with a non-breaking hyphen).
+  const draft = () =>
+    buildAcceptance({
+      build: true,
+      milestones: [{ name: "Workbook" }, { name: "Deck" }, { name: "Report" }],
+      items: [
+        item("File Northwind_Q3_Sales.xlsx exists", { milestone: 1, check: { kind: "path_exists", path: "Northwind_Q3_Sales.xlsx" } }),
+        item("Revenue and margin columns contain formulas, not typed values", { milestone: 1 }),
+        item("Workbook includes at least two real Excel charts (revenue by region, monthly trend), a frozen header row, filters on the data", { milestone: 1 }),
+        item("File Northwind_Q3_Review.pptx exists", { milestone: 2, check: { kind: "path_exists", path: "Northwind_Q3_Review.pptx" } }),
+        item("PowerPoint deck has 10\u201112 slides, uses a consistent theme, short slide text, and speaker notes on every slide", { milestone: 2 }),
+        item("PowerPoint uses real Excel charts (not pictures) built from the same numbers as the workbook", { milestone: 2 }),
+        item("File Northwind_Q3_Report.docx exists", { milestone: 3, check: { kind: "path_exists", path: "Northwind_Q3_Report.docx" } }),
+        item("Word report is about 6\u20118 pages, includes a cover page, table of contents, heading styles, page numbers in the footer, and the document title in the header", { milestone: 3 }),
+        item("Every figure in the deck and the report is the same as in the workbook", { milestone: 3 }),
+      ],
+    })!;
+
+  it("turns a bare path check on an office file into an audit and reads the requirements from the items", () => {
+    const a = draft();
+    expect(a.items[0]!.check).toEqual({ kind: "office_audit", path: "Northwind_Q3_Sales.xlsx", require: ["charts:2", "formulas:10"] });
+    expect(a.items[3]!.check).toEqual({ kind: "office_audit", path: "Northwind_Q3_Review.pptx", require: ["notes", "slides:10-12", "charts:1"] });
+    // "about 6-8 pages" allows a page either side.
+    expect(a.items[6]!.check).toEqual({ kind: "office_audit", path: "Northwind_Q3_Report.docx", require: ["toc", "page_numbers", "header_title", "pages:5-9"] });
+    // The judged items stay judged: the reviewer still tests what code can't.
+    expect(a.items[4]!.check).toEqual({ kind: "judged" });
+  });
+
+  it("keeps what the planner asked for, and leaves ordinary files alone", () => {
+    const a = buildAcceptance({
+      build: true,
+      milestones: [],
+      items: [
+        item("The deck is saved as deck.pptx with 12 to 14 slides", { check: { kind: "office_audit", path: "deck.pptx", require: ["slides:12-14"] } }),
+        item("The app is in index.html", { check: { kind: "path_exists", path: "index.html" } }),
+        item("It works"),
+      ],
+    })!;
+    expect(a.items[0]!.check).toEqual({ kind: "office_audit", path: "deck.pptx", require: ["slides:12-14"] });
+    expect(a.items[1]!.check).toEqual({ kind: "path_exists", path: "index.html" });
+  });
+});
+
 describe("a checklist from a model's draft", () => {
   it("numbers the items and keeps checks code can run; one stage for a small brief", () => {
     const a = buildAcceptance({

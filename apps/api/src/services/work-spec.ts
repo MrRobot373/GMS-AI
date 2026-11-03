@@ -145,19 +145,108 @@ export function buildAcceptance(draft: Draft, now = new Date()): Acceptance | nu
   const milestones = split
     ? used.map((n, i) => ({ n: i + 1, name: milestoneNames[n - 1]! }))
     : [{ n: 1, name: "Build" }];
-  return {
-    version: 1,
-    createdAt: now.toISOString(),
-    milestones,
-    items: items.map((it, i) => ({
-      id: `R${i + 1}`,
-      requirement: it.requirement,
-      ...(it.how ? { how: it.how } : {}),
-      milestone: split ? renumber.get(raw[i]!)! : 1,
-      check: checkOf(it.check),
-      status: "unchecked" as const,
-    })),
+  const built = items.map((it, i) => ({
+    id: `R${i + 1}`,
+    requirement: it.requirement,
+    ...(it.how ? { how: it.how } : {}),
+    milestone: split ? renumber.get(raw[i]!)! : 1,
+    check: checkOf(it.check),
+    status: "unchecked" as const,
+  }));
+  upgradeOfficeChecks(built);
+  return { version: 1, createdAt: now.toISOString(), milestones, items: built };
+}
+
+/* ───────────── Excel, PowerPoint, Word and PDF files ───────────── */
+
+type OfficeKind = "xlsx" | "pptx" | "docx" | "pdf";
+const officeKind = (p: string): OfficeKind | null => {
+  const ext = p.toLowerCase().match(/\.(xlsx|xlsm|pptx|docx|pdf)$/)?.[1];
+  return ext === "xlsm" ? "xlsx" : ((ext as OfficeKind | undefined) ?? null);
+};
+/** What in a requirement says it is about this kind of file. */
+const MENTIONS: Record<OfficeKind, RegExp> = {
+  xlsx: /\b(excel|workbook|spreadsheet|xlsx|sheets?)\b/i,
+  pptx: /\b(powerpoint|pptx|deck|slides?|presentation)\b/i,
+  docx: /\b(word|docx|report|document)\b/i,
+  pdf: /\bpdf\b/i,
+};
+const WORD_NUMBERS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const asNumber = (s: string) => (/^\d+$/.test(s) ? Number(s) : (WORD_NUMBERS[s.toLowerCase()] ?? null));
+
+/**
+ * What the requirements ask of a kind of file, as the audit script takes it: speaker notes, a
+ * table of contents, page numbers, a title in the header, a length in slides or pages, a number of
+ * charts, formulas. Read from the checklist's own words, so it doesn't depend on the planner having
+ * remembered to say so; "about 6-8 pages" allows a page either side.
+ */
+export function inferRequire(kind: OfficeKind, texts: string[]): string[] {
+  const text = texts.join("\n").replace(/[\u2010-\u2015\u2212]/g, "-");
+  const out: string[] = [];
+  const range = (unit: string) => {
+    const m = text.match(new RegExp(`(\\d+)\\s*(?:-|to)\\s*(\\d+)\\s*${unit}`, "i"));
+    if (!m) return null;
+    const about = /\b(about|around|approximately|roughly|some)\s+$/i.test(text.slice(Math.max(0, m.index! - 14), m.index));
+    const lo = Number(m[1]);
+    const hi = Number(m[2]);
+    return about ? `${Math.max(1, lo - 1)}-${hi + 1}` : `${lo}-${hi}`;
   };
+  const charts = () => {
+    let best = 0;
+    for (const m of text.matchAll(/(?:at least |minimum (?:of )?)?\b(\d+|one|two|three|four|five)\s+(?:real |native |actual |excel |separate )*charts?\b/gi)) best = Math.max(best, asNumber(m[1]!) ?? 0);
+    if (!best && /\b(real|native|actual)\b[^.\n]{0,40}\bcharts?\b/i.test(text)) best = 1;
+    return best;
+  };
+  if (kind === "pptx") {
+    if (/\b(speaker|presenter) notes?\b/i.test(text)) out.push("notes");
+    const s = range("slides");
+    if (s) out.push(`slides:${s}`);
+    if (charts()) out.push(`charts:${charts()}`);
+  } else if (kind === "docx") {
+    if (/table of contents|contents page|\btoc\b/i.test(text)) out.push("toc");
+    if (/page numbers?/i.test(text)) out.push("page_numbers");
+    if (/title in (?:the )?header|header (?:with|showing|shows|containing|has) (?:the )?(?:document |report )?title/i.test(text)) out.push("header_title");
+    const p = range("pages");
+    if (p) out.push(`pages:${p}`);
+  } else if (kind === "xlsx") {
+    if (charts()) out.push(`charts:${charts()}`);
+    if (/\bformulas?\b/i.test(text) && !/\bno formulas?\b/i.test(text)) out.push("formulas:10");
+  } else {
+    const p = range("pages");
+    if (p) out.push(`pages:${p}`);
+  }
+  return out;
+}
+
+/**
+ * A named Excel, PowerPoint, Word or PDF file is audited, not just looked for: the item that says it
+ * exists becomes an `office_audit`, with what the checklist asks of that kind of file as its
+ * requirements. (The planner is asked to do this itself and often writes a bare path check.)
+ */
+function upgradeOfficeChecks(items: AcceptanceItem[]): void {
+  // A stage that builds exactly one office file is about that file: its items need not name it.
+  const filesIn = new Map<number, Set<string>>();
+  for (const it of items) {
+    if ((it.check.kind === "path_exists" || it.check.kind === "office_audit") && officeKind(it.check.path)) {
+      const set = filesIn.get(it.milestone) ?? new Set<string>();
+      set.add(it.check.path.toLowerCase());
+      filesIn.set(it.milestone, set);
+    }
+  }
+  const done = new Set<string>();
+  for (const it of items) {
+    const c = it.check;
+    if (c.kind !== "path_exists" && c.kind !== "office_audit") continue;
+    const kind = officeKind(c.path);
+    if (!kind || done.has(c.path.toLowerCase())) continue;
+    done.add(c.path.toLowerCase());
+    const given = c.kind === "office_audit" ? (c.require ?? []) : [];
+    const have = new Set(given.map((r) => r.split(":")[0]));
+    const alone = items.some((x) => x.milestone !== 1) && filesIn.get(it.milestone)?.size === 1;
+    const texts = items.filter((x) => x === it || MENTIONS[kind].test(x.requirement) || (alone && x.milestone === it.milestone)).map((x) => `${x.requirement} ${x.how ?? ""}`);
+    const require = [...given, ...inferRequire(kind, texts).filter((r) => !have.has(r.split(":")[0]!))];
+    it.check = { kind: "office_audit", path: c.path, ...(require.length ? { require } : {}) };
+  }
 }
 
 /** The draft with the second call's additions and removals applied. */
@@ -220,6 +309,8 @@ const PLANNER_SYSTEM = [
   '- "how": how a tester would check it, in one sentence (what to do and what to look at). For anything the program produces (an export, a report), the check is to open that output and read it, and for an import, to read an exported file back in.',
   '- "check": {"kind": "judged"} unless code can decide it for certain from the request alone: {"kind": "path_exists", "path": "expense-tracker/index.html"} when the request names a folder or file; {"kind": "file_parses", "path": "…", "format": "json"|"csv"|"html"|"js"} for a named data or script file; {"kind": "page_loads_clean", "page": "expense-tracker/index.html"} for the main HTML page of something to open in a browser (it loads with no script errors). Paths are relative to the working folder. When unsure of a path, use judged.',
   '- For each Excel, PowerPoint, Word or PDF file the request names or clearly asks for, use {"kind": "office_audit", "path": "Sales.xlsx", "require": ["notes", "toc", "page_numbers", "header_title", "pages:6-8", "slides:10-12", "charts:2", "formulas:10"]} on the item that says the file exists and has what the request asks for: "require" holds only the things the request asks for (notes = speaker notes on every slide; toc = a table of contents; pages:A-B and slides:A-B the length asked; charts:N the number of charts; formulas:N formulas rather than typed values). The audit also opens the file and finds formulas that fail, charts over tables, empty pages and leftovers, so do NOT add a separate "the file exists" item for it. Then one judged item per thing the request wants IN each file (the sheets and what they hold, each slide topic, each report section), and one judged item that the numbers agree across the files when there are several.',
+  "- Every item is a property of the finished work. Never write an item about checking, testing, verifying or summarizing the work (\"after building, open each file\", \"list what was verified\"): the system verifies. And no build stage for verification, consistency checks or a final summary: stages are for building.",
+  "- With several files, one stage per file, in the order they depend on each other (the workbook that holds the data before the deck and the report that quote it).",
   "- If the request names a folder, put an item for it. If it asks for a README or notes file, put an item for it.",
   `- "milestones": when there are ${MILESTONE_MIN_ITEMS} or more items, group them into 3 to ${MAX_MILESTONES} build stages in the order they should be built (data and core first, then features, then screens, then documentation), each with at least one item, and give each item its stage number in "milestone". With fewer items, "milestones" is [] and no item has "milestone".`,
 ].join("\n");
