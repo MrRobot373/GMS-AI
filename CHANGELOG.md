@@ -19,6 +19,10 @@ without one.
   fresh session with a progress file, with a snapshot commit per stage. The agent's browser can now
   upload a file to a page's file input (even a hidden one) and reports confirmation dialogs. Reviewer
   tasks are not listed. Migration 0027 adds `work_task.parent_id` and `work_task.verification`.
+  A live run showed the reviewer "passing" a phone-width requirement from a call that cannot resize a
+  window (the page really scrolled sideways), so the browser now has `browser_resize`, which reports
+  whether the page scrolls sideways; the reviewer is refused (not asked) risky commands such as
+  installs; and leftover `test.csv`-style files are flagged.
 
 - **Work AI checks what it built against the request.** A task that wrote code is sent back once
   before it ends to prove each requirement (use each feature, open and read the files the program

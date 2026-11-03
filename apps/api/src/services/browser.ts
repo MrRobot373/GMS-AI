@@ -726,6 +726,24 @@ export class BrowserService {
     return this.view(s);
   }
 
+  /**
+   * Change the size of the browser window (a phone, a tablet) for the pages of this task, and say how wide
+   * the page then is: a page wider than its window scrolls sideways. (A page can't resize its own window.)
+   */
+  async resize(taskId: string, target: () => Promise<BrowserTarget>, width: number, height: number): Promise<PageView> {
+    const s = await this.session(taskId, target);
+    this.local(s);
+    try {
+      await s.page.setViewportSize({ width, height });
+      await s.page.waitForTimeout(300);
+      const m = await s.page.evaluate(() => ({ window: innerWidth, page: document.documentElement.scrollWidth }));
+      const wide = m.page > m.window + 1;
+      return { ...(await this.view(s)), result: JSON.stringify({ window: `${width}x${height}`, pageWidth: m.page, scrollsSideways: wide, ...(wide ? { note: `the page is ${m.page - m.window}px wider than the window` } : {}) }) };
+    } catch (e) {
+      return await this.explain(e);
+    }
+  }
+
   /** Click at a point of the viewport (CSS pixels) on a page from the task folder, for canvas apps and games. */
   async clickAt(taskId: string, target: () => Promise<BrowserTarget>, x: number, y: number): Promise<PageView> {
     const s = await this.session(taskId, target);

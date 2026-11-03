@@ -912,6 +912,7 @@ export class WorkRunner {
           token,
           approvals: settings.approvals,
           askForNetwork: !settings.allowNetwork,
+          ...(task.parentId ? { review: true } : {}),
           webSearch: webSearchReady(await workWebSearchDeps(this.ctx)),
           browser: settings.browser && !!this.ctx.browser?.available,
           calculators: await this.calculatorsOn(task.userId, task.workspaceId),

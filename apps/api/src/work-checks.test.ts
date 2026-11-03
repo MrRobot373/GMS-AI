@@ -103,9 +103,9 @@ describe("leftover files", () => {
     const dir = await mkdtemp(join(tmpdir(), "stray-"));
     await mkdir(join(dir, "app"), { recursive: true });
     await mkdir(join(dir, "scratch"), { recursive: true });
-    for (const f of ["app/DONE", "app/finish.txt", "app/test.html", "app/index.html", "README.md", "scratch/test.html", "result.json", "debug.log"]) await writeFile(join(dir, f), "x");
+    for (const f of ["app/DONE", "app/finish.txt", "app/test.html", "app/index.html", "README.md", "scratch/test.html", "result.json", "debug.log", "test.csv", "test2.csv", "app/test-import.csv", "app/expenses.csv"]) await writeFile(join(dir, f), "x");
     const a = listOf({ kind: "path_exists", path: "result.json" });
-    expect((await strayFiles(dir, a)).sort()).toEqual(["app/DONE", "app/finish.txt", "app/test.html", "debug.log"]);
+    expect((await strayFiles(dir, a)).sort()).toEqual(["app/DONE", "app/finish.txt", "app/test-import.csv", "app/test.html", "debug.log", "test.csv", "test2.csv"]);
     const results = await runChecks(a, { workdir: dir, browserKey: "k", profileDir: join(dir, "p") });
     expect(results.find((r) => r.id === HYGIENE_ID)).toMatchObject({ status: "fail" });
   });

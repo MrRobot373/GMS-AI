@@ -48,6 +48,12 @@ export interface TaskSpec {
    */
   uid?: number;
   gid?: number;
+  /**
+   * A reviewer's task (docs/19-work-ai-reliability-plan.md): it works on a copy and only tests, so a
+   * command that would ask a person for approval (install, download, delete, move…) is refused
+   * with a reason instead, and the review never waits for someone.
+   */
+  review?: boolean;
   /** "on": commands may only change the task folder (bwrap/Landlock). "off": rely on `uid` isolation alone. */
   sandbox?: "on" | "off";
   /** Container mode: this task's limits (the container launcher reads them; process mode ignores them). */

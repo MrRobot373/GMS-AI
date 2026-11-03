@@ -13,6 +13,7 @@ import { buildPatch, contextBudget } from "./dsh/patch";
 import { parse } from "yaml";
 import { APPROVAL_PRESETS } from "@aatmiq/shared";
 import { classifyRisk } from "./policy";
+import { reviewDenial } from "../dsh-plugin/policy.mjs";
 import { containerArgs, containerEnv, egressToken, type ContainerOptions } from "./dsh/container";
 import { cleanArgs, describeCommand, dropCallArtefacts, planReminder, stripReminders } from "../dsh-plugin/tooling.mjs";
 import { formatResults } from "../dsh-plugin/documents.mjs";
@@ -630,6 +631,19 @@ describe("context window", () => {
     expect(mapEvent(summary)).toEqual({ type: "compacted", summary: "## Primary Request\n- Build Ridge Riders", steps: 3, tokens: 9120 });
     // Start and end markers carry nothing to show.
     expect(mapEvent({ type: "compaction/end", data: { compactionId: "c1" } })).toBeNull();
+  });
+});
+
+describe("a reviewer's task", () => {
+  it("is configured to refuse, not ask, and says why", async () => {
+    const yml = buildPatch({ ...(await spec()), review: true });
+    expect(yml).toContain("review: true");
+    expect(buildPatch(await spec())).toContain("review: false");
+    const denial = reviewDenial("Downloads or publishes packages");
+    expect(denial).toContain("Not allowed in a review (Downloads or publishes packages)");
+    expect(denial).toContain("report it as untested");
+    // What a reviewer's command would have asked about (the install it tried in a live run).
+    expect(classifyRisk({ name: "bash", args: { command: "pip install playwright && playwright install chromium" } }, { approvals: "risky", askForNetwork: true, connectors: [] })).toBe("Downloads or publishes packages");
   });
 });
 

@@ -43,6 +43,10 @@ function globToRegExp(glob) {
   return new RegExp(`^${esc}$`, "i");
 }
 
+/** What a reviewer is told when a command that would need approval is refused. */
+export const reviewDenial = (reason) =>
+  `Not allowed in a review (${reason}). A reviewer only tests: use the browser tools, run the program, and read files. Don't install, download, delete, move or change anything outside scratch/; if you can't test something without it, report it as untested.`;
+
 /**
  * @param {{ name: string, args: any }} call
  * @param {{ approvals: "risky"|"always"|"never", askForNetwork: boolean, connectors: { name: string, approveTools: string[] }[] }} policy

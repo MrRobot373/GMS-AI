@@ -83,6 +83,15 @@ export function browserTools(defineTool, browser) {
       (a, signal) => view({ action: "press", key: String(a.key ?? ""), holdMs: Math.max(0, Math.min(5000, Number(a.hold_ms ?? 0) || 0)) }, signal),
     ),
     tool(
+      "browser_resize",
+      "Change the size of the browser window to try a page at another size, like a phone (375×800) or a tablet (768×1024). Returns the window and page widths and whether the page then scrolls sideways. A page can't resize the window itself (window.resizeTo does nothing), so use this.",
+      {
+        width: { type: "integer", required: true, description: "Window width in pixels (280–2560)." },
+        height: { type: "integer", required: true, description: "Window height in pixels (280–2560). Default view: 1280×900." },
+      },
+      (a, signal) => view({ action: "resize", width: Math.round(Number(a.width)), height: Math.round(Number(a.height)) }, signal),
+    ),
+    tool(
       "browser_click_at",
       "Click at a point on a page from your working folder, in pixels from the top left of the 1280×900 view (for a canvas game or drawing that has no numbered elements). The page view lists the text drawn on the canvas with where it is; or take a screenshot to find the point.",
       { x: { type: "number", required: true, description: "Pixels from the left." }, y: { type: "number", required: true, description: "Pixels from the top." } },

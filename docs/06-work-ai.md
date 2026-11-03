@@ -190,7 +190,7 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
     parent), working on a **copy** of the folder, on a different Advanced-tier model when there is
     one. It gets the original request and the checklist, never the builder's account of what it did,
     and tests each item by using the work: runs it, opens the page, types, clicks, uploads a file
-    (`browser_upload`, which also finds a file input hidden behind an "Import" button), reads what the
+    (`browser_upload`, which also finds a file input hidden behind an "Import" button; `browser_resize`, which tries a phone or tablet size and says if the page then scrolls sideways), reads what the
     program produced (an export: it clicks the button, then reads the file in `downloads/`), and
     reads the page's state. Confirmation dialogs on the task's own pages are accepted and reported.
     It writes `review.json`; a "pass" without written evidence counts as not tested, and a check

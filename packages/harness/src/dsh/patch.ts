@@ -190,6 +190,7 @@ export function buildPatch(spec: TaskSpec): string {
         taskId: spec.taskId,
         approvals: spec.approvals,
         askForNetwork: spec.askForNetwork,
+        review: !!spec.review,
         webSearch: spec.webSearch,
         browser: !!spec.browser,
         calculators: !!spec.calculators,

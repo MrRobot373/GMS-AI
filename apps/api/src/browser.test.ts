@@ -261,6 +261,15 @@ const chrome = findChromium();
     const pressed = await browser.press("t4", mine(), "ArrowRight", 400);
     expect(pressed.text).toContain("down ArrowRight up ArrowRight");
     expect(pressed.errors).toBeUndefined();
+    // The window can be made phone-sized, and a page wider than it says so (window.resizeTo in a page does nothing).
+    await writeFile(join(game, "wide.html"), `<!doctype html><title>Wide</title><body><div style="width:600px;height:20px;background:#ccc">wide</div></body>`);
+    await writeFile(join(game, "fits.html"), `<!doctype html><title>Fits</title><meta name="viewport" content="width=device-width"><body><p>narrow</p></body>`);
+    await browser.open("t4", mine(), "game/wide.html");
+    expect(JSON.parse((await browser.resize("t4", mine(), 375, 800)).result!)).toMatchObject({ window: "375x800", pageWidth: 608, scrollsSideways: true });
+    await browser.open("t4", mine(), "game/fits.html");
+    expect(JSON.parse((await browser.resize("t4", mine(), 375, 800)).result!)).toMatchObject({ scrollsSideways: false });
+    await browser.resize("t4", mine(), 1280, 900);
+    await browser.open("t4", mine(), "game/index.html");
     const clicked = await browser.clickAt("t4", mine(), 58, 100);
     expect(clicked.text).toMatch(/clicked \d+,\d+/);
     // The same page by its file address; a folder opens its index.html.

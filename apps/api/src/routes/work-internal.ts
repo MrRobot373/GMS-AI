@@ -498,6 +498,7 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     z.object({ action: z.literal("read"), offset: z.number().int().min(0).default(0) }),
     z.object({ action: z.literal("screenshot"), fullPage: z.boolean().default(false) }),
     z.object({ action: z.literal("press"), key: z.string().trim().min(1).max(60), holdMs: z.number().int().min(0).max(5000).default(0) }),
+    z.object({ action: z.literal("resize"), width: z.number().int().min(280).max(2560), height: z.number().int().min(280).max(2560) }),
     z.object({ action: z.literal("click_at"), x: z.number().min(0).max(4000), y: z.number().min(0).max(4000) }),
     z.object({ action: z.literal("eval"), expression: z.string().trim().min(1).max(4000) }),
     z.object({ action: z.literal("upload"), ref: z.number().int().min(1), files: z.array(z.string().trim().min(1).max(300)).min(1).max(10) }),
@@ -528,6 +529,8 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
           return await br.screenshot(t.taskId, target, b.fullPage);
         case "press":
           return await br.press(t.taskId, target, b.key, b.holdMs);
+        case "resize":
+          return await br.resize(t.taskId, target, b.width, b.height);
         case "click_at":
           return await br.clickAt(t.taskId, target, b.x, b.y);
         case "eval":

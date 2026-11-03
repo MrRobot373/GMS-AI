@@ -171,6 +171,8 @@ async function runOne(item: AcceptanceItem, o: { workdir: string; browser?: Brow
 /** Files that only said "done" or were used to try things, left in the folder the person gets. */
 const SIGNAL_FILE = /^(done|finish(ed)?|complete(d)?|completed|success|status|result|summary|test\d*|tmp|temp|debug|scratch\d*)(\.(txt|md|html?|json|log))?$/i;
 const SIGNAL_PAGE = /^(test|debug|check|tmp|temp)[-_]?\w*\.html?$/i;
+/** Data files a tester leaves behind (test.csv, test2.csv, temp-import.csv). */
+const SIGNAL_DATA = /^(test|tmp|temp|scratch)[-_]?\w*\.csv$/i;
 
 /**
  * Leftovers in the working folder (top level and one folder down): signal files and test pages
@@ -185,7 +187,7 @@ export async function strayFiles(workdir: string, a: Acceptance): Promise<string
       const rel = relative(workdir, join(dir, e.name)).split(sep).join("/");
       if (e.isDirectory()) {
         if (depth < 1) await look(join(dir, e.name), depth + 1);
-      } else if ((SIGNAL_FILE.test(e.name) || SIGNAL_PAGE.test(e.name)) && !named.has(rel.toLowerCase()) && !/^readme/i.test(e.name)) out.push(rel);
+      } else if ((SIGNAL_FILE.test(e.name) || SIGNAL_PAGE.test(e.name) || SIGNAL_DATA.test(e.name)) && !named.has(rel.toLowerCase()) && !/^readme/i.test(e.name)) out.push(rel);
     }
   };
   await look(workdir, 0);

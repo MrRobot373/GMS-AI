@@ -31,6 +31,7 @@ describe("what the reviewer is told", () => {
     expect(text).not.toMatch(/- R1: The app is in a folder/);
     expect(text).toContain("click the button that makes it, then read the file (downloads are saved in downloads/)");
     expect(text).toContain("browser_upload");
+    expect(text).toContain("browser_resize");
     expect(text).toContain("One entry for each of R2, R3, R4");
     expect(reviewerPrompt("x", a, [], false)).not.toContain("browser_upload");
   });

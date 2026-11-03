@@ -19,7 +19,7 @@ import { pathToFileURL } from "node:url";
 import { browserTools } from "./browser.mjs";
 import { calculatorTools } from "./calculators.mjs";
 import { documentTools } from "./documents.mjs";
-import { classifyRisk } from "./policy.mjs";
+import { classifyRisk, reviewDenial } from "./policy.mjs";
 import { cleanArgs, planReminder } from "./tooling.mjs";
 import { SEARCH_CITE_LINE, SEARCH_READ_LINE, WEB_GUIDANCE, webTools } from "./web.mjs";
 
@@ -67,7 +67,9 @@ export function apply(ctx, config) {
     const decision = await next();
     if (decision.kind !== "allow") return decision;
     const reason = classifyRisk({ name: exec.name, args: cleanArgs(exec.name, exec.arguments, SANDBOX_MODE) }, policy);
-    return reason ? { kind: "ask", reason } : decision;
+    if (!reason) return decision;
+    // A reviewer never waits for a person: what would need approval is refused, with the reason.
+    return config.review ? { kind: "deny", reason: reviewDenial(reason) } : { kind: "ask", reason };
   });
 
   // 2. Arguments: models add `sandbox_permissions` to every call (often with made-up values),
