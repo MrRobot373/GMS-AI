@@ -336,6 +336,7 @@ const PLANNER_SYSTEM = [
   "",
   "Rules:",
   '- "build" is false when the request is not asking for something to be built or files to be made (a question, a summary in the chat, research, a short letter). Then "items" is []. It is true for software and for Excel, PowerPoint, Word or PDF files the request asks for.',
+  "- Never make a requirement stricter than the request. \"Built from the same numbers\" is not \"linked to\" or \"updates live from\" (a chart in a deck or a report holds its own copy of its data); \"a chart\" is not \"an interactive chart\"; \"about 6 pages\" is not \"exactly 6\". If you can't tell whether something can be done, say what the request says and no more.",
   "- One item per requirement, each a single thing that is true or false: a feature, a rule (\"rejects a negative amount with a message on the page\"), a file or folder the request names, a format, a limit it states (\"no libraries\", \"works offline\", \"works on a phone-sized screen\"). Quote the request's own words and numbers. 6 to 30 items; don't invent features the request doesn't ask for.",
   '- "how": how a tester would check it, in one sentence (what to do and what to look at). For anything the program produces (an export, a report), the check is to open that output and read it, and for an import, to read an exported file back in.',
   '- "check": {"kind": "judged"} unless code can decide it for certain from the request alone: {"kind": "path_exists", "path": "expense-tracker/index.html"} when the request names a folder or file; {"kind": "file_parses", "path": "…", "format": "json"|"csv"|"html"|"js"} for a named data or script file; {"kind": "page_loads_clean", "page": "expense-tracker/index.html"} for the main HTML page of something to open in a browser (it loads with no script errors). Paths are relative to the working folder. When unsure of a path, use judged.',
@@ -352,7 +353,7 @@ const REVIEW_SYSTEM = [
   'Shape: {"add": [{"requirement": "…", "how": "…", "milestone": 1, "check": {"kind": "judged"}}], "remove": [3, 7]}',
   "",
   '- "add": things the request clearly requires that no item covers (check every sentence of the request, every named file, folder, format, limit and behaviour).',
-  '- "remove": numbers of items the request never asked for, or that repeat another item.',
+  '- "remove": numbers of items the request never asked for, that repeat another item, or that ask for more than the request does (it says "built from the same numbers" and the item says "linked to the workbook").',
   "- Change nothing that is right. If the checklist is complete and correct, reply {\"add\": [], \"remove\": []}.",
 ].join("\n");
 

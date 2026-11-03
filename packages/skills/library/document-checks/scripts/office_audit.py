@@ -34,6 +34,8 @@ import sys
 import tempfile
 import zipfile
 
+AGGREGATES = re.compile(r"\b(SUMIFS?|COUNTIFS?|AVERAGEIFS?|SUMPRODUCT|MAXIFS|MINIFS)\s*\(", re.I)
+CELL_REF = re.compile(r"(?<![:\w.$])(?:(?:'([^']+)'|([A-Za-z_][\w.]*))!)?\$?([A-Z]{1,3})\$?(\d{1,7})(?![\d(:])")
 ERROR_VALUES = {"#DIV/0!", "#REF!", "#NAME?", "#VALUE!", "#N/A", "#NUM!", "#NULL!", "Err:502", "Err:504", "Err:508", "Err:522"}
 # Words that mean a generator printed a failed value or left a placeholder.
 LEFTOVER = re.compile(
@@ -181,6 +183,34 @@ def want(requires, name):
 # ───────────────────────── Excel ─────────────────────────
 
 
+def lint_calculated(rep, wb, calc):
+    """What only a calculated copy shows: a table of aggregations that all come to 0, and formulas
+    that refer to an empty cell (a criterion in a header that was never written, a wrong column)."""
+    for ws in wb:
+        cs = calc[ws.title]
+        zeros, empty_refs = [], {}
+        for row in ws.iter_rows():
+            for c in row:
+                v = c.value
+                if not (isinstance(v, str) and v.startswith("=") and AGGREGATES.search(v)):
+                    continue
+                if cs[c.coordinate].value == 0:
+                    zeros.append(c.coordinate)
+                # Single-cell references only (ranges are meant to include blanks).
+                for m in CELL_REF.finditer(re.sub(r'"[^"]*"', "", v)):
+                    sheet = m.group(1) or m.group(2)
+                    target = wb[sheet] if sheet in wb.sheetnames else (ws if not sheet else None)
+                    if target is None:
+                        continue
+                    ref = f"{m.group(3)}{m.group(4)}"
+                    if target[ref].value is None and ref not in empty_refs:
+                        empty_refs[ref] = (c.coordinate, target.title)
+        if len(zeros) >= 3:
+            rep.fail(ws.title, f"{len(zeros)} aggregation formulas (SUMIFS and the like) calculate to 0, like {', '.join(zeros[:4])}: a criterion probably matches nothing (a header cell that is empty, a month or name that is not in the data)")
+        for ref, (at, sheet_name) in list(empty_refs.items())[:3]:
+            rep.fail(ws.title, f"the formula in {at} refers to {sheet_name}!{ref}, which is empty")
+
+
 def audit_xlsx(path, requires, ctx):
     import openpyxl
 
@@ -246,6 +276,8 @@ def audit_xlsx(path, requires, ctx):
                     rep.warn(ws.title, f"chart {i} has no title")
             except Exception:
                 pass
+    suspicious = []  # filled from the calculated copy below
+
     # Formulas that were never calculated (a workbook written by a library): calculate them with LibreOffice.
     if formulas and uncached:
         tmp = tempfile.mkdtemp(prefix="recalc-")
@@ -253,6 +285,7 @@ def audit_xlsx(path, requires, ctx):
         if out:
             try:
                 calc = openpyxl.load_workbook(out, data_only=True)
+                lint_calculated(rep, wb, calc)
                 values = []
                 colsums = {}
                 for ws in calc:

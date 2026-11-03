@@ -154,11 +154,14 @@ export const allGood = (o: Outcome) => o.failed.length === 0 && o.untested.lengt
  * The message that sends the builder back to what isn't right: each failed item with what was
  * found, what could not be tested, and the leftovers; short, so it fits any window.
  */
-export function feedbackText(o: Outcome, round: number, opts: { source?: string; rounds?: number } = {}): string {
+export function feedbackText(o: Outcome, round: number, opts: { source?: string; rounds?: number; regressed?: string[] } = {}): string {
   const cut = (s: string | undefined, n: number) => (s ?? "").replace(/\s+/g, " ").slice(0, n);
   const source = opts.source ?? "The independent review";
   return [
     `${source} (round ${round} of ${opts.rounds ?? MAX_REVIEW_ROUNDS}) found that the work does not yet meet the checklist. Fix each of these, then try it yourself and finish again with a short summary.`,
+    ...(opts.regressed?.length
+      ? ["", `These passed in the last review and fail now, so your last changes broke them: ${opts.regressed.join(", ")}. Repair what you broke first: that part was right before, and fixing one thing must not cost another.`]
+      : []),
     ...(o.failed.length ? ["", "Not right:", ...o.failed.map((i) => `- ${i.id} ${i.requirement}\n    found: ${cut(i.observed, 400)}`)] : []),
     ...(o.untested.length ? ["", "Could not be tested (make sure it can be used and shows its result):", ...o.untested.map((i) => `- ${i.id} ${i.requirement}\n    ${cut(i.observed, 200)}`)] : []),
     ...(o.hygiene?.status === "fail" ? ["", `Leftovers to delete (or, for work files like scripts and backups, move into scratch/): ${cut(o.hygiene.observed, 300).replace(/^leftover files: /, "")}`] : []),

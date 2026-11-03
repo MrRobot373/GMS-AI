@@ -126,6 +126,8 @@ interface Live {
   reviewTimer?: NodeJS.Timeout;
   /** Review attempts so far (the code checks count as one when they alone sent the builder back). */
   reviewRound?: number;
+  /** The items that passed the last full review: what a later round must not break. */
+  lastPassed?: Set<string>;
   /** What the checks code ran said in the current attempt. */
   lastDet?: CheckResult[];
   /** The verification to keep when the task concludes. */
@@ -1194,7 +1196,7 @@ export class WorkRunner {
     if (det.some((r) => r.status === "fail")) {
       await this.record(l.taskId, "review", { round, state: "checks", failed: det.filter((r) => r.status === "fail").map((r) => r.id) });
       if (round <= MAX_REVIEW_ROUNDS && l.runtime?.alive && !l.cancelled) {
-        await this.resume(l, feedbackText(o, round), { review: true });
+        await this.resume(l, feedbackText(o, round, { regressed: o.failed.filter((i) => l.lastPassed?.has(i.id)).map((i) => i.id) }), { review: true });
         return true;
       }
       l.finalVerification = verificationOf(a, o, { rounds: round, reviewTaskId: null });
@@ -1292,12 +1294,14 @@ export class WorkRunner {
     const a = l.acceptance!;
     const round = l.reviewRound ?? 1;
     const o = mergeResults(a, l.lastDet ?? [], skipped ? null : report);
+    const regressed = skipped ? [] : o.failed.filter((i) => l.lastPassed?.has(i.id)).map((i) => i.id);
+    if (!skipped) l.lastPassed = new Set(o.passed.map((i) => i.id));
     await this.saveChecklist(l);
     await this.record(l.taskId, "review", { round, state: "done", reviewTaskId, passed: o.passed.length, failed: o.failed.map((i) => i.id), untested: o.untested.map((i) => i.id) });
     const v = (extra: { skipped?: string } = {}) => verificationOf(a, o, { rounds: round, reviewTaskId, ...extra });
     if (skipped) return this.conclude(l, null, v({ skipped }));
     if (allGood(o) || round > MAX_REVIEW_ROUNDS || !l.runtime?.alive || l.cancelled) return this.conclude(l, null, v());
-    await this.resume(l, feedbackText(o, round), { review: true });
+    await this.resume(l, feedbackText(o, round, { regressed }), { review: true });
   }
 
   /** The person wrote while a review ran: the review stops, and the message is the builder's next. */

@@ -190,6 +190,35 @@ for name, v in (("bad.xlsx", 9.37), ("good.xlsx", 0.0937)):
     expect(by.R3).toMatchObject({ status: "fail", observed: "missing.xlsx isn't in the working folder" });
   }, 120_000);
 
+  it("fails a summary whose SUMIFS all come to zero because they read an empty header or a month that isn't there", async () => {
+    try {
+      execFileSync("soffice", ["--version"], { timeout: 30_000 });
+    } catch {
+      return; // the formulas can only be calculated with LibreOffice
+    }
+    const dir = await mkdtemp(join(tmpdir(), "office-z-"));
+    py(
+      `import sys, openpyxl
+for name, header_cell in (("bad.xlsx", None), ("good.xlsx", "Seeds")):
+    wb = openpyxl.Workbook(); d = wb.active; d.title = "Data"; d.append(["Region", "Product", "Revenue"])
+    for r, p, v in (("North", "Seeds", 10), ("North", "Fert", 20), ("South", "Seeds", 30), ("South", "Fert", 40)): d.append([r, p, v])
+    s = wb.create_sheet("Summary"); s["A1"] = "Region"; s["B1"] = header_cell; s["C1"] = "Fert"
+    for i, region in enumerate(("North", "South"), start=2):
+        s.cell(i, 1, region)
+        for col, letter in ((2, "B"), (3, "C")):
+            s.cell(i, col, f'=SUMIFS(Data!$C:$C,Data!$A:$A,$A{i},Data!$B:$B,{letter}$1)')
+    s["A5"] = "Total"; s["B5"] = "=SUMIFS(Data!$C:$C,Data!$B:$B,B1)"; s["C5"] = "=SUMIFS(Data!$C:$C,Data!$B:$B,C1)"
+    wb.save(sys.argv[1] + "/" + name)`,
+      dir,
+    );
+    const a = listOf({ kind: "office_audit", path: "bad.xlsx" }, { kind: "office_audit", path: "good.xlsx" });
+    const by = Object.fromEntries((await runChecks(a, { workdir: dir, browserKey: "k", profileDir: join(dir, "p") })).map((r) => [r.id, r]));
+    expect(by.R1).toMatchObject({ status: "fail" });
+    expect(by.R1!.observed).toContain("calculate to 0");
+    expect(by.R1!.observed).toContain("which is empty");
+    expect(by.R2).toMatchObject({ status: "pass" });
+  }, 180_000);
+
   it("fails a deck with a chart on its table and no speaker notes; passes the deck the skill builds", async () => {
     const dir = await mkdtemp(join(tmpdir(), "office-p-"));
     py(

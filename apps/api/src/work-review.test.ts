@@ -138,6 +138,16 @@ describe("a review of documents", () => {
     expect(reviewerPrompt("x", list(), [], false)).not.toContain("Recompute every statement of fact");
   });
 
+  it("tells the builder what its last changes broke, ahead of what else is wrong", () => {
+    const a = docs();
+    const det = [{ id: "R1", status: "fail" as const, observed: "Summary: 26 aggregation formulas calculate to 0" }];
+    const o = mergeResults(a, det, null);
+    const text = feedbackText(o, 2, { regressed: ["R1"] });
+    expect(text).toContain("These passed in the last review and fail now, so your last changes broke them: R1");
+    expect(text.indexOf("broke them")).toBeLessThan(text.indexOf("Not right:"));
+    expect(feedbackText(o, 2)).not.toContain("broke them");
+  });
+
   it("a figure the workbook doesn't have fails the review, goes back to the builder and is kept in the result", () => {
     const a = docs();
     const det = [
