@@ -46,7 +46,8 @@ describe("what asks for files to be made", () => {
       ],
     })!;
     expect(a.items[0]!.check).toEqual({ kind: "office_audit", path: "Northwind_Q3_Sales.xlsx", require: ["formulas:10", "charts:2", "notes", "pages:6-8"] });
-    expect(a.items[1]!.check).toEqual({ kind: "office_audit", path: "out/report.docx", require: ["pages:6-8", "toc"] });
+    expect(a.items[1]!.check).toMatchObject({ kind: "office_audit", path: "out/report.docx" });
+    expect([...(a.items[1]!.check as { require: string[] }).require].sort()).toEqual(["pages:6-8", "toc"]);
     expect(a.items[2]!.check).toEqual({ kind: "judged" });
     expect(a.items[3]!.check).toEqual({ kind: "judged" });
   });
@@ -79,6 +80,24 @@ describe("files named in a checklist are audited, with what the checklist asks o
     expect(a.items[6]!.check).toEqual({ kind: "office_audit", path: "Northwind_Q3_Report.docx", require: ["toc", "page_numbers", "header_title", "pages:5-9"] });
     // The judged items stay judged: the reviewer still tests what code can't.
     expect(a.items[4]!.check).toEqual({ kind: "judged" });
+  });
+
+  it("one item per file: the planner's second audit of the same file is merged into the first, and 'about' still allows a page either side", () => {
+    const a = buildAcceptance({
+      build: true,
+      milestones: [],
+      items: [
+        item("Word report Northwind_Q3_Report.docx exists", { check: { kind: "path_exists", path: "Northwind_Q3_Report.docx" } }),
+        item("Document length is about 6 to 8 pages"),
+        item("Page numbers appear in the footer and the document title in the header"),
+        // The same file again, with its own requirements (and the strict range the planner wrote).
+        item("Word file Northwind_Q3_Report.docx passes an office audit for required elements", { check: { kind: "office_audit", path: "Northwind_Q3_Report.docx", require: ["toc", "pages:6-8", "charts:2"] } }),
+      ],
+    })!;
+    expect(a.items).toHaveLength(3);
+    const c = a.items[0]!.check;
+    expect(c).toMatchObject({ kind: "office_audit", path: "Northwind_Q3_Report.docx" });
+    expect((c as { require: string[] }).require.sort()).toEqual(["charts:2", "header_title", "page_numbers", "pages:5-9", "toc"].sort());
   });
 
   it("keeps what the planner asked for, and leaves ordinary files alone", () => {

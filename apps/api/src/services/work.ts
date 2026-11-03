@@ -969,7 +969,7 @@ export class WorkRunner {
     if (have) return have;
     // Only a task's first message gets a checklist; a later "continue" on an old task doesn't.
     if (!request || !isBuildRequest(request) || (await this.hadWork(task.id))) return null;
-    const planned = await planAcceptance(this.ctx, { taskId: task.id, workspaceId: task.workspaceId, userId: task.userId, request }).catch((e) => {
+    const planned = await planAcceptance(this.ctx, { taskId: task.id, workspaceId: task.workspaceId, userId: task.userId, request, log: this.opts.log }).catch((e) => {
       this.opts.log?.("work: planning the checklist failed", e);
       return null;
     });

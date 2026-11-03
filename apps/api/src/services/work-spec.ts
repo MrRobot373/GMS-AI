@@ -134,7 +134,7 @@ const checkOf = (c: Check | undefined): Check => {
  * big briefs (a small one is one milestone), each milestone with at least one item.
  */
 export function buildAcceptance(draft: Draft, now = new Date()): Acceptance | null {
-  const items = draft.items.slice(0, MAX_ITEMS);
+  const items = mergeFileChecks(draft.items.slice(0, MAX_ITEMS));
   if (!draft.build || items.length < 3) return null;
   const milestoneNames = draft.milestones.slice(0, MAX_MILESTONES).map((m) => m.name);
   const split = items.length >= MILESTONE_MIN_ITEMS && milestoneNames.length >= 2;
@@ -158,6 +158,34 @@ export function buildAcceptance(draft: Draft, now = new Date()): Acceptance | nu
 }
 
 /* ───────────── Excel, PowerPoint, Word and PDF files ───────────── */
+
+/**
+ * One item per file: a model often writes the check of a file twice ("the file exists", "the file
+ * passes the audit"). The later item only restates the file, so it is dropped and its requirements
+ * are kept on the first.
+ */
+function mergeFileChecks<T extends { check?: Check }>(items: T[]): T[] {
+  const first = new Map<string, number>();
+  const out: T[] = [];
+  for (const it of items) {
+    const c = it.check;
+    if (c && (c.kind === "office_audit" || c.kind === "path_exists") && OFFICE_FILE.test(c.path)) {
+      const key = c.path.toLowerCase();
+      const at = first.get(key);
+      if (at !== undefined) {
+        const keep = out[at]!.check;
+        if (keep && keep.kind !== "judged" && c.kind === "office_audit" && c.require?.length) {
+          const have = new Set(keep.kind === "office_audit" ? (keep.require ?? []) : []);
+          out[at] = { ...out[at]!, check: { kind: "office_audit", path: (keep as { path: string }).path, require: [...have, ...c.require.filter((r) => !have.has(r))] } };
+        }
+        continue;
+      }
+      first.set(key, out.length);
+    }
+    out.push(it);
+  }
+  return out;
+}
 
 type OfficeKind = "xlsx" | "pptx" | "docx" | "pdf";
 const officeKind = (p: string): OfficeKind | null => {
@@ -240,11 +268,14 @@ function upgradeOfficeChecks(items: AcceptanceItem[]): void {
     const kind = officeKind(c.path);
     if (!kind || done.has(c.path.toLowerCase())) continue;
     done.add(c.path.toLowerCase());
-    const given = c.kind === "office_audit" ? (c.require ?? []) : [];
-    const have = new Set(given.map((r) => r.split(":")[0]));
     const alone = items.some((x) => x.milestone !== 1) && filesIn.get(it.milestone)?.size === 1;
     const texts = items.filter((x) => x === it || MENTIONS[kind].test(x.requirement) || (alone && x.milestone === it.milestone)).map((x) => `${x.requirement} ${x.how ?? ""}`);
-    const require = [...given, ...inferRequire(kind, texts).filter((r) => !have.has(r.split(":")[0]!))];
+    // The checklist's own wording decides a length ("about 6-8 pages"); other requirements the model named stand.
+    const inferred = inferRequire(kind, texts);
+    const ranges = new Set(inferred.filter((r) => /^(pages|slides):/.test(r)).map((r) => r.split(":")[0]));
+    const given = (c.kind === "office_audit" ? (c.require ?? []) : []).filter((r) => !ranges.has(r.split(":")[0]!));
+    const have = new Set(given.map((r) => r.split(":")[0]));
+    const require = [...given, ...inferred.filter((r) => !have.has(r.split(":")[0]!))];
     it.check = { kind: "office_audit", path: c.path, ...(require.length ? { require } : {}) };
   }
 }
@@ -332,27 +363,39 @@ const REVIEW_SYSTEM = [
  */
 async function planCall<T extends z.ZodType>(
   ctx: AppContext,
-  o: { taskId: string; workspaceId: string; userId: string; system: string; user: string; schema: T; maxTokens: number },
+  o: { taskId: string; workspaceId: string; userId: string; system: string; user: string; schema: T; maxTokens: number; log?: (msg: string, e?: unknown) => void },
 ): Promise<{ value: z.infer<T>; modelId: string } | null> {
   const { db } = ctx;
   let chosen: Awaited<ReturnType<typeof chooseModel>>;
   try {
     chosen = await chooseModel(db, ctx.box, { workspaceId: o.workspaceId, section: "work", userId: o.userId, requested: null, text: o.user, contextTokens: 1500, difficulty: "hard" });
-  } catch {
+  } catch (e) {
+    o.log?.("work: the checklist planner found no model", e);
     return null;
   }
   const { status: quota, groupId } = await quotaFor(db, o.workspaceId, o.userId, chosen.model);
-  if (!quota.result.allowed) return null;
+  if (!quota.result.allowed) {
+    o.log?.("work: the checklist planner is over the allowance");
+    return null;
+  }
   const messages: ChatMessage[] = [
     { role: "system", content: o.system },
     { role: "user", content: o.user },
   ];
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Two chances for a reply in the right shape, and one more for a provider that hiccuped (a task
+  // that went on unchecked because of one dropped request would be a quiet loss of the whole review).
+  let hiccups = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
     const started = Date.now();
     let r: Awaited<ReturnType<typeof completeChat>>;
     try {
       r = await completeChat(chosen.provider, chosen.model.modelKey, messages, { maxTokens: o.maxTokens, temperature: 0.2, thinking: chosen.thinking, signal: AbortSignal.timeout(PLANNER_TIMEOUT_MS) });
-    } catch {
+    } catch (e) {
+      o.log?.(`work: the checklist planner's model call failed (${hiccups === 0 ? "trying again" : "giving up"})`, e);
+      if (hiccups++ === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 8000));
+        continue;
+      }
       return null;
     }
     const parsed = parseModelJson(o.schema, r.text);
@@ -382,7 +425,7 @@ async function planCall<T extends z.ZodType>(
  * The checklist for a request, or null when it isn't a build (or no model could write one): a
  * planner call, then a call that looks for what it missed or invented. Both on the Advanced tier.
  */
-export async function planAcceptance(ctx: AppContext, o: { taskId: string; workspaceId: string; userId: string; request: string }): Promise<Acceptance | null> {
+export async function planAcceptance(ctx: AppContext, o: { taskId: string; workspaceId: string; userId: string; request: string; log?: (msg: string, e?: unknown) => void }): Promise<Acceptance | null> {
   const request = o.request.length > 24_000 ? `${o.request.slice(0, 24_000)}\n… (the request goes on)` : o.request;
   const first = await planCall(ctx, { ...o, system: PLANNER_SYSTEM, user: `The request:\n\n${request}`, schema: draftSchema, maxTokens: 4000 });
   if (!first || !first.value.build || first.value.items.length < 3) return null;
