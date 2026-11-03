@@ -9,6 +9,17 @@ without one.
 
 ## Unreleased
 
+- **Work AI builds to a checklist and is reviewed by someone who didn't build it**
+  ([docs/19-work-ai-reliability-plan.md](docs/19-work-ai-reliability-plan.md)). A build request gets an
+  acceptance checklist before work starts. When the builder says it's done, checks that code decides
+  run first (files, formats, a page loading with no script errors, leftover files), then a separate
+  reviewer on another model tests each requirement by using the work and must give evidence;
+  failures go back to the builder (up to 3 rounds), and a task that still falls short ends saying
+  which requirements were not met, never plainly "done". Big briefs are built in stages, each in a
+  fresh session with a progress file, with a snapshot commit per stage. The agent's browser can now
+  upload a file to a page's file input (even a hidden one) and reports confirmation dialogs. Reviewer
+  tasks are not listed. Migration 0027 adds `work_task.parent_id` and `work_task.verification`.
+
 - **Work AI checks what it built against the request.** A task that wrote code is sent back once
   before it ends to prove each requirement (use each feature, open and read the files the program
   produces, check order and totals), clean up files that only signal "done", and report how it

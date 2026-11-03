@@ -331,6 +331,36 @@ const chrome = findChromium();
     await browser.close("t7");
   }, 60_000);
 
+  it("tests an import and a confirmation: a hidden file input can be given a file; dialogs are accepted and reported", async () => {
+    const mine = () => target({ profileDir: join(work, "..", "profile-t8") });
+    await mkdir(join(work, "imp", "scratch"), { recursive: true });
+    await writeFile(
+      join(work, "imp", "index.html"),
+      `<!doctype html><title>Import</title><body>
+      <button id="go" onclick="document.getElementById('f').click()">Import CSV</button>
+      <input type="file" id="f" accept=".csv" style="display:none" aria-label="CSV file">
+      <button id="del" onclick="if (confirm('Delete everything?')) document.getElementById('out').textContent = 'deleted'">Delete</button>
+      <p id="out"></p>
+      <script>document.getElementById("f").addEventListener("change", async (e) => { document.getElementById("out").textContent = "read " + (await e.target.files[0].text()).split("\\n").length + " lines of " + e.target.files[0].name; });</script></body>`,
+    );
+    await writeFile(join(work, "imp", "scratch", "rows.csv"), "date,amount\n2026-01-01,5\n2026-01-02,6\n");
+    const v = await browser.open("t8", mine(), "imp/index.html");
+    const input = Number(/\[(\d+)\] file input "CSV file"/.exec(v.text)![1]);
+    const up = await browser.upload("t8", mine(), input, ["imp/scratch/rows.csv"]);
+    expect(up.text).toContain("read 4 lines of rows.csv");
+    // Not a file input, or a file outside the folder or a page elsewhere.
+    const del = Number(/\[(\d+)\] button "Delete"/.exec(v.text)![1]);
+    await expect(browser.upload("t8", mine(), del, ["imp/scratch/rows.csv"])).rejects.toThrow("isn't a file input");
+    await expect(browser.upload("t8", mine(), input, ["../../etc/passwd"])).rejects.toThrow("isn't a file in your working folder");
+    // The confirmation is accepted (the page goes on) and shown to the agent.
+    const done = await browser.click("t8", mine(), del, false);
+    expect(done.text).toContain("deleted");
+    expect(done.dialogs).toEqual(['confirm "Delete everything?" (accepted)']);
+    await browser.open("t8", mine(), base);
+    await expect(browser.upload("t8", mine(), 1, ["imp/scratch/rows.csv"])).rejects.toThrow("pages from your working folder only");
+    await browser.close("t8");
+  }, 60_000);
+
   it("serves only files inside the task folder, links followed", async () => {
     const outside = await mkdtemp(join(tmpdir(), "aatmiq-outside-"));
     await writeFile(join(outside, "secret.txt"), "top-secret");

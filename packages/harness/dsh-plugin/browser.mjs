@@ -12,6 +12,7 @@ export function formatView(v) {
   if (v.url) lines.push(`URL: ${v.url}`);
   if (v.downloads?.length) lines.push(`Downloaded: ${v.downloads.join(", ")}`);
   if (v.errors?.length) lines.push("Script errors on the page:", ...v.errors.map((e) => `- ${e}`));
+  if (v.dialogs?.length) lines.push("Dialogs the page opened:", ...v.dialogs.map((d) => `- ${d}`));
   if (v.result !== undefined) lines.push("Result:", v.result);
   if (v.canvasText?.length) lines.push("Text drawn on the canvas (with where it is, for browser_click_at):", ...v.canvasText.map((t) => `- ${t}`));
   lines.push("", v.text || "(the page has no readable text)");
@@ -86,6 +87,15 @@ export function browserTools(defineTool, browser) {
       "Click at a point on a page from your working folder, in pixels from the top left of the 1280×900 view (for a canvas game or drawing that has no numbered elements). The page view lists the text drawn on the canvas with where it is; or take a screenshot to find the point.",
       { x: { type: "number", required: true, description: "Pixels from the left." }, y: { type: "number", required: true, description: "Pixels from the top." } },
       (a, signal) => view({ action: "click_at", x: Number(a.x), y: Number(a.y) }, signal),
+    ),
+    tool(
+      "browser_upload",
+      "Put one or more files from your working folder into a file input on a page from your working folder (to test an import or an upload). The input's number is in the page view, like [7] for a file input. Then the page reacts as it would after choosing the files.",
+      {
+        element,
+        files: { type: "array", items: { type: "string" }, required: true, description: "Paths of files in your working folder, like scratch/sample.csv." },
+      },
+      (a, signal) => view({ action: "upload", ref: Number(a.element), files: (Array.isArray(a.files) ? a.files : [a.files]).map(String) }, signal),
     ),
     tool(
       "browser_eval",

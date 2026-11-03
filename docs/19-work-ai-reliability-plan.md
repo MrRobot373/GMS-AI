@@ -129,6 +129,18 @@ Rules that make it hold:
 - **Cost and loops**: round caps; deterministic checks run before any model call.
 - **Reviewer shares the builder's weakness** on small models: prefer a larger reviewer model.
 
+## Status (3 Nov 2026)
+
+| Phase | State |
+|---|---|
+| 0: baseline eval set in the repo | not done |
+| 1: acceptance checklist | built: `services/work-spec.ts` (planner + omission review, validation, `.task/acceptance.json`), re-injected after condensing |
+| 2: independent reviewer | built: `services/work-checks.ts` (code-decided checks), `services/work-review.ts`, reviewer as a hidden child task on a copy of the folder, 3 feedback rounds, "completed with issues" ending (`work_task.verification`, migration 0027), `browser_upload` and dialog handling, checklist panel and banner in the task page |
+| 3: milestone build mode | built: `services/work-stages.ts`, fresh session per stage, runtime-written `progress.md`, per-stage checks, git snapshot per stage. Not built: automatic revert on regression |
+| 4: roles and settings | not done (the reviewer model is chosen automatically: Advanced tier, not the builder's) |
+| 5: UI | built with 1-3 (checklist, review and stage notes, verification banner) |
+| 6: cost pass | not done |
+
 ## 7. Order of work
 
 Phase 0 → 1 → 2 first (about 1.5 weeks): they change whether "done" can be trusted. Then the browser tool

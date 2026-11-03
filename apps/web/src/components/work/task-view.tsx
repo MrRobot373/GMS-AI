@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleCheck,
   Circle,
+  ClipboardCheck,
   Code2,
   Download,
   Eye,
@@ -53,7 +54,7 @@ import { Skeleton } from "@/components/ui/spinner";
 import { ApiError, del, formatBytes, get, patch, post, readSse } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatTokens, routingReason, timeAgo, TIER_NAMES } from "@/lib/format";
-import { ACTIVE, describeCall, type TaskStatus, type WorkEvent, type WorkFile, type WorkTaskDetail } from "@/lib/work";
+import { ACTIVE, describeCall, type ChecklistItem, type TaskStatus, type WorkEvent, type WorkFile, type WorkTaskDetail, type WorkVerification } from "@/lib/work";
 import { StatusPill, WorkComposer, type WorkComposerHandle } from "./parts";
 import { useT } from "@/i18n";
 
@@ -84,7 +85,13 @@ type Item =
   /** Older steps were condensed to make room in the model's context window. */
   | { kind: "compacted"; key: string; summary: string; steps: number; tokens: number; reinjected?: string[]; notes?: boolean }
   /** The window couldn't be freed, so the agent started over from the work so far. */
-  | { kind: "restarted"; key: string };
+  | { kind: "restarted"; key: string }
+  /** The independent review: its automatic checks, its start and what it found. */
+  | { kind: "review"; key: string; state: "checks" | "started" | "done"; round: number; reviewTaskId?: string; model?: string; failed: string[]; untested: string[]; passed: number }
+  /** What the review found when the task ended. */
+  | { kind: "verification"; key: string; v: WorkVerification }
+  /** A big brief is built stage by stage, each in a fresh session. */
+  | { kind: "stage"; key: string; state: "started" | "checks" | "done"; n: number; total: number; name: string; failed: string[] };
 
 function buildTimeline(events: WorkEvent[]) {
   const items: Item[] = [];
@@ -92,6 +99,7 @@ function buildTimeline(events: WorkEvent[]) {
   const approvals = new Map<string, Approval>();
   let plan: { content: string; status: string }[] = [];
   let status: TaskStatus | null = null;
+  let checklist: ChecklistItem[] = [];
   for (const e of events) {
     const d = e.data;
     switch (e.kind) {
@@ -130,6 +138,18 @@ function buildTimeline(events: WorkEvent[]) {
       case "plan":
         plan = d.items ?? [];
         break;
+      case "acceptance":
+        checklist = d.items ?? [];
+        break;
+      case "review":
+        items.push({ kind: "review", key: `v${e.seq}`, state: d.state, round: d.round ?? 1, reviewTaskId: d.reviewTaskId, model: d.model, failed: d.failed ?? [], untested: d.untested ?? [], passed: d.passed ?? 0 });
+        break;
+      case "verification":
+        items.push({ kind: "verification", key: `f${e.seq}`, v: d as WorkVerification });
+        break;
+      case "stage":
+        items.push({ kind: "stage", key: `g${e.seq}`, state: d.state, n: d.n ?? 1, total: d.total ?? 1, name: d.name ?? "", failed: d.failed ?? [] });
+        break;
       case "context":
         if (d.compacted) items.push({ kind: "compacted", key: `x${e.seq}`, summary: d.summary ?? "", steps: d.steps ?? 0, tokens: d.tokens ?? 0 });
         if (d.restarted) items.push({ kind: "restarted", key: `r${e.seq}` });
@@ -148,7 +168,7 @@ function buildTimeline(events: WorkEvent[]) {
         break;
     }
   }
-  return { items, plan, status };
+  return { items, plan, status, checklist };
 }
 
 function toolIcon(name: string) {
@@ -262,7 +282,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     };
   }, [ready, taskId, qc, workspaceId]);
 
-  const { items, plan, status: liveStatus } = useMemo(() => buildTimeline(events), [events]);
+  const { items, plan, status: liveStatus, checklist } = useMemo(() => buildTimeline(events), [events]);
   const task = detail.data?.task;
   const status: TaskStatus = liveStatus ?? task?.status ?? "queued";
   // The latest answer, which can be saved to the task's project.
@@ -551,7 +571,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {panel === "progress" ? (
-                  <ProgressPanel plan={plan} task={task} status={status} steps={items.reduce((n, i) => n + (i.kind === "steps" ? i.steps.length : 0), 0)} />
+                  <ProgressPanel plan={plan} checklist={checklist} task={task} status={status} steps={items.reduce((n, i) => n + (i.kind === "steps" ? i.steps.length : 0), 0)} />
                 ) : (
                   <FilesPanel
                     taskId={taskId}
@@ -673,6 +693,21 @@ function TimelineItem({
       );
     case "compacted":
       return <CompactedNote item={item} />;
+    case "stage":
+      return (
+        <div className="mb-5 flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-[12.5px] text-fg-subtle" data-testid="task-stage">
+          <Layers className="size-3.5 shrink-0" />
+          {item.state === "started"
+            ? t("Stage {n} of {total} started in a fresh session: {name}.", { n: item.n, total: item.total, name: item.name })
+            : item.state === "checks"
+              ? t("Stage {n} of {total}: the checks found problems ({items}); the agent was sent back to fix them.", { n: item.n, total: item.total, items: item.failed.join(", ") })
+              : t("Stage {n} of {total} done: {name}.", { n: item.n, total: item.total, name: item.name })}
+        </div>
+      );
+    case "review":
+      return <ReviewNote item={item} />;
+    case "verification":
+      return <VerificationBanner v={item.v} />;
     case "restarted":
       return (
         <div className="mb-5 flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-[12.5px] text-fg-subtle" data-testid="task-restarted">
@@ -706,6 +741,57 @@ function CompactedNote({ item }: { item: Extract<Item, { kind: "compacted" }> })
             <p className="mt-2 text-fg-subtle">{t("Files given back to it as they are now: {files}", { files: item.reinjected.join(", ") })}</p>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** The independent review: automatic checks that sent the agent back, the reviewer starting, what it found. */
+function ReviewNote({ item }: { item: Extract<Item, { kind: "review" }> }) {
+  const t = useT();
+  const text =
+    item.state === "started"
+      ? t("Checking its work (round {round}) with {model}…", { round: item.round, model: item.model ?? "" })
+      : item.state === "checks"
+        ? t("Automatic checks found problems ({items}); the agent was sent back to fix them.", { items: item.failed.join(", ") })
+        : t("Review round {round}: {passed} met, {failed} not right, {untested} not tested.", { round: item.round, passed: item.passed, failed: item.failed.length, untested: item.untested.length });
+  return (
+    <div className="mb-5 flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-[12.5px] text-fg-subtle" data-testid="task-review">
+      <ClipboardCheck className="size-3.5 shrink-0" />
+      <span>{text}</span>
+      {item.state === "started" && item.reviewTaskId && (
+        <a className="ml-auto shrink-0 underline underline-offset-2" href={`/app/work/${item.reviewTaskId}`} target="_blank" rel="noreferrer">
+          {t("Open the review")}
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** What the review found, at the end of a build: all met, or what was not. */
+function VerificationBanner({ v }: { v: WorkVerification }) {
+  const t = useT();
+  const good = !v.skipped && v.passed === v.total;
+  const unmet = v.items.filter((i) => i.status !== "pass");
+  return (
+    <div className={cn("mb-5 rounded-lg border px-3 py-2.5 text-[13px]", good ? "border-success/30 bg-success-soft text-fg" : "border-warning/40 bg-warning-soft text-fg")} data-testid="task-verification">
+      <div className="flex items-center gap-2 font-medium">
+        {good ? <CircleCheck className="size-4 shrink-0 text-success" /> : <TriangleAlert className="size-4 shrink-0 text-warning" />}
+        {v.skipped
+          ? t("It wasn't reviewed: {reason}.", { reason: v.skipped })
+          : good
+            ? t("All {total} requirements were checked and met.", { total: v.total })
+            : t("Finished with issues: {passed} of {total} requirements met.", { passed: v.passed, total: v.total })}
+      </div>
+      {!good && unmet.length > 0 && (
+        <ul className="mt-2 space-y-1 text-[12.5px] text-fg-muted">
+          {unmet.slice(0, 8).map((i) => (
+            <li key={i.id}>
+              <span className="font-medium text-fg">{i.id}</span> {i.requirement}
+              {i.observed && <span className="block text-fg-subtle">{i.observed}</span>}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -849,11 +935,33 @@ function Working({ status, draft, thinking }: { status: TaskStatus; draft: strin
 
 /* ───────────── Side panel ───────────── */
 
-function ProgressPanel({ plan, task, status, steps }: { plan: { content: string; status: string }[]; task?: WorkTaskDetail["task"]; status: TaskStatus; steps: number }) {
+function ProgressPanel({ plan, checklist, task, status, steps }: { plan: { content: string; status: string }[]; checklist: ChecklistItem[]; task?: WorkTaskDetail["task"]; status: TaskStatus; steps: number }) {
   const t = useT();
   const done = plan.filter((p) => p.status === "completed").length;
+  const met = checklist.filter((c) => c.status === "pass").length;
   return (
     <div className="space-y-6 text-[13px]">
+      {checklist.length > 0 && (
+        <div data-testid="checklist">
+          <div className="flex items-center justify-between text-[12px] text-fg-subtle">
+            <span className="flex items-center gap-1.5">
+              <ClipboardCheck className="size-3.5" /> {t("Checklist")}
+            </span>
+            <span className="tabular-nums">{t("{passed} of {total} met", { passed: met, total: checklist.length })}</span>
+          </div>
+          <ol className="mt-2 space-y-2">
+            {checklist.map((c) => (
+              <li key={c.id} className="flex items-start gap-2" title={c.observed}>
+                {c.status === "pass" ? <CircleCheck className="mt-0.5 size-3.5 shrink-0 text-success" /> : c.status === "fail" ? <XCircle className="mt-0.5 size-3.5 shrink-0 text-danger" /> : <Circle className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" />}
+                <span className={c.status === "pass" ? "text-fg-muted" : "text-fg"}>
+                  {c.requirement}
+                  {c.status === "fail" && c.observed && <span className="mt-0.5 block text-[12px] text-danger">{c.observed}</span>}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <div>
         <div className="flex items-center justify-between text-[12px] text-fg-subtle">
           <span>{t("Plan")}</span>

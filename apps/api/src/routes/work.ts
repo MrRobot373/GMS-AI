@@ -3,7 +3,7 @@
  * Tasks are private to the person who started them; a task in a project can be shared to it,
  * which lets the project's people read (not change) it.
  */
-import { and, asc, codeWorkspace, desc, document, eq, ilike, project, projectSource, user, workApproval, workEvent, workTask } from "@aatmiq/db";
+import { and, asc, codeWorkspace, desc, document, eq, ilike, isNull, project, projectSource, user, workApproval, workEvent, workTask } from "@aatmiq/db";
 import { isOrgAdmin, workMessageSchema, workTaskCreateSchema } from "@aatmiq/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { createReadStream } from "node:fs";
@@ -171,7 +171,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       .from(workTask)
       .leftJoin(project, eq(project.id, workTask.projectId))
       .leftJoin(codeWorkspace, eq(codeWorkspace.id, workTask.codeWorkspaceId))
-      .where(and(eq(workTask.workspaceId, wsId), eq(workTask.userId, u.id), q ? ilike(workTask.title, `%${q.replace(/[%_\\]/g, "\\$&")}%`) : undefined))
+      .where(and(eq(workTask.workspaceId, wsId), eq(workTask.userId, u.id), isNull(workTask.parentId), q ? ilike(workTask.title, `%${q.replace(/[%_\\]/g, "\\$&")}%`) : undefined))
       .orderBy(desc(workTask.pinned), desc(workTask.updatedAt))
       .limit(200);
   });

@@ -841,6 +841,20 @@ export const workUidSeq = pgSequence("work_uid_seq", { startWith: 100000, minVal
  * An agent task: one goal, worked on by the harness in its own workspace folder.
  * Follow-up messages continue the same task.
  */
+/** The outcome of checking a finished task against its acceptance checklist. */
+export interface WorkVerification {
+  /** Review rounds run (each is a reviewer task; failures go back to the builder in between). */
+  rounds: number;
+  passed: number;
+  total: number;
+  items: { id: string; requirement: string; status: "pass" | "fail" | "untested"; observed?: string; evidence?: string }[];
+  /** The last reviewer task, to open its timeline. */
+  reviewTaskId?: string | null;
+  /** Why the review didn't happen (no model, the reviewer failed): the task ended unverified. */
+  skipped?: string;
+  at: string;
+}
+
 export const workTask = pgTable(
   "work_task",
   {
@@ -870,13 +884,22 @@ export const workTask = pgTable(
     /** Set when the agent works in a Code workspace (Aatmiq panel) instead of its own task folder. */
     codeWorkspaceId: text("code_workspace_id").references((): AnyPgColumn => codeWorkspace.id, { onDelete: "cascade" }),
     pinned: boolean("pinned").notNull().default(false),
+    /** A reviewer task's builder task. Reviewer tasks work on a copy of the folder and are not listed. */
+    parentId: text("parent_id").references((): AnyPgColumn => workTask.id, { onDelete: "cascade" }),
+    /** What the independent review found when the task ended (docs/19-work-ai-reliability-plan.md). */
+    verification: jsonb("verification").$type<WorkVerification>(),
     /** The Unix user its runtime runs as (see workUidSeq). */
     runUid: integer("run_uid").notNull().default(sql`nextval('work_uid_seq')`),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("work_task_user_idx").on(t.userId, t.updatedAt), index("work_task_status_idx").on(t.status), index("work_task_project_idx").on(t.projectId)],
+  (t) => [
+    index("work_task_user_idx").on(t.userId, t.updatedAt),
+    index("work_task_status_idx").on(t.status),
+    index("work_task_project_idx").on(t.projectId),
+    index("work_task_parent_idx").on(t.parentId),
+  ],
 );
 
 /** The task timeline, normalized from harness events. `seq` orders events within a task. */

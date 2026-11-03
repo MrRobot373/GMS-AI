@@ -7,6 +7,26 @@ import { get } from "./api";
 
 export type TaskStatus = "queued" | "running" | "needs_approval" | "completed" | "failed" | "cancelled";
 
+/** What the independent review found when a build task ended (docs/19-work-ai-reliability-plan.md). */
+export interface WorkVerification {
+  rounds: number;
+  passed: number;
+  total: number;
+  items: { id: string; requirement: string; status: "pass" | "fail" | "untested"; observed?: string }[];
+  reviewTaskId?: string | null;
+  skipped?: string;
+  at: string;
+}
+
+/** A requirement of a build task's checklist and where it stands. */
+export interface ChecklistItem {
+  id: string;
+  requirement: string;
+  milestone: number;
+  status: "unchecked" | "pass" | "fail";
+  observed?: string;
+}
+
 export interface WorkTaskSummary {
   id: string;
   title: string;
@@ -41,7 +61,7 @@ export interface WorkEvent {
 export interface WorkTaskDetail {
   /** How full the model's context window is (a running task only). */
   context?: { used: number; window: number } | null;
-  task: WorkTaskSummary & { workspaceId: string; sessionId: string | null; projectId: string | null; sharedToProject: boolean };
+  task: WorkTaskSummary & { workspaceId: string; sessionId: string | null; projectId: string | null; sharedToProject: boolean; verification?: WorkVerification | null };
   events: WorkEvent[];
   live: boolean;
   /** False for a colleague's task shared to a project (read-only). */

@@ -500,6 +500,7 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     z.object({ action: z.literal("press"), key: z.string().trim().min(1).max(60), holdMs: z.number().int().min(0).max(5000).default(0) }),
     z.object({ action: z.literal("click_at"), x: z.number().min(0).max(4000), y: z.number().min(0).max(4000) }),
     z.object({ action: z.literal("eval"), expression: z.string().trim().min(1).max(4000) }),
+    z.object({ action: z.literal("upload"), ref: z.number().int().min(1), files: z.array(z.string().trim().min(1).max(300)).min(1).max(10) }),
   ]);
   app.post(`${BASE}/browser`, internal, async (req, reply) => {
     const t = taskOf(req);
@@ -531,6 +532,8 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
           return await br.clickAt(t.taskId, target, b.x, b.y);
         case "eval":
           return await br.evaluate(t.taskId, target, b.expression);
+        case "upload":
+          return await br.upload(t.taskId, target, b.ref, b.files);
       }
     } catch (e) {
       if (!(e instanceof BrowserError)) req.log.warn({ err: (e as Error).message }, "browser: unexpected failure");

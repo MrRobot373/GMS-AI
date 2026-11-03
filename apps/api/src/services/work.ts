@@ -32,11 +32,28 @@ import {
   workTask,
   sql,
   type DB,
+  type WorkVerification,
 } from "@aatmiq/db";
 import { containerLauncher, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
 import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
+import { runChecks, type CheckResult } from "./work-checks";
+import { gitSnapshot, loadProgress, loadState, PROGRESS_FILE, progressEntry, saveState, STAGE_ROUNDS, stagePrompt } from "./work-stages";
+import {
+  allGood,
+  feedbackText,
+  MAX_REVIEW_ROUNDS,
+  mergeResults,
+  parseReport,
+  REVIEW_FILE,
+  REVIEW_TIMEOUT_MS,
+  reviewerPrompt,
+  verificationLine,
+  verificationOf,
+  type ReviewReport,
+} from "./work-review";
+import { ACCEPTANCE_FILE, acceptanceBrief, checklistText, CHECKLIST_RULES, isBuildRequest, loadAcceptance, planAcceptance, saveAcceptance, type Acceptance } from "./work-spec";
 import { webSearchReady } from "./web-search";
 
 const CODE_LIBRARY: readonly LibraryCategory[] = ["Software development", "Data", "Apps", "Platform"];
@@ -52,7 +69,7 @@ import { appendFile, chmod, chown, cp, mkdir, readdir, readFile, realpath, rm, s
 import { join, relative, resolve, sep } from "node:path";
 import { notify, type AppContext } from "../context";
 import { msg } from "../i18n";
-import { resolveModel } from "./models";
+import { availableModels, resolveModel } from "./models";
 import { PROJECT_FOLDER, projectFor, projectInstructions, writeProjectFiles } from "./project-work";
 
 export type TaskStatus = (typeof workTask.$inferSelect)["status"];
@@ -99,6 +116,26 @@ interface Live {
   verifyNudged?: boolean;
   /** The model's context window, in tokens: long requests and restart history are sized to it. */
   contextWindow?: number;
+  /** What the request asked for as checkable items (build tasks; .task/acceptance.json). */
+  acceptance?: Acceptance | null;
+  /** A reviewer task's builder task (the reviewer works on a copy of its folder). */
+  parentId?: string | null;
+  /** The independent review is running: the builder waits (and doesn't hold a slot). */
+  reviewing?: boolean;
+  reviewChildId?: string;
+  reviewTimer?: NodeJS.Timeout;
+  /** Review attempts so far (the code checks count as one when they alone sent the builder back). */
+  reviewRound?: number;
+  /** What the checks code ran said in the current attempt. */
+  lastDet?: CheckResult[];
+  /** The verification to keep when the task concludes. */
+  finalVerification?: WorkVerification | null;
+  /** This turn wrote or ran something (so a build with a checklist is checked again), and whether it is a fix after review feedback. */
+  changed?: boolean;
+  fromReview?: boolean;
+  /** The stage being built (a big brief is built stage by stage; 1-based) and how often it went back for what checks found. */
+  milestone?: number;
+  stageRound?: number;
   /** Files the agent read or changed, oldest first (re-injected after condensing). */
   recentFiles?: Map<string, number>;
   /** The latest model request's size: tokens in the window, for the context meter. */
@@ -221,12 +258,14 @@ workdir?: string;
 recentFiles?: Map<string, number>;
 contextWindow?: number;
 plan: PlanItem[] | null;
+acceptance?: Acceptance | null;
+milestone?: number;
 }): Promise<{ text: string; files: string[]; notes: boolean } | null> {
   if (!l.workdir) return null;
   const window = l.contextWindow ?? DEFAULT_WINDOW;
   const notes = await notesText(l.workdir, window);
   const names = await symbolIndex(l.workdir, window);
-  if (!l.recentFiles?.size && !notes && !names.length) return null;
+  if (!l.recentFiles?.size && !notes && !names.length && !l.acceptance) return null;
   const perFile = Math.min(REINJECT_FILE_MAX, Math.floor(window * REINJECT_FILE_SHARE));
   let left = Math.min(REINJECT_TOTAL_MAX, Math.floor(window * REINJECT_TOTAL_SHARE));
   const root = await realpath(l.workdir).catch(() => l.workdir!);
@@ -250,13 +289,14 @@ plan: PlanItem[] | null;
     } else parts.push(`- ${rel} (${info.size.toLocaleString("en-US")} bytes; read the part you need)`);
     files.push(rel);
   }
-  if (!files.length && !notes && !names.length) return null;
+  if (!files.length && !notes && !names.length && !l.acceptance) return null;
   const open = (l.plan ?? []).map((i) => `- [${i.status}] ${i.content}`);
   return {
     files,
     notes: !!notes,
     text: [
       "Older steps were just condensed.",
+      ...(l.acceptance ? ["", `Acceptance checklist (${ACCEPTANCE_FILE}): ${CHECKLIST_RULES}`, ...checklistText(l.acceptance, l.milestone)] : []),
       ...(notes ? ["", `Your notes (${NOTES_FILE}, your memory of the names and decisions your files agree on):`, notes] : []),
       ...(names.length ? ["", "What your code files define right now (call these by exactly these names; a name not listed here, check with grep before you use it):", ...names] : []),
       ...(parts.length ? ["", "So you don't have to read them again, these are the files you worked on most recently, as they are on disk now:", "", ...parts] : []),
@@ -444,6 +484,9 @@ const VERIFY_NUDGE = [
 
 /** After code was written and never run or opened. */
 const TRY_NUDGE = `You wrote code in this task but haven't run or opened it since. Try it now: run it, or for a web page, app or game open it with browser_open by its path (like game/index.html) and fix any script errors it shows. ${VERIFY_NUDGE}`;
+
+/** A reviewer that ended without its report. */
+const REVIEW_NUDGE = `You haven't written ${REVIEW_FILE} yet. Test whatever is left, then write ${REVIEW_FILE} as JSON in the shape you were given, with an entry for every item to test, and reply with one line saying it's written.`;
 
 const CUT_OFF_NUDGE = "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence. Write a long file in several smaller parts.";
 
@@ -665,6 +708,8 @@ export class WorkRunner {
     await this.record(taskId, "user", { text });
     this.freshStarts.delete(taskId);
     const l = this.live.get(taskId);
+    // A new message from the person comes before a review of the old work.
+    if (l?.reviewing) await this.stopReview(l);
     if (l?.runtime?.alive && !l.cancelled) {
       clearTimeout(l.idleTimer);
       const prompt = await this.briefed(l, text, this.seqs.get(taskId) ?? 0);
@@ -733,22 +778,26 @@ export class WorkRunner {
   /** Tasks working right now (a turn in progress, not waiting for a person). */
   working(): number {
     let n = 0;
-    for (const l of this.live.values()) if (l.busy && !l.waiting) n++;
+    for (const l of this.live.values()) if (l.busy && !l.waiting && !l.reviewing) n++;
     return n;
   }
 
   private hasSlot(userId: string, s: WorkSettingsValue): boolean {
     if (this.working() >= s.maxRunning) return false;
     let mine = 0;
-    for (const l of this.live.values()) if (l.userId === userId && l.busy) mine++;
+    for (const l of this.live.values()) if (l.userId === userId && l.busy && !l.reviewing) mine++;
     return mine < s.maxConcurrentPerUser;
   }
 
   /** Start a new turn on a warm runtime. */
-  private async resume(l: Live, prompt: string) {
+  private async resume(l: Live, prompt: string, opts: { review?: boolean } = {}) {
     clearTimeout(l.idleTimer);
     l.pending = undefined;
     l.busy = true;
+    // A turn that sends the builder back to fix what a review found is always checked again; any
+    // other is checked only if it changed something.
+    l.fromReview = !!opts.review;
+    l.changed = false;
     l.lastError = null;
     l.turnOutput = false;
     l.usedTools = false;
@@ -798,6 +847,7 @@ export class WorkRunner {
     if (!task || task.status !== "queued") return;
     const token = randomBytes(32).toString("hex");
     const l: Live = { taskId, userId: task.userId, workspaceId: task.workspaceId, token, runtime: null, busy: true, cancelled: false, lastError: null, lastAnswer: "", plan: null };
+    l.parentId = task.parentId;
     this.live.set(taskId, l);
     this.byToken.set(token, taskId);
     await this.setStatus(taskId, "running");
@@ -828,6 +878,14 @@ export class WorkRunner {
       });
       await this.prepareFolder(taskId, runUid);
       if (code) await this.ctx.code.prepare(task.userId, workdir);
+      // A build gets its checklist once, before the builder starts (a restarted task reads the file).
+      l.acceptance = await this.acceptanceFor(l, task, code ? "code" : "work", String(asked[0]?.data.text ?? ""));
+      if (l.acceptance) {
+        const st = await loadState(workdir);
+        l.milestone = Math.min(st?.milestone ?? 1, l.acceptance.milestones.length);
+        l.reviewRound = st?.reviewRound ?? 0;
+        if (!st) await this.saveBuildState(l);
+      }
       const [org] = await db.select({ productName: organization.productName }).from(organization).limit(1);
       // A task in a project (that its owner can still open): its instructions, files and connectors.
       let instructions: string | undefined;
@@ -885,10 +943,45 @@ export class WorkRunner {
         await runtime.stop();
         return;
       }
-      await runtime.send(await this.promptWithHistory(l));
+      // A big brief is built stage by stage, each stage's session fresh; anything else goes on from history.
+      const staged = !!l.acceptance && l.acceptance.milestones.length > 1;
+      if (staged) {
+        await this.record(taskId, "stage", { n: l.milestone ?? 1, total: l.acceptance!.milestones.length, name: l.acceptance!.milestones[(l.milestone ?? 1) - 1]?.name ?? "", state: "started" });
+        await runtime.send(await this.stageOpening(l));
+      } else {
+        const opening = await this.promptWithHistory(l);
+        await runtime.send(l.acceptance ? `${opening}\n\n${acceptanceBrief(l.acceptance)}` : opening);
+      }
     } catch (e) {
       await this.fail(taskId, e instanceof Error ? e.message : "The agent couldn't start.");
     }
+  }
+
+  /**
+   * The task's acceptance checklist: the file in its folder when there is one, else a new one for a
+   * request that asks for something to be built (Work AI tasks only; a reviewer's task has none).
+   */
+  private async acceptanceFor(l: Live, task: typeof workTask.$inferSelect, section: "work" | "code", request: string): Promise<Acceptance | null> {
+    if (!l.workdir || section === "code" || task.parentId) return null;
+    const have = await loadAcceptance(l.workdir);
+    if (have) return have;
+    // Only a task's first message gets a checklist; a later "continue" on an old task doesn't.
+    if (!request || !isBuildRequest(request) || (await this.hadWork(task.id))) return null;
+    const planned = await planAcceptance(this.ctx, { taskId: task.id, workspaceId: task.workspaceId, userId: task.userId, request }).catch((e) => {
+      this.opts.log?.("work: planning the checklist failed", e);
+      return null;
+    });
+    if (!planned) return null;
+    await saveAcceptance(l.workdir, planned);
+    if (l.runUid !== undefined) await this.chownTree(join(l.workdir, ".task"), l.runUid);
+    await this.record(task.id, "acceptance", { items: planned.items, milestones: planned.milestones });
+    return planned;
+  }
+
+  /** The task has already run a tool (it isn't at its first message). */
+  private async hadWork(taskId: string): Promise<boolean> {
+    const [r] = await this.ctx.db.select({ n: sql<number>`count(*)::int` }).from(workEvent).where(and(eq(workEvent.taskId, taskId), eq(workEvent.kind, "tool_call")));
+    return (r?.n ?? 0) > 0;
   }
 
   /**
@@ -980,6 +1073,268 @@ export class WorkRunner {
     return this.live.get(taskId)?.context ?? null;
   }
 
+  /* ───────────── Milestone build mode (docs/19-work-ai-reliability-plan.md) ───────────── */
+
+  private async saveBuildState(l: Live) {
+    if (!l.workdir) return;
+    await saveState(l.workdir, { milestone: l.milestone ?? 1, reviewRound: l.reviewRound ?? 0 });
+    if (l.runUid !== undefined) await this.chownTree(join(l.workdir, ".task"), l.runUid);
+  }
+
+  /** The first message of a stage's session: the request, the checklist, the progress file and what the code defines. */
+  private async stageOpening(l: Live): Promise<string> {
+    const { db } = this.ctx;
+    const asked = await db.select({ seq: workEvent.seq, data: workEvent.data }).from(workEvent).where(and(eq(workEvent.taskId, l.taskId), eq(workEvent.kind, "user"))).orderBy(asc(workEvent.seq));
+    const first = asked[0];
+    const latest = asked.length > 1 ? asked.at(-1) : undefined;
+    const window = l.contextWindow ?? DEFAULT_WINDOW;
+    return stagePrompt({
+      a: l.acceptance!,
+      stage: l.milestone ?? 1,
+      request: await this.briefed(l, String(first?.data.text ?? ""), first?.seq ?? 0),
+      progress: await loadProgress(l.workdir!),
+      names: await symbolIndex(l.workdir!, window),
+      files: await folderSummary(l.workdir!),
+      notes: await notesText(l.workdir!, window),
+      ...(latest ? { latest: await this.briefed(l, String(latest.data.text ?? ""), latest.seq) } : {}),
+    });
+  }
+
+  /**
+   * A stage ended: the checks code decides run on what's built so far. What fails goes back to the
+   * builder (a few times); then the stage is written into the progress file and snapshotted, and
+   * the next stage starts in a fresh session. True: the task goes on (never the end).
+   */
+  private async afterStage(l: Live): Promise<boolean> {
+    const a = l.acceptance!;
+    const k = l.milestone ?? 1;
+    const det = await this.checksFor(l, k);
+    for (const r of det) {
+      const item = a.items.find((i) => i.id === r.id);
+      if (item) {
+        item.status = r.status;
+        item.observed = r.observed;
+      }
+    }
+    await this.saveChecklist(l);
+    const failed = a.items.filter((i) => det.some((r) => r.id === i.id && r.status === "fail"));
+    const round = (l.stageRound = (l.stageRound ?? 0) + 1);
+    if (failed.length && round <= STAGE_ROUNDS && l.runtime?.alive && !l.cancelled) {
+      await this.record(l.taskId, "stage", { n: k, total: a.milestones.length, name: a.milestones[k - 1]?.name ?? "", state: "checks", failed: failed.map((i) => i.id) });
+      await this.resume(l, feedbackText({ passed: [], failed, untested: [], hygiene: null }, round, { source: "The automatic checks for this stage", rounds: STAGE_ROUNDS }), { review: true });
+      return true;
+    }
+    l.stageRound = 0;
+    const workdir = l.workdir!;
+    const stat = await folderSummary(workdir);
+    await mkdir(join(workdir, ".task"), { recursive: true });
+    await appendFile(join(workdir, PROGRESS_FILE), progressEntry(a, k, stat));
+    await gitSnapshot(workdir, `Stage ${k} of ${a.milestones.length}: ${a.milestones[k - 1]?.name ?? ""}`, l.runUid !== undefined ? (p) => this.chownTree(p, l.runUid!) : undefined);
+    await this.record(l.taskId, "stage", { n: k, total: a.milestones.length, name: a.milestones[k - 1]?.name ?? "", state: "done", passed: a.items.filter((i) => i.milestone <= k && i.status === "pass").length, failed: failed.map((i) => i.id) });
+    l.milestone = k + 1;
+    await this.saveBuildState(l);
+    // The next stage: a fresh runtime (start() builds its opening from the files), not this one's history.
+    await this.release(l.taskId);
+    await this.setStatus(l.taskId, "queued", { error: null });
+    await this.pump();
+    return true;
+  }
+
+  /* ───────────── Independent review (docs/19-work-ai-reliability-plan.md) ───────────── */
+
+  /** The checks code decides, for the whole checklist or up to a stage; the leftovers check comes with the last. */
+  private checksFor(l: Live, milestone?: number): Promise<CheckResult[]> {
+    const browser = this.ctx.browser?.available ? this.ctx.browser : undefined;
+    return runChecks(l.acceptance!, {
+      workdir: l.workdir!,
+      ...(browser ? { browser } : {}),
+      browserKey: `${l.taskId}~check`,
+      profileDir: join(this.taskDir(l.taskId), "runtime", "check-browser"),
+      ...(l.runUid !== undefined ? { uid: l.runUid } : {}),
+      ...(milestone !== undefined ? { milestone } : {}),
+    });
+  }
+
+  /** The checklist's states, kept in the folder and shown on the task page. */
+  private async saveChecklist(l: Live) {
+    const a = l.acceptance;
+    if (!a || !l.workdir) return;
+    await saveAcceptance(l.workdir, a);
+    if (l.runUid !== undefined) await this.chownTree(join(l.workdir, ".task"), l.runUid);
+    await this.record(l.taskId, "acceptance", { items: a.items, milestones: a.milestones });
+  }
+
+  /**
+   * The builder says it's done and the task has a checklist: the checks code decides first (a fail
+   * goes straight back to the builder, no reviewer needed), then a reviewer who didn't build it
+   * tests the rest. True when that took over the turn (the builder was sent back, or a review runs);
+   * false when the task can conclude, with `finalVerification` set.
+   */
+  private async afterBuild(l: Live): Promise<boolean> {
+    const a = l.acceptance;
+    if (!a || !l.workdir) return false;
+    // A reply that changed nothing (a question, a "hello") isn't checked again; a fix after feedback
+    // always is. A stage that found its work done still moves on, and a build that has not been
+    // reviewed yet is reviewed.
+    const staged = a.milestones.length > 1;
+    const moving = staged && (l.milestone ?? 1) < a.milestones.length;
+    if (!l.changed && !l.fromReview && !moving && !(staged && (l.reviewRound ?? 0) === 0)) return false;
+    // A stage that isn't the last: its own checks, then the next stage in a fresh session.
+    if (a.milestones.length > 1 && (l.milestone ?? 1) < a.milestones.length) return this.afterStage(l);
+    const round = (l.reviewRound = (l.reviewRound ?? 0) + 1);
+    await this.saveBuildState(l);
+    const det = await this.checksFor(l);
+    l.lastDet = det;
+    const o = mergeResults(a, det, null);
+    await this.saveChecklist(l);
+    const decided = new Set(det.map((r) => r.id));
+    const toJudge = a.items.some((i) => !decided.has(i.id));
+    if (det.some((r) => r.status === "fail")) {
+      await this.record(l.taskId, "review", { round, state: "checks", failed: det.filter((r) => r.status === "fail").map((r) => r.id) });
+      if (round <= MAX_REVIEW_ROUNDS && l.runtime?.alive && !l.cancelled) {
+        await this.resume(l, feedbackText(o, round), { review: true });
+        return true;
+      }
+      l.finalVerification = verificationOf(a, o, { rounds: round, reviewTaskId: null });
+      return false;
+    }
+    if (!toJudge) {
+      l.finalVerification = verificationOf(a, o, { rounds: round, reviewTaskId: null });
+      return false;
+    }
+    return this.startReview(l, det, round);
+  }
+
+  /** The model to review with: Advanced tier and not the builder's, else the nearest to that. */
+  private async reviewerModel(l: Live) {
+    const [t] = await this.ctx.db.select({ modelId: workTask.modelId }).from(workTask).where(eq(workTask.id, l.taskId));
+    const models = await availableModels(this.ctx.db, l.workspaceId, "work", l.userId);
+    const other = models.filter((m) => m.id !== t?.modelId);
+    return other.find((m) => m.tier === "advanced") ?? models.find((m) => m.tier === "advanced") ?? other.find((m) => m.tier === "standard") ?? models.find((m) => m.id === t?.modelId) ?? models[0] ?? null;
+  }
+
+  /** Start the reviewer: a task of its own, on a copy of the folder, that the builder waits for. */
+  private async startReview(l: Live, det: CheckResult[], round: number): Promise<boolean> {
+    const a = l.acceptance!;
+    const { db } = this.ctx;
+    const skip = (why: string) => {
+      l.finalVerification = verificationOf(a, mergeResults(a, det, null), { rounds: round, reviewTaskId: null, skipped: why });
+      return false;
+    };
+    const model = await this.reviewerModel(l);
+    if (!model) return skip("no model is available for the review");
+    const [parent] = await db.select({ title: workTask.title }).from(workTask).where(eq(workTask.id, l.taskId));
+    const [first] = await db
+      .select({ data: workEvent.data })
+      .from(workEvent)
+      .where(and(eq(workEvent.taskId, l.taskId), eq(workEvent.kind, "user")))
+      .orderBy(asc(workEvent.seq))
+      .limit(1);
+    const [child] = await db
+      .insert(workTask)
+      .values({ workspaceId: l.workspaceId, userId: l.userId, title: `Review: ${parent?.title ?? "task"}`.slice(0, 80), modelId: model.id, parentId: l.taskId })
+      .returning();
+    if (!child) return skip("the review couldn't be started");
+    try {
+      await this.prepareFolder(child.id, child.runUid);
+      const from = this.filesDir(l.taskId);
+      await cp(from, this.filesDir(child.id), { recursive: true, filter: (src) => !/(^|[\\/])(\.git|node_modules|downloads|screenshots)([\\/]|$)/.test(relative(from, src)) });
+      await this.chownTree(this.filesDir(child.id), child.runUid);
+    } catch (e) {
+      this.opts.log?.("work: preparing a review failed", e);
+      await db.delete(workTask).where(eq(workTask.id, child.id));
+      return skip("the review couldn't be started");
+    }
+    const browser = !!this.ctx.browser?.available && (await getWorkSettings(db)).browser;
+    l.reviewing = true;
+    l.reviewChildId = child.id;
+    l.busy = true;
+    l.reviewTimer = setTimeout(() => void this.judgeReview(l, null, "the review took too long", child.id, true).catch((e) => this.opts.log?.("work: ending a review failed", e)), REVIEW_TIMEOUT_MS);
+    l.reviewTimer.unref();
+    await this.setStatus(l.taskId, "running");
+    await this.record(l.taskId, "review", { round, state: "started", reviewTaskId: child.id, model: model.displayName });
+    await this.submit(child.id, reviewerPrompt(String(first?.data.text ?? ""), a, det, browser));
+    return true;
+  }
+
+  /** The reviewer's task ended: read its report and decide (see judgeReview). */
+  private async reviewFinished(child: Live, childError: string | null) {
+    const parent = child.parentId ? this.live.get(child.parentId) : undefined;
+    // The reviewer's work is done; its runtime and browser needn't stay for the idle minutes.
+    void this.release(child.taskId).catch(() => undefined);
+    if (!parent || !parent.reviewing || parent.reviewChildId !== child.taskId) return;
+    clearTimeout(parent.reviewTimer);
+    await this.rollUp(parent.taskId, child.taskId);
+    let report: ReviewReport | null = null;
+    let why: string | undefined;
+    if (childError) why = "the reviewer stopped before it reported";
+    else {
+      const parsed = parseReport(await readFile(join(child.workdir ?? this.filesDir(child.taskId), REVIEW_FILE), "utf8").catch(() => ""));
+      if (parsed.ok) report = parsed.report;
+      else why = "the reviewer didn't write a usable report";
+    }
+    await this.judgeReview(parent, report, why, child.taskId);
+  }
+
+  /**
+   * What the review found: all good, or the builder goes back to what isn't right (up to
+   * MAX_REVIEW_ROUNDS times), or the task ends saying what was not met. A review that never
+   * reported ends the task unverified, and says so.
+   */
+  private async judgeReview(l: Live, report: ReviewReport | null, skipped: string | undefined, reviewTaskId: string, cancelChild = false) {
+    if (!l.reviewing || l.reviewChildId !== reviewTaskId) return;
+    clearTimeout(l.reviewTimer);
+    l.reviewing = false;
+    l.reviewChildId = undefined;
+    if (cancelChild) await this.cancel(reviewTaskId);
+    const a = l.acceptance!;
+    const round = l.reviewRound ?? 1;
+    const o = mergeResults(a, l.lastDet ?? [], skipped ? null : report);
+    await this.saveChecklist(l);
+    await this.record(l.taskId, "review", { round, state: "done", reviewTaskId, passed: o.passed.length, failed: o.failed.map((i) => i.id), untested: o.untested.map((i) => i.id) });
+    const v = (extra: { skipped?: string } = {}) => verificationOf(a, o, { rounds: round, reviewTaskId, ...extra });
+    if (skipped) return this.conclude(l, null, v({ skipped }));
+    if (allGood(o) || round > MAX_REVIEW_ROUNDS || !l.runtime?.alive || l.cancelled) return this.conclude(l, null, v());
+    await this.resume(l, feedbackText(o, round), { review: true });
+  }
+
+  /** The person wrote while a review ran: the review stops, and the message is the builder's next. */
+  private async stopReview(l: Live) {
+    clearTimeout(l.reviewTimer);
+    const child = l.reviewChildId;
+    l.reviewing = false;
+    l.reviewChildId = undefined;
+    l.busy = false;
+    if (child) await this.cancel(child);
+  }
+
+  /** A reviewer's tokens count in its task's. */
+  private async rollUp(parentId: string, childId: string) {
+    const { db } = this.ctx;
+    const [c] = await db.select({ i: workTask.inputTokens, o: workTask.outputTokens }).from(workTask).where(eq(workTask.id, childId));
+    if (c) await db.update(workTask).set({ inputTokens: sql`${workTask.inputTokens} + ${c.i}`, outputTokens: sql`${workTask.outputTokens} + ${c.o}` }).where(eq(workTask.id, parentId));
+  }
+
+  /** The reviewer wrote its report, in a shape that reads. */
+  private async reportReady(l: Live): Promise<boolean> {
+    const text = await readFile(join(l.workdir ?? this.filesDir(l.taskId), REVIEW_FILE), "utf8").catch(() => "");
+    return parseReport(text).ok;
+  }
+
+  /** Where a task ends: its status, the answer, what the review found, the person told. */
+  private async conclude(l: Live, error: string | null, verification?: WorkVerification | null) {
+    l.reviewing = false;
+    l.busy = false;
+    l.idleSince = Date.now();
+    const v = verification ?? l.finalVerification ?? null;
+    l.finalVerification = null;
+    await this.setStatus(l.taskId, error ? "failed" : "completed", { result: l.lastAnswer ? clip(l.lastAnswer, 4000) : null, error, ...(v ? { verification: v } : {}) });
+    if (v) await this.record(l.taskId, "verification", v as unknown as Record<string, unknown>);
+    await this.notifyDone(l, error, v);
+    this.armIdle(l);
+    await this.pump();
+  }
+
   private async onEvent(l: Live, e: HarnessEvent) {
     const { taskId } = l;
     switch (e.type) {
@@ -1004,6 +1359,7 @@ export class WorkRunner {
             if (files.size > 50) files.delete(files.keys().next().value!);
           }
         }
+        if (e.name === "write" || e.name === "edit" || e.name === "bash" || e.name === "pwsh") l.changed = true;
         if (writesCode(e.name, e.args)) {
           l.untried = true;
           l.wroteCode = true;
@@ -1045,8 +1401,11 @@ export class WorkRunner {
         const blank = e.reason !== "completed" && e.reason !== "blocked" && !!l.usedTools && /no content|empty (response|reply)/i.test(e.error ?? "");
         // Code written: sent back once to check it against the request, and to try it if it never ran
         // (a model's "it works" isn't a check).
-        const verify = e.reason === "completed" && !!l.wroteCode && !l.verifyNudged;
-        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
+        // Not when a checklist exists: the independent review replaces the builder checking itself.
+        const verify = e.reason === "completed" && !!l.wroteCode && !l.verifyNudged && !l.acceptance && !l.parentId;
+        // A reviewer ends with its report in the folder.
+        const reportMissing = !!l.parentId && e.reason === "completed" && !(await this.reportReady(l));
+        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
         if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
           l.continues = (l.continues ?? 0) + 1;
           l.idleNudge = !l.usedTools;
@@ -1088,14 +1447,15 @@ export class WorkRunner {
                 e.reason !== "blocked" && open.length > 0
                 ? unfinishedNote(open, l.plan!.length)
                 : null);
-        await this.setStatus(taskId, error ? "failed" : "completed", { result: l.lastAnswer ? clip(l.lastAnswer, 4000) : null, error });
-        await this.notifyDone(l, error);
-        this.armIdle(l);
-        await this.pump();
+        // A finished build with a checklist is checked before it is called done.
+        if (!error && e.reason === "completed" && !l.parentId && l.acceptance && (await this.afterBuild(l))) return;
+        await this.conclude(l, error);
+        if (l.parentId) await this.reviewFinished(l, error);
         return;
       }
       case "exit": {
-        this.live.delete(taskId);
+        // Only this runtime's own entry: a later session of the task may already be there.
+        if (this.live.get(taskId) === l) this.live.delete(taskId);
         this.byToken.delete(l.token);
         clearTimeout(l.idleTimer);
         // A follow-up waiting for a slot starts again from history.
@@ -1124,12 +1484,14 @@ export class WorkRunner {
     await this.pump();
   }
 
-  private async notifyDone(l: Live, error: string | null) {
+  private async notifyDone(l: Live, error: string | null, verification?: WorkVerification | null) {
+    // A reviewer is part of its builder's task: only the builder tells the person.
+    if (l.parentId) return;
     const [t] = await this.ctx.db.select({ title: workTask.title }).from(workTask).where(eq(workTask.id, l.taskId));
     await notify(this.ctx.db, [l.userId], {
       type: error ? "work_failed" : "work_done",
       title: error ? (t ? `Task needs attention: ${t.title}` : "A task needs attention") : t ? `Task finished: ${t.title}` : "A task finished",
-      body: error ?? (l.lastAnswer ? clip(l.lastAnswer, 200) : undefined),
+      body: error ?? (verification && (verification.skipped || verification.passed < verification.total) ? verificationLine(verification) : l.lastAnswer ? clip(l.lastAnswer, 200) : undefined),
       link: `/app/work/${l.taskId}`,
     });
   }
@@ -1158,6 +1520,12 @@ export class WorkRunner {
   async cancel(taskId: string) {
     const l = this.live.get(taskId);
     if (l) l.cancelled = true;
+    if (l?.reviewChildId) {
+      clearTimeout(l.reviewTimer);
+      const child = l.reviewChildId;
+      l.reviewChildId = undefined;
+      await this.cancel(child);
+    }
     await this.release(taskId);
     await this.expireApprovals(taskId);
     const [t] = await this.ctx.db.select({ status: workTask.status }).from(workTask).where(eq(workTask.id, taskId));
@@ -1168,6 +1536,11 @@ export class WorkRunner {
   async remove(taskId: string) {
     await this.cancel(taskId);
     this.seqs.delete(taskId);
+    // Its reviewers' folders go with it (their rows are deleted with the task).
+    for (const c of await this.ctx.db.select({ id: workTask.id }).from(workTask).where(eq(workTask.parentId, taskId))) {
+      this.seqs.delete(c.id);
+      await rm(this.taskDir(c.id), { recursive: true, force: true });
+    }
     await rm(this.taskDir(taskId), { recursive: true, force: true });
   }
 

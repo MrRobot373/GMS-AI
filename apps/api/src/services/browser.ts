@@ -148,6 +148,8 @@ export interface PageView {
   canvasText?: string[];
   /** browser_eval: the expression's value, as JSON. */
   result?: string;
+  /** Dialogs (alert, confirm, prompt) the page opened since the last action, and what was done with them. */
+  dialogs?: string[];
 }
 
 /** Find the system's Chromium: BROWSER_PATH, the image's /usr/bin/chromium, or Playwright's own copy. */
@@ -197,7 +199,7 @@ export const SNAPSHOT = String.raw`(() => {
     const aria = e.getAttribute("aria-label") || (by && doc.getElementById(by) ? doc.getElementById(by).textContent : "");
     const byFor = e.id ? (doc.querySelector('label[for="' + CSS.escape(e.id) + '"]') || {}).textContent : "";
     const wrap = e.closest("label") ? e.closest("label").textContent : "";
-    const own = e.tagName === "INPUT" ? e.placeholder || wrap || e.name : e.innerText || e.title || e.getAttribute("alt") || wrap;
+    const own = e.tagName === "INPUT" ? e.placeholder || wrap || e.name || e.id : e.innerText || e.title || e.getAttribute("alt") || wrap;
     return clean(aria || byFor || own).slice(0, 100);
   };
   const role = (el) => {
@@ -211,6 +213,7 @@ export const SNAPSHOT = String.raw`(() => {
     if (t === "input") {
       const type = el.type;
       if (["submit", "button", "reset", "image"].includes(type)) return "button";
+      if (type === "file") return "file input";
       if (["checkbox", "radio"].includes(type)) return type;
       return "textbox";
     }
@@ -220,7 +223,9 @@ export const SNAPSHOT = String.raw`(() => {
   let n = 0;
   const refs = new Map();
   for (const el of Array.from(doc.querySelectorAll(interactive))) {
-    if (!visible(el) || el.disabled) continue;
+    // A file input is often hidden behind an "Import" button; it is the only way to give a page a file.
+    const fileInput = el.tagName === "INPUT" && el.type === "file";
+    if ((!visible(el) && !fileInput) || el.disabled) continue;
     refs.set(el, ++n);
     el.setAttribute("data-aatmiq-ref", String(n));
   }
@@ -307,6 +312,8 @@ interface Session {
   blocked: { host: string; reason: string } | null;
   /** Script errors since the last view (uncaught exceptions and console errors). */
   errors: string[];
+  /** Dialogs since the last view. */
+  dialogs: string[];
   lastUsed: number;
 }
 
@@ -422,6 +429,7 @@ export class BrowserService {
       downloads: [],
       blocked: null,
       errors: [],
+      dialogs: [],
       lastUsed: Date.now(),
     };
     const error = (text: string) => {
@@ -432,6 +440,13 @@ export class BrowserService {
         const why = r.headers()["x-aatmiq-blocked"];
         if (why && r.request().isNavigationRequest())
           s.blocked = { host: new URL(r.url()).hostname, reason: decodeURIComponent(why) };
+      });
+      // A page the agent built asks "Are you sure?": accepted, so it can be used, and reported so it
+      // can be seen (Puppeteer-style tools can't see native dialogs). On any other page: declined.
+      p.on("dialog", (d) => {
+        const mine = p.url().startsWith(`${LOCAL_ORIGIN}/`);
+        if (s.dialogs.length < MAX_ERRORS) s.dialogs.push(`${d.type()} "${d.message().slice(0, 200)}" (${mine ? "accepted" : "declined"})`);
+        void (mine ? d.accept() : d.dismiss()).catch(() => undefined);
       });
       p.on("pageerror", (e) => error(e.stack?.split("\n").slice(0, 2).join(" ") || e.message));
       p.on("console", (m) => {
@@ -510,6 +525,7 @@ export class BrowserService {
     const text = ((await s.page.evaluate(SNAPSHOT).catch(() => "")) as string) || "";
     const downloads = s.downloads.splice(0);
     const errors = s.errors.splice(0);
+    const dialogs = s.dialogs.splice(0);
     const canvasText = s.page.url().startsWith(`${LOCAL_ORIGIN}/`)
       ? (((await s.page
           .evaluate(
@@ -533,6 +549,7 @@ export class BrowserService {
       truncated: text.length > MAX_TEXT,
       downloads,
       ...(errors.length ? { errors } : {}),
+      ...(dialogs.length ? { dialogs } : {}),
       ...(canvasText.length ? { canvasText } : {}),
     };
   }
@@ -717,6 +734,36 @@ export class BrowserService {
       await s.page.mouse.click(x, y);
       await s.page.waitForTimeout(300);
     } catch (e) {
+      await this.explain(e);
+    }
+    return this.view(s);
+  }
+
+  /**
+   * Put files from the task folder into a file input of a page from the task folder (importing a
+   * CSV, uploading an image): the agent can't use the file chooser a click opens. Only the task's
+   * own files and pages, so nothing of the task goes to a website.
+   */
+  async upload(taskId: string, target: () => Promise<BrowserTarget>, ref: number, files: string[]): Promise<PageView> {
+    const s = await this.session(taskId, target);
+    this.local(s);
+    if (!files.length || files.length > 10) throw new BrowserError("Name 1 to 10 files from your working folder.");
+    const root = await realpath(s.target.workdir).catch(() => s.target.workdir);
+    const real: string[] = [];
+    for (const f of files) {
+      const rel = f.replace(/\\/g, "/").replace(/^\.\//, "");
+      const found = await realpath(join(root, rel)).catch(() => null);
+      if (!found || (found !== root && !found.startsWith(root + sep)) || !(await stat(found).catch(() => null))?.isFile())
+        throw new BrowserError(`${f} isn't a file in your working folder.`);
+      real.push(found);
+    }
+    const el = await this.exists(s, ref);
+    try {
+      if (!(await el.evaluate((n) => n instanceof HTMLInputElement && n.type === "file"))) throw new BrowserError(`[${ref}] isn't a file input. Use the number of the file input in the page view.`);
+      await el.setInputFiles(real);
+      await s.page.waitForTimeout(400);
+    } catch (e) {
+      if (e instanceof BrowserError) throw e;
       await this.explain(e);
     }
     return this.view(s);

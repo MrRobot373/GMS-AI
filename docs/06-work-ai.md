@@ -174,6 +174,42 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   tracker finished with a CSV export nobody opened: every row began with a stray quote, so the app
   couldn't read its own export, and the list ran oldest first.) The stored result is this
   message's answer, never an earlier one.
+- **Checked before it's called done** (docs/19-work-ai-reliability-plan.md). A Work AI task that asks
+  for something to be built (an app, page, script, game; or a long brief) gets an **acceptance
+  checklist** before the builder starts: an Advanced-tier model turns the request into items, each one
+  thing that is true or false ("a negative amount is refused with a message on the page"), and a
+  second call looks for what it missed or invented. Code validates it, numbers the items (R1…) and
+  keeps it in `.task/acceptance.json`. The builder is handed it and can't change it; only the checks
+  and the reviewer set an item's state. Re-injected after condensing like the files and names.
+  - **Checks code decides** run first, in code and for free: a named file or folder is there, a data
+    file parses (JSON; CSV read strictly, which catches a stray quote on every row and one character
+    per line; HTML with a broken comment or a script it names that isn't there; a script's syntax),
+    a page opens in the browser with no script errors, and no leftover files that only said "done"
+    (`DONE`, `finish.txt`, test pages). A fail goes straight back to the builder.
+  - **The reviewer** is a task of its own (hidden from lists; its timeline opens from a link in the
+    parent), working on a **copy** of the folder, on a different Advanced-tier model when there is
+    one. It gets the original request and the checklist, never the builder's account of what it did,
+    and tests each item by using the work: runs it, opens the page, types, clicks, uploads a file
+    (`browser_upload`, which also finds a file input hidden behind an "Import" button), reads what the
+    program produced (an export: it clicks the button, then reads the file in `downloads/`), and
+    reads the page's state. Confirmation dialogs on the task's own pages are accepted and reported.
+    It writes `review.json`; a "pass" without written evidence counts as not tested, and a check
+    code failed can't be overturned by the reviewer.
+  - **Rounds.** What's not right goes back to the builder as a short list (item, what was found),
+    up to 3 rounds; then the task ends **completed with what's unmet listed** (`work_task.verification`:
+    the page shows "Finished with issues: 7 of 9 requirements met" and each unmet item), never a plain
+    "done". A review that never reports (the reviewer fails, or takes over 25 minutes) ends the task
+    marked "not reviewed". A message from the person during a review stops it and goes to the builder.
+    The reviewer's tokens count in the task's.
+  - **Milestone build mode.** With 9 or more items the checklist is grouped into 3 to 8 stages in
+    build order. Each stage is built by a **fresh session** whose first message is the request, this
+    stage's items, the progress file (`.task/progress.md`, written by the runtime after each stage),
+    what the code defines, the files and any notes, with no history of earlier sessions, so no
+    session holds more than its stage (and 32K windows stay under their threshold). After a stage the
+    checks code decides run on what's built so far (a fail goes back to the builder, up to 2
+    times); then the stage is recorded, snapshotted as a git commit in the task folder (a restore
+    point; not restored automatically), and the next stage starts. The full review follows the last.
+    Where the build stands (`.task/state.json`) survives a restart.
 - **The context window.** Every budget is a share of the model's own context length (Admin →
   Models; `contextBudget` in packages/harness/src/dsh/patch.ts), so big jobs work on small windows:
 

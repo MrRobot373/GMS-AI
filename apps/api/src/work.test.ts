@@ -32,6 +32,7 @@ const oauth = { registered: [] as Record<string, unknown>[], authorize: [] as Re
 let lastTools: string[] = [];
 let busyRefused = false;
 let emptySent = 0;
+let reviewsSeen = 0;
 
 /* ───────────── Fake model + SearXNG ───────────── */
 
@@ -54,9 +55,46 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   // A model whose generation breaks down into <unk> tokens, every time it's asked.
   if (last.role === "tool" && textOf(last.content).includes("junk-after-step"))
     return sse(res, [...Array.from({ length: 50 }, () => ({ choices: [{ index: 0, delta: { content: "<unk>".repeat(40) } }] })), { choices: [{ index: 0, delta: {}, finish_reason: "length" }] }, usage]);
+  // The checklist planner and its review pass (services/work-spec.ts), then a reviewer (work-review.ts).
+  const sys = textOf(body.messages.find((m) => m.role === "system")?.content);
+  const lastUser = textOf(body.messages.findLast((m) => m.role === "user")?.content);
+  if (sys.startsWith("You turn a request to build something")) {
+    const items = lastUser.includes("MISSING-FILE")
+      ? [{ requirement: "The tool is saved as tool.py", check: { kind: "path_exists", path: "tool.py" } }, { requirement: "A file notes.txt is there", check: { kind: "path_exists", path: "missing.txt" } }, { requirement: "It prints a greeting", check: { kind: "judged" } }]
+      : [{ requirement: "The tool is saved as tool.py", check: { kind: "path_exists", path: "tool.py" } }, { requirement: "Running it prints a greeting", how: "Run python3 tool.py", check: { kind: "judged" } }, { requirement: "Running it twice gives the same output", check: { kind: "judged" } }];
+    if (lastUser.includes("STAGES")) {
+      const staged = Array.from({ length: 9 }, (_, i) => ({ requirement: i === 0 ? "The tool is saved as tool.py" : `Stage requirement ${i + 1}`, milestone: 1 + Math.floor(i / 3), check: i === 0 ? { kind: "path_exists", path: "tool.py" } : { kind: "judged" } }));
+      return say(JSON.stringify({ build: true, milestones: [{ name: "Core" }, { name: "Features" }, { name: "Polish" }], items: staged }));
+    }
+    return say(JSON.stringify({ build: lastUser.includes("tool.py"), milestones: [], items }));
+  }
+  if (sys.startsWith("You check an acceptance checklist")) return say('{"add": [], "remove": []}');
+  const asking = textOf(body.messages.findLast((m) => m.role === "user" && !/^Current runtime context|^<system-reminder>/.test(textOf(m.content).trim()))?.content);
+  if (asking.includes("You are an independent reviewer")) {
+    const stepsDone = body.messages.slice(body.messages.findLastIndex((m) => m.role === "user" && textOf(m.content).includes("You are an independent reviewer"))).filter((m) => m.role === "tool").length;
+    if (stepsDone > 0) return say(asking.includes("REVIEW-SLOW") ? "I looked at it and it's fine." : "review.json is written.");
+    // A reviewer that is still busy (a command that takes a while) when the person writes.
+    if (asking.includes("REVIEW-SLOW"))
+      return sse(res, [
+        { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "bash", arguments: JSON.stringify({ description: "Wait", command: "sleep 60" }) } }] } }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+        usage,
+      ]);
+    if (asking.includes("REVIEW-NOREPORT")) return say("I looked at it and it's fine.");
+    reviewsSeen++;
+    const fail = asking.includes("REVIEW-FAIL-ONCE") && reviewsSeen === 1;
+    const evidence = "ran python3 tool.py and it printed: hello from the tool";
+    const ids = /One entry for each of ([^.]*)\./.exec(asking)?.[1]?.split(", ") ?? ["R2", "R3"];
+    const report = { items: ids.map((id, i) => ({ id, status: fail && i === 0 ? "fail" : "pass", observed: fail && i === 0 ? "it prints nothing" : "seen working", evidence: fail && i === 0 ? "" : evidence })) };
+    return sse(res, [
+      { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "write", arguments: JSON.stringify({ file_path: "review.json", content: JSON.stringify(report) }) } }] } }] },
+      { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+      usage,
+    ]);
+  }
   // "script: [[tool, args], …]": those calls one after another, then "Done.".
   const askAt = body.messages.findLastIndex((m) => m.role === "user" && !/^Current runtime context|^<system-reminder>/.test(textOf(m.content).trim()));
-  const script = /^script: (.+)/s.exec(textOf(body.messages[askAt]?.content).trim());
+  const script = /script: (\[\[.*?\]\])/s.exec(textOf(body.messages[askAt]?.content));
   if (script) {
     const next = (JSON.parse(script[1]!) as [string, unknown][])[body.messages.slice(askAt).filter((m) => m.role === "tool").length];
     if (!next) return say("Done.");
@@ -148,11 +186,19 @@ async function waitFor<T>(fn: () => Promise<T | null | undefined | false>, ms = 
 }
 
 const getTask = async (id: string) => (await call("GET", `/api/work/tasks/${id}`)).json as { task: { status: string; error: string | null; inputTokens: number; result: string | null }; events: { seq: number; kind: string; data: any }[]; live: boolean };
-const waitStatus = (id: string, ...statuses: string[]) =>
-  waitFor(async () => {
+const waitStatus = async (id: string, ...statuses: string[]) => {
+  try {
+    return await waitFor(async () => {
+      const t = await getTask(id);
+      return statuses.includes(t.task.status) ? t : null;
+    });
+  } catch (e) {
+    // Say where the task was, so a hang can be read from the failure.
     const t = await getTask(id);
-    return statuses.includes(t.task.status) ? t : null;
-  });
+    const tail = t.events.slice(-8).map((x) => `${x.kind}${x.data.state ? `:${x.data.state}` : ""}${x.data.status ? `:${x.data.status}` : ""}${x.data.name ? `:${x.data.name}` : ""}`);
+    throw new Error(`${(e as Error).message}: task ${id} was ${t.task.status} (error: ${t.task.error ?? "none"}); last events: ${tail.join(", ")}`);
+  }
+};
 
 d("Work AI", () => {
   let workspaceId = "";
@@ -422,7 +468,8 @@ d("Work AI", () => {
       const t = await waitStatus(r.json.id, "completed", "failed");
       const seq = t.events.find((e) => e.kind === "user")!.seq;
       expect(await readFile(join(workDir, r.json.id, "files", ".task", `request-${seq}.md`), "utf8")).toBe(brief);
-      const sent = modelRequests.flat().filter((x) => x.role === "user").map((x) => textOf(x.content));
+      // (Not the checklist planner's own call, which has to read the whole request.)
+      const sent = modelRequests.filter((m) => !textOf(m[0]?.content).startsWith("You turn a request to build something")).flat().filter((x) => x.role === "user").map((x) => textOf(x.content));
       expect(sent.some((x) => x.includes(`so it is saved in \`.task/request-${seq}.md\``) && x.includes("Build Ridge Riders."))).toBe(true);
       expect(sent.some((x) => x.includes(brief))).toBe(false);
       // The person's timeline keeps the whole message; the saved copy isn't one of the task's files.
@@ -603,7 +650,7 @@ d("Work AI", () => {
 
   it("checks code that did run against the request once, without asking to run it", async () => {
     const before = modelRequests.length;
-    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'script: [["write", {"file_path":"tool.py","content":"print(1)"}], ["bash", {"description":"Run it","command":"python3 tool.py"}]]' });
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: 'script: [["write", {"file_path":"sum.py","content":"print(1)"}], ["bash", {"description":"Run it","command":"python3 sum.py"}]]' });
     const t = await waitStatus(r.json.id, "completed", "failed");
     const asks = modelRequests.slice(before).filter((m) => m.at(-1)?.role === "user" && textOf(m.at(-1)!.content).includes("one requirement at a time"));
     expect(asks.length).toBe(1);
@@ -626,6 +673,123 @@ d("Work AI", () => {
     expect(t.events.filter((e) => e.kind === "context" && e.data.restarted)).toHaveLength(2);
     expect(t.task.error).toContain("no longer fits in the model's context window");
   }, 120_000);
+
+  describe("independent review of a build", () => {
+    const BUILD = (marker = "") => `script: [["write", {"file_path":"tool.py","content":"print('hello from the tool')\\n"}], ["bash", {"description":"Run it","command":"python3 tool.py"}]] ${marker}`.trim();
+    const children = async (id: string) => (await db.select().from(workTask).where(eq(workTask.parentId, id))) as { id: string; title: string; modelId: string | null }[];
+
+    it("plans a checklist, has a reviewer who didn't build it test the rest, and records what it found", async () => {
+      reviewsSeen = 0;
+      const before = modelRequests.length;
+      const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: BUILD() });
+      const t = await waitStatus(r.json.id, "completed", "failed");
+      expect(t.task.status).toBe("completed");
+      // The builder was handed the checklist, and told it can't change it.
+      const builderFirst = modelRequests.slice(before).find((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("Acceptance checklist (also in .task/acceptance.json)")));
+      expect(builderFirst).toBeTruthy();
+      expect(JSON.stringify(builderFirst)).toContain("You cannot edit it");
+      const file = JSON.parse(await readFile(join(workDir, r.json.id, "files", ".task", "acceptance.json"), "utf8"));
+      expect(file.items.map((i: { id: string }) => i.id)).toEqual(["R1", "R2", "R3"]);
+      // A reviewer task of its own ran on a copy of the folder, with the request and the checklist, not the builder's account.
+      const kids = await children(r.json.id);
+      expect(kids).toHaveLength(1);
+      expect(kids[0]!.title).toMatch(/^Review: /);
+      const reviewerPromptSeen = modelRequests.slice(before).find((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("You are an independent reviewer")));
+      expect(JSON.stringify(reviewerPromptSeen)).toContain("Running it prints a greeting");
+      expect(JSON.stringify(reviewerPromptSeen)).toContain("Already settled by automatic checks");
+      expect((await readFile(join(workDir, kids[0]!.id, "files", "tool.py"), "utf8")).trim()).toBe("print('hello from the tool')");
+      // What was found is kept on the task.
+      const v = (await db.select({ v: workTask.verification }).from(workTask).where(eq(workTask.id, r.json.id)))[0]!.v!;
+      expect(v).toMatchObject({ rounds: 1, passed: 4, total: 4, reviewTaskId: kids[0]!.id });
+      expect(v.items.map((i) => `${i.id}:${i.status}`)).toEqual(["R1:pass", "R2:pass", "R3:pass", "H1:pass"]);
+      expect(t.events.some((e) => e.kind === "review" && e.data.state === "started")).toBe(true);
+      expect(t.events.some((e) => e.kind === "verification")).toBe(true);
+      // The reviewer isn't a task in anyone's list, and its tokens count in the builder's.
+      expect((await call("GET", `/api/work/tasks?workspaceId=${workspaceId}`)).json.some((x: { id: string }) => x.id === kids[0]!.id)).toBe(false);
+      expect(t.task.inputTokens).toBeGreaterThan(300);
+    }, 120_000);
+
+    it("sends the builder back with what the review found, then checks again", async () => {
+      reviewsSeen = 0;
+      const before = modelRequests.length;
+      const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: BUILD("REVIEW-FAIL-ONCE") });
+      const t = await waitStatus(r.json.id, "completed", "failed");
+      const feedback = modelRequests.slice(before).find((m) => m.at(-1)?.role === "user" && textOf(m.at(-1)!.content).includes("The independent review (round 1 of 3)"));
+      expect(feedback).toBeTruthy();
+      expect(textOf(feedback!.at(-1)!.content)).toContain("- R2 Running it prints a greeting\n    found: it prints nothing");
+      const v = (await db.select({ v: workTask.verification }).from(workTask).where(eq(workTask.id, r.json.id)))[0]!.v!;
+      expect(v).toMatchObject({ rounds: 2, passed: 4, total: 4 });
+      expect(await children(r.json.id)).toHaveLength(2);
+      expect(t.events.filter((e) => e.kind === "review" && e.data.state === "done")).toHaveLength(2);
+    }, 180_000);
+
+    it("a check code decides sends the builder back without a reviewer; after three rounds it ends saying what's unmet", async () => {
+      const before = modelRequests.length;
+      const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: BUILD("MISSING-FILE") });
+      const t = await waitStatus(r.json.id, "completed", "failed");
+      expect(t.task.status).toBe("completed");
+      expect(await children(r.json.id)).toHaveLength(0);
+      const asked = modelRequests.slice(before).filter((m) => m.at(-1)?.role === "user" && textOf(m.at(-1)!.content).includes("The independent review (round "));
+      expect(asked).toHaveLength(3);
+      expect(textOf(asked[0]!.at(-1)!.content)).toContain("found: missing.txt isn't in the working folder");
+      const v = (await db.select({ v: workTask.verification }).from(workTask).where(eq(workTask.id, r.json.id)))[0]!.v!;
+      expect(v.rounds).toBe(4);
+      expect(v.items.find((i) => i.id === "R2")).toMatchObject({ status: "fail", observed: "missing.txt isn't in the working folder" });
+      expect(v.passed).toBeLessThan(v.total);
+    }, 180_000);
+
+    it("a reviewer that never reports ends the task unverified, and says so", async () => {
+      const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: BUILD("REVIEW-NOREPORT") });
+      const t = await waitStatus(r.json.id, "completed", "failed");
+      expect(t.task.status).toBe("completed");
+      const v = (await db.select({ v: workTask.verification }).from(workTask).where(eq(workTask.id, r.json.id)))[0]!.v!;
+      expect(v.skipped).toBe("the reviewer didn't write a usable report");
+      expect(v.items.filter((i) => i.status === "untested").map((i) => i.id)).toEqual(["R2", "R3"]);
+    }, 240_000);
+
+    it("builds a big brief stage by stage in fresh sessions, with a progress file and snapshots, then reviews the whole", async () => {
+      reviewsSeen = 0;
+      const before = modelRequests.length;
+      const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: BUILD("STAGES") });
+      const t = await waitStatus(r.json.id, "completed", "failed");
+      expect(t.task.status).toBe("completed");
+      const stages = t.events.filter((e) => e.kind === "stage").map((e) => `${e.data.state}:${e.data.n}`);
+      expect(stages).toEqual(["started:1", "done:1", "started:2", "done:2", "started:3"]);
+      // Stage 2's session started fresh: its first message is the stage, with the progress so far, and nothing of stage 1's conversation.
+      const second = modelRequests.slice(before).find((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("You are building stage 2 of 3")))!;
+      expect(second.some((x) => x.role === "tool" || x.role === "assistant")).toBe(false);
+      const opening = textOf(second.findLast((x) => x.role === "user" && textOf(x.content).includes("You are building stage 2 of 3"))!.content);
+      expect(opening).toContain("WHAT EARLIER STAGES DID (.task/progress.md):\n## Stage 1 of 3: Core");
+      expect(opening).toContain("This stage, 2 of 3 (Features):");
+      expect(opening).toContain("FILES IN THE FOLDER:\ntool.py (");
+      // The runtime kept the progress file and a snapshot per stage; where the build stands is on disk.
+      const files = join(workDir, r.json.id, "files");
+      const progress = await readFile(join(files, ".task", "progress.md"), "utf8");
+      expect(progress).toContain("## Stage 1 of 3: Core");
+      expect(progress).toContain("## Stage 2 of 3: Features");
+      expect(JSON.parse(await readFile(join(files, ".task", "state.json"), "utf8"))).toMatchObject({ milestone: 3, reviewRound: 1 });
+      const { execFileSync } = await import("node:child_process");
+      expect(execFileSync("git", ["-c", "safe.directory=*", "log", "--format=%s"], { cwd: files, encoding: "utf8" }).trim().split("\n")).toEqual(["Stage 2 of 3: Features", "Stage 1 of 3: Core"]);
+      // The whole is reviewed after the last stage.
+      const v = (await db.select({ v: workTask.verification }).from(workTask).where(eq(workTask.id, r.json.id)))[0]!.v!;
+      expect(v).toMatchObject({ rounds: 1, passed: 10, total: 10 });
+      expect(await children(r.json.id)).toHaveLength(1);
+    }, 240_000);
+
+    it("a message from the person while the review runs stops the review", async () => {
+      reviewsSeen = 0;
+      const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: BUILD("REVIEW-SLOW") });
+      await waitFor(async () => ((await children(r.json.id)).length > 0 ? true : null));
+      await call("POST", `/api/work/tasks/${r.json.id}/messages`, { prompt: "never mind the review, just say hello" });
+      const t = await waitFor(async () => {
+        const x = await getTask(r.json.id);
+        return x.task.status === "completed" && x.events.filter((e) => e.kind === "user").length === 2 ? x : null;
+      });
+      expect(t.task.result).toContain("never mind the review");
+      const kids = await children(r.json.id);
+      expect((await db.select({ s: workTask.status }).from(workTask).where(eq(workTask.id, kids[0]!.id)))[0]!.s).toBe("cancelled");
+    }, 120_000);
+  });
 
   it("streams the timeline over SSE", async () => {
     const res = await fetch(`${apiUrl}/api/work/tasks/${taskId}/stream?after=2`, { headers: { cookie: owner.cookie } });

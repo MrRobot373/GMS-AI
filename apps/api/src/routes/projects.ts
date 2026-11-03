@@ -164,7 +164,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
         })
         .from(workTask)
         .innerJoin(user, eq(user.id, workTask.userId))
-        .where(and(eq(workTask.projectId, p.id), or(eq(workTask.userId, u.id), eq(workTask.sharedToProject, true))))
+        .where(and(eq(workTask.projectId, p.id), isNull(workTask.parentId), or(eq(workTask.userId, u.id), eq(workTask.sharedToProject, true))))
         .orderBy(desc(workTask.updatedAt))
         .limit(200),
     ]);
