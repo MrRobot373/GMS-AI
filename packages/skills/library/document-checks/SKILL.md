@@ -44,6 +44,16 @@ Build the workbook first, compute every figure once (a dict or dataframe), and w
 the report from that same object, so they cannot disagree. Round the same way everywhere. Any
 sentence you cannot trace to a computed number does not go in.
 
+### One source for the numbers
+
+Several files from one data set (a workbook, a deck, a report): compute every figure **once**, save it
+(a `figures.json`, or the dataframes), and write all the files from it. Never generate the data again
+in a later step: a second random draw is a different data set and the files disagree. If a later step
+must read the workbook, read its calculated values (`xlsx_values.read_calculated` in the
+`excel-spreadsheets` skill): a workbook written by openpyxl has formulas but no stored results, and
+`pandas.read_excel` returns `NaN` for them. The audit's `--agree` checks the figures in the deck and
+the report against the workbook's calculated values.
+
 ## 3. Look at what a person will see
 
 Render and read it; counting shapes is not looking.

@@ -26,6 +26,22 @@ Messy sheets: find the real header row (`df.head(15)`), drop empty rows/columns
 (`dropna(how="all")`), remove subtotal rows, unmerge headers by forward-filling (`ffill`).
 To read formulas' cached values with openpyxl use `load_workbook(path, data_only=True)`.
 
+## Read the numbers a workbook shows (not its formulas)
+
+A workbook you wrote with openpyxl has formulas but **no results** until a spreadsheet program opens
+it: `pd.read_excel(...)` and `load_workbook(data_only=True)` return `NaN` / `None` for every formula
+cell. A later step (the deck, the report) that reads it then sees empty numbers and makes up its own,
+and the files stop agreeing. Read the calculated values instead:
+
+```python
+import sys; sys.path.insert(0, "<base dir>/scripts")
+from xlsx_values import read_calculated      # calculates a copy with LibreOffice
+sheets = read_calculated("Sales.xlsx")        # {"Data": DataFrame, "Summary": DataFrame, ...}
+```
+
+Or compute every figure once in pandas, save it (`figures.json`), build the workbook's formulas to
+reproduce it, and have the deck and report read `figures.json`.
+
 ## Write formatted sheets (helper)
 
 `scripts/xlsx_helpers.py` in this skill's folder writes DataFrames as styled tables:
