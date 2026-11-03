@@ -66,19 +66,26 @@ ws.add_chart(chart, "E2"); wb.save("report.xlsx")
   state which. Formulas keep the workbook live; values are safer to share.
 - Number formats: `#,##0`, `#,##0.00`, `"$"#,##0.00` (or the currency asked for), `0.0%`,
   `yyyy-mm-dd`. Never store numbers as text.
+- A percent number format multiplies by 100: store **fractions** (0.0937) in `0.0%` cells. A column
+  of 9.37 formatted as a percent shows 937%. (`write_sheets` refuses such a column.)
+- Targets, thresholds and sample data must be realistic: if every row is far above target, the
+  red/amber rules never show and nobody can tell they work. Make some rows miss.
+- Charts read from cells (a summary range), have a title and axis labels, and sit where they cover no data.
 - Name sheets clearly (≤ 31 characters, no `/ \ ? * [ ]`).
 - Don't overwrite the person's original file; save a new one unless asked.
 
 ## Verify
 
-Re-open the saved file and print what's in it:
-```python
-wb = load_workbook("report.xlsx")
-for ws in wb: print(ws.title, ws.dimensions, [c.value for c in ws[1]])
-```
-Check totals against pandas, and that formulas reference the right ranges.
+Use the `document-checks` skill; it is not optional for a workbook.
+
+- Run its `office_audit.py` on the .xlsx and fix every FAIL. It calculates the formulas with
+  LibreOffice (a workbook written by openpyxl has never been calculated), so `#DIV/0!` and `#REF!`
+  show up, and it catches percent formats on whole numbers.
+- Check totals against pandas, and that formulas reference the right ranges.
+- If a deck or report uses these figures, compute them once from this workbook's data and run the
+  audit with `--agree` on all the files.
 
 ## Done when
 
-The workbook opens, sheets are named and formatted, numbers and totals are correct and checked, and
-your summary lists the sheets and what each contains.
+The audit shows no FAIL, totals match an independent calculation, and your summary lists the sheets
+and what each contains.

@@ -25,6 +25,33 @@ describe("what asks for a build", () => {
   });
 });
 
+describe("what asks for files to be made", () => {
+  it("is a request for an Excel workbook, a deck or a Word report, not a question about them", () => {
+    expect(isBuildRequest("I need a Q3 sales performance pack for our leadership meeting: an Excel workbook, a PowerPoint deck and a Word report.")).toBe(true);
+    expect(isBuildRequest("Create a budget spreadsheet (budget.xlsx) for the marketing team with monthly totals")).toBe(true);
+    expect(isBuildRequest("Prepare a 10 slide deck on our hiring plan for next quarter")).toBe(true);
+    expect(isBuildRequest("How do I make a pivot table in Excel to sum sales by region?")).toBe(false);
+    expect(isBuildRequest("What does a PowerPoint transition do and when should I use one")).toBe(false);
+  });
+
+  it("keeps an office_audit check for a file in the folder, with only the requirements it knows", () => {
+    const a = buildAcceptance({
+      build: true,
+      milestones: [],
+      items: [
+        item("The workbook exists with formulas", { check: { kind: "office_audit", path: "Northwind_Q3_Sales.xlsx", require: ["formulas:10", "CHARTS: 2", "notes", "bogus", "pages:6-8"] } }),
+        item("The report is 6 to 8 pages", { check: { kind: "office_audit", path: "out/report.docx", require: ["pages:6-8", "toc"] } }),
+        item("Not a document", { check: { kind: "office_audit", path: "notes.txt" } }),
+        item("Outside the folder", { check: { kind: "office_audit", path: "../secret.xlsx" } }),
+      ],
+    })!;
+    expect(a.items[0]!.check).toEqual({ kind: "office_audit", path: "Northwind_Q3_Sales.xlsx", require: ["formulas:10", "charts:2", "notes", "pages:6-8"] });
+    expect(a.items[1]!.check).toEqual({ kind: "office_audit", path: "out/report.docx", require: ["pages:6-8", "toc"] });
+    expect(a.items[2]!.check).toEqual({ kind: "judged" });
+    expect(a.items[3]!.check).toEqual({ kind: "judged" });
+  });
+});
+
 describe("a checklist from a model's draft", () => {
   it("numbers the items and keeps checks code can run; one stage for a small brief", () => {
     const a = buildAcceptance({

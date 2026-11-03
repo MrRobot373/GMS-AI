@@ -20,8 +20,16 @@ python-docx is installed. The fastest reliable path: write the content in Markdo
    ```bash
    python3 scripts/md_to_docx.py draft.md "Proposal - Acme.docx" --title "Proposal for Acme" --font Calibri --size 11
    ```
-   It handles headings 1–3, bold/italic/code, bullet and numbered lists (one nested level), tables
-   with a shaded header row, quotes, code blocks and `---` page breaks.
+   It handles headings 1–3, bold/italic/code, bullet and numbered lists (one nested level; each
+   numbered list restarts at 1), tables with a shaded header row and right-aligned numbers, quotes,
+   code blocks and `---` page breaks. It also does what reports need, so do not fake them:
+   - `[TOC]` on a line: a **real table of contents** (a Word field, entries and page numbers filled in).
+     Never type a contents list with dots and numbers yourself: its page numbers are wrong.
+   - `![Figure 1: Revenue by region](chart.png)`: a centred picture with its caption.
+   - `--cover`: the first `# Title` and the paragraphs under it become a cover page.
+   - the title in the header and "Page X of Y" in the footer, on by default.
+   - Use `---` (a page break) only where a new page is wanted, not before every section: that leaves
+     pages mostly empty and doubles the page count. Say how long the document should be and keep to it.
 3. For extra polish, open the result with python-docx and adjust (below).
 
 ## python-docx essentials
@@ -59,15 +67,23 @@ document stays consistent and the navigation pane works.
 - Consistent dates (e.g. 7 October 2026) and currency formatting.
 - Page numbers in the footer for long documents (add a PAGE field via python-docx XML if needed).
 
+## Write the facts from the data
+
+Every figure and every claim in the prose ("West led", "Fertilizer is the top product", "up 12%") must
+be computed from the data in code and written into the text with an f-string, never typed from
+memory. Build the Markdown from the same numbers the workbook and deck use. Write in one language
+and one script, and never leave `{placeholders}` or `TODO` in the text.
+
 ## Verify
 
-Re-open the saved file and print headings and table counts:
-```python
-d = Document("out.docx"); print([p.text for p in d.paragraphs if p.style.name.startswith("Heading")], len(d.tables))
-```
-Proofread the Markdown source once more for typos, names and numbers.
+Use the `document-checks` skill; it is not optional for a report.
+
+- Run its `office_audit.py` on the .docx (with `--require toc,page_numbers,header_title,pages:A-B`
+  for whatever the request asked) and fix every FAIL; read each WARN.
+- Render it (`soffice --headless --convert-to pdf`, then `pdftotext -layout`) and read every page.
+- Proofread the Markdown source once more for typos, names and numbers.
 
 ## Done when
 
-The .docx opens, structure and styles are consistent, numbers and names are checked, and you told
-the person the file name and what's in it.
+The audit shows no FAIL, you read the rendered pages, the page count matches the request, every
+number and claim was computed from the data, and your answer lists what you checked.

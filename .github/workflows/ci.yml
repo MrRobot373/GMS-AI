@@ -45,7 +45,7 @@ jobs:
       - name: Tools the agent's tests use (command sandbox, Word and Excel libraries)
         run: |
           sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends bubblewrap
-          sudo python3 -m pip install -q --break-system-packages python-docx openpyxl
+          sudo python3 -m pip install -q --break-system-packages python-docx python-pptx openpyxl pypdf pillow
       - run: pnpm install --frozen-lockfile
       # Each Work AI task runs as its own Unix user; it has to reach the checkout (in the runner's
       # home, closed to others by default) the way it reaches /app in the Docker image.
@@ -89,7 +89,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      - run: sudo python3 -m pip install -q --break-system-packages python-docx openpyxl
+      - run: sudo python3 -m pip install -q --break-system-packages python-docx python-pptx openpyxl pypdf pillow
       - name: Let task users reach the checkout
         run: sudo chmod a+x /home/runner
       - run: pnpm install --frozen-lockfile

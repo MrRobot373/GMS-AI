@@ -57,14 +57,20 @@ FROM node:22-bookworm-slim
 # yt-dlp finds lesson videos without a YouTube key (the way Agent-Reach reads YouTube). YouTube
 # changes often: bump YT_DLP_VERSION when searches start failing.
 ARG YT_DLP_VERSION=2026.8.19
+# OFFICE_TOOLS: LibreOffice and poppler, which the document-checks skill (and the check Work AI runs on
+# Excel, PowerPoint and Word files) uses to calculate formulas, count pages and render them. About
+# 400 MB; build with --build-arg OFFICE_TOOLS=false for a smaller image (those checks then say what
+# they could not check).
+ARG OFFICE_TOOLS=true
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash ca-certificates curl git jq less procps unzip zip file python3 python3-pip python3-venv openssh-client \
       libnss-wrapper iptables \
       chromium fonts-liberation fonts-noto-color-emoji \
+ && if [ "$OFFICE_TOOLS" = "true" ]; then apt-get install -y --no-install-recommends libreoffice-calc libreoffice-impress libreoffice-writer poppler-utils fonts-carlito fonts-dejavu-core; fi \
  && rm -rf /var/lib/apt/lists/* \
  && python3 -m pip install --no-cache-dir --break-system-packages \
-      numpy scipy pandas openpyxl matplotlib python-docx python-pptx reportlab pypdf lxml pyyaml "yt-dlp==${YT_DLP_VERSION}"
+      numpy scipy pandas openpyxl matplotlib python-docx python-pptx reportlab pypdf pillow lxml pyyaml "yt-dlp==${YT_DLP_VERSION}"
 # The Docker CLI, for container mode (WORK_ISOLATION=container: each Work AI task in its own
 # container through the mounted Docker socket). Unused otherwise.
 ARG DOCKER_CLI_VERSION=27.5.1

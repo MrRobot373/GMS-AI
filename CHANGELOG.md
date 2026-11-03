@@ -9,6 +9,22 @@ without one.
 
 ## Unreleased
 
+- **Work AI checks Excel, PowerPoint, Word and PDF files, not only software.** A live run of "an Excel
+  workbook, a deck and a report" came back looking done with: no speaker notes (it said there were),
+  a chart sitting on top of a table, discounts that display as 937%, a typed "table of contents" with
+  wrong page numbers, a 12-page report when 6–8 were asked for, a Chinese sentence and a raw
+  `{datetime.now()}` in the text, "0.0%" in the summary, and claims written by hand that were false
+  ("North leads", "Fertilizer is the top product everywhere"). Nothing reviewed it, because documents
+  were excluded from the checklist. Now: such a request gets a checklist; each file is audited by the
+  new `document-checks` skill's `office_audit.py` (formulas calculated, percent formats, overlapping
+  or off-slide shapes, notes, a real contents field, page count and blank pages, stray scripts,
+  leftover template text, figures that aren't in the workbook); the reviewer recomputes the claims
+  from the data; and the agent is told to run the same audit while it builds. The slide builder now
+  makes real titles, native charts that can't overlap a table, and notes; the Word converter makes a
+  real contents field with page numbers, a cover, header and footer, captioned figures and numbered
+  lists that restart. The production image installs LibreOffice and poppler for this (about 400 MB;
+  `--build-arg OFFICE_TOOLS=false` leaves them out).
+
 - **Work AI builds to a checklist and is reviewed by someone who didn't build it**
   ([docs/19-work-ai-reliability-plan.md](docs/19-work-ai-reliability-plan.md)). A build request gets an
   acceptance checklist before work starts. When the builder says it's done, checks that code decides

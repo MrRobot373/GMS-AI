@@ -478,8 +478,9 @@ export function triesCode(name: string, args: unknown): boolean {
 const VERIFY_NUDGE = [
   "Before you finish, check your work against what was asked, one requirement at a time. Take the request's list (reread it from your notes or the saved request file) and for each item do something that proves it: run it, open the page and use the feature, or read what it produced.",
   "If your program writes a file (an export, a report, a download), open that file and read its content: check its format, and that your own program can read it back. Check order, totals, wording and every case the request names, not only that nothing crashes. Read the finished page for text that shouldn't be there.",
+  "If you made an Excel, PowerPoint, Word or PDF file, load the document-checks skill and follow it: run its audit on every file, render the pages and read them, and make sure each claim in the text comes from the data in code. Checking that a file opens, or counting its objects, is not checking it.",
   "Fix what you find, then check it again. Delete files you made only to signal you're done or to test (DONE, finish.txt, test pages) unless the person asked for them.",
-  "Then give your summary: for each requirement, how you checked it, and what you couldn't check.",
+  "Then give your summary: for each requirement, how you checked it, and what you couldn't check. Never write that you checked something you did not run.",
 ].join(" ");
 
 /** After code was written and never run or opened. */
@@ -1122,7 +1123,7 @@ export class WorkRunner {
     const round = (l.stageRound = (l.stageRound ?? 0) + 1);
     if (failed.length && round <= STAGE_ROUNDS && l.runtime?.alive && !l.cancelled) {
       await this.record(l.taskId, "stage", { n: k, total: a.milestones.length, name: a.milestones[k - 1]?.name ?? "", state: "checks", failed: failed.map((i) => i.id) });
-      await this.resume(l, feedbackText({ passed: [], failed, untested: [], hygiene: null }, round, { source: "The automatic checks for this stage", rounds: STAGE_ROUNDS }), { review: true });
+      await this.resume(l, feedbackText({ passed: [], failed, untested: [], hygiene: null, consistency: null }, round, { source: "The automatic checks for this stage", rounds: STAGE_ROUNDS }), { review: true });
       return true;
     }
     l.stageRound = 0;

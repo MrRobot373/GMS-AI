@@ -50,6 +50,14 @@ Acme Services · October 2026
 ![](revenue_trend.png)
 > Mention the one large deal that slipped to Q4.
 
+## Where the revenue came from
+- West led at ₹4.53M (23.3%)
+```chart bar "Revenue by region (INR)"
+West, 4527582
+Central, 3988472
+```
+> West is the biggest region; East trails.
+
 ## Section: Next quarter
 
 ## Three priorities for Q4
@@ -62,8 +70,14 @@ Acme Services · October 2026
 python3 scripts/outline_to_pptx.py outline.md "Q3 Review.pptx" --accent 0072B2 --font Calibri
 ```
 
-Supports: title slide, bullet slides (2 levels), an image or table beside bullets, section dividers
-(`## Section: …`), speaker notes (`> …`), slide numbers, 16:9.
+Supports: title slide, bullet slides (2 levels), a table, a **native chart** (` ```chart bar|barh|line|pie "Title" `
+then `label, value[, value]` rows) or an image beside the bullets, section dividers (`## Section: …`),
+speaker notes (`> …`, also on the title slide), real title placeholders, slide numbers, 16:9.
+Draw charts with the chart block, not by adding shapes yourself afterwards: the script lays out
+bullets, table and chart so they cannot overlap, and a chart you place by hand on top of a table is
+the usual way a deck goes wrong. It prints a WARNING for each slide with no notes, more than 6
+bullets, or too little room; fix them and run it again.
+Write the notes for **every** slide, the title and section slides too, when the request asks for notes.
 
 ## 4. Refine with python-pptx (optional)
 
@@ -79,12 +93,16 @@ Edit text runs, swap images, or add shapes there. When the person provides a bra
 
 ## Checks
 
+Use the `document-checks` skill; it is not optional for a deck.
+
+- Run its `office_audit.py` on the .pptx (with `--require notes` if notes were asked for, and
+  `--agree` against the workbook the figures come from) and fix every FAIL.
+- Render the deck to PDF and read each slide (`soffice --headless --convert-to pdf`, `pdftotext -layout`).
 - Read only the titles in order: do they tell the whole story?
-- Every number matches the source data; units and periods on every chart.
-- Nothing overflows: keep bullets short (the script wraps text but can't shrink it).
-- Consistent fonts and colors; spell-check names.
+- Every figure comes from the data in code (never typed from memory); units and periods on every chart.
+- A claim like "X leads" or "Y is the top product" is computed (`idxmax`), never written by hand.
 
 ## Done when
 
-The deck file opens, titles carry the story, each slide has one point with evidence, notes hold the
-detail, and you summarized the slide list.
+The audit shows no FAIL, you read the rendered slides, titles carry the story, each slide has one
+point with evidence, notes hold the detail, and your answer lists what you checked.

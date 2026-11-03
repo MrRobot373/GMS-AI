@@ -1,6 +1,6 @@
 # Skill library
 
-Aatmiq ships 71 built-in skills that Work AI and the Aatmiq panel (Code) can use. A skill is a
+Aatmiq ships 72 built-in skills that Work AI and the Aatmiq panel (Code) can use. A skill is a
 folder with a `SKILL.md`: a one-line description the agent sees in every task ("Use when…"), and
 detailed instructions it loads only when a task matches — a workflow, checklists, templates,
 pitfalls and a "Done when" bar. Some skills also ship tested helper scripts the agent runs from the
@@ -103,12 +103,13 @@ in `coveredBy`. Maturity stays `draft` until the cases have been run in a real t
 | `financial-analysis` — Financial analysis | business finance: P&L, budget vs actual, cash flow and runway, margins, break-even, forecasts, pricing math, ratios. | – |
 | `kpi-report` — KPI report and dashboard | producing a recurring KPI report or dashboard: period comparisons, targets, highlights, as Markdown, Excel or HTML. | – |
 
-### Documents & writing (8)
+### Documents & writing (9)
 
 | Skill | Use it for | Helpers |
 |---|---|---|
 | `business-writing` — Business writing | writing professional emails, memos, announcements, letters or replies: clear structure, right tone, ready to send. | – |
 | `meeting-notes` — Meeting notes and agendas | turning a transcript or notes into minutes (decisions, action items with owners and dates) or preparing an agenda. | – |
+| `document-checks` — Checking documents | you made an Excel, PowerPoint, Word or PDF file and must check it before saying done: audit, render, claims. | `office_audit.py` |
 | `pdf-documents` — PDF documents | working with PDFs: extract text, merge, split, rotate, watermark, or create a polished PDF from Markdown. Has a script. | `md_to_pdf.py` |
 | `presentations` — Presentations (.pptx) | making a slide deck (.pptx): pitch, update, sales or training presentations; storyline and a script that builds the deck. | `outline_to_pptx.py` |
 | `proofreading-editing` — Proofreading and editing | proofreading or editing text: grammar, spelling, clarity, tone, length, style-guide consistency, with changes shown. | – |

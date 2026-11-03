@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { allGood, feedbackText, mergeResults, parseReport, reviewerPrompt, verificationLine, verificationOf } from "./services/work-review";
-import { HYGIENE_ID } from "./services/work-checks";
+import { CONSISTENCY_ID, HYGIENE_ID } from "./services/work-checks";
 import { buildAcceptance, type Check } from "./services/work-spec";
 
 const list = () =>
@@ -113,5 +113,44 @@ describe("what goes back to the builder, and what is kept", () => {
     expect(verificationLine(v)).toBe("2 of 5 requirements met; not met or not tested: R2, R3, R4");
     expect(verificationLine({ ...v, passed: 5, items: v.items.map((i) => ({ ...i, status: "pass" as const })) })).toBe("All 5 requirements checked and met");
     expect(verificationLine({ ...v, skipped: "the reviewer didn't write a report" })).toBe("Not reviewed: the reviewer didn't write a report");
+  });
+});
+
+describe("a review of documents", () => {
+  const docs = () =>
+    buildAcceptance({
+      build: true,
+      milestones: [],
+      items: [
+        { requirement: "The workbook has the Data and Summary sheets", check: { kind: "office_audit", path: "Sales.xlsx", require: ["formulas:10"] } as Check },
+        { requirement: "The report says which region leads", how: "Compare with the data", check: { kind: "judged" } as Check },
+        { requirement: "The deck has notes on every slide", check: { kind: "judged" } as Check },
+      ],
+    })!;
+
+  it("tells the reviewer to read the files, render the pages and recompute every claim from the data", () => {
+    const text = reviewerPrompt("Make a sales pack.", docs(), [{ id: "R1", status: "pass", observed: "Sales.xlsx audited" }], false);
+    expect(text).toContain("python-pptx");
+    expect(text).toContain("pdftotext -layout");
+    expect(text).toContain("Recompute every statement of fact");
+    expect(text).toContain("text in another language");
+    // A software review isn't told any of this.
+    expect(reviewerPrompt("x", list(), [], false)).not.toContain("Recompute every statement of fact");
+  });
+
+  it("a figure the workbook doesn't have fails the review, goes back to the builder and is kept in the result", () => {
+    const a = docs();
+    const det = [
+      { id: "R1", status: "pass" as const, observed: "Sales.xlsx audited" },
+      { id: CONSISTENCY_ID, status: "fail" as const, observed: 'Review.pptx: "0.0%" looks like a failed calculation' },
+    ];
+    const report = { items: [{ id: "R2", status: "pass" as const, observed: "", evidence: "West leads: 4,527,582 vs North 3,593,890 by my own sum" }, { id: "R3", status: "pass" as const, observed: "", evidence: "python-pptx: notes on 11 of 11 slides" }] };
+    const o = mergeResults(a, det, report);
+    expect(o.consistency?.status).toBe("fail");
+    expect(allGood(o)).toBe(false);
+    expect(feedbackText(o, 1)).toContain('Figures that don\'t come from the workbook: Review.pptx: "0.0%" looks like a failed calculation');
+    const v = verificationOf(a, o, { rounds: 1, reviewTaskId: null });
+    expect(v.items.find((i) => i.id === CONSISTENCY_ID)).toMatchObject({ status: "fail" });
+    expect(v.total).toBe(4);
   });
 });

@@ -73,7 +73,12 @@ Encrypted PDFs: `r.decrypt(password)` only with a password the person gave you.
 Open the output with `PdfReader` and confirm the page count and that text extracts as expected;
 for created PDFs, re-read the Markdown source for typos and verify numbers (totals, dates).
 
+## Check what you made
+
+Run the `document-checks` skill's `office_audit.py` on a PDF you created (pages, empty pages, leftover
+placeholders, stray scripts), and read the text of every page (`pdftotext -layout`).
+
 ## Done when
 
-The PDF exists with the right pages and content, extracted text is saved with page references, and
-you reported anything that couldn't be read (scans, images).
+The PDF exists with the right pages and content, extracted text is saved with page references, the
+audit shows no FAIL, and you reported anything that couldn't be read (scans, images).

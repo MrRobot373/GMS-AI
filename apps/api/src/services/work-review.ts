@@ -7,7 +7,7 @@
 import type { WorkVerification } from "@aatmiq/db";
 import { z } from "zod";
 import { msg } from "../i18n";
-import { HYGIENE_ID, HYGIENE_TEXT, type CheckResult } from "./work-checks";
+import { CONSISTENCY_ID, CONSISTENCY_TEXT, HYGIENE_ID, HYGIENE_TEXT, type CheckResult } from "./work-checks";
 import { ACCEPTANCE_FILE, type Acceptance, type AcceptanceItem } from "./work-spec";
 
 export const REVIEW_FILE = "review.json";
@@ -35,6 +35,8 @@ export type ReviewReport = z.infer<typeof reportSchema>;
 /* ───────────── What the reviewer is told ───────────── */
 
 const judged = (a: Acceptance) => a.items.filter((i) => i.check.kind === "judged");
+/** The checklist is for Excel, PowerPoint, Word or PDF files. */
+const documents = (a: Acceptance) => a.items.some((i) => i.check.kind === "office_audit");
 
 /**
  * The reviewer's first message. It has the original request and the checklist, the results the
@@ -61,6 +63,13 @@ export function reviewerPrompt(request: string, a: Acceptance, det: CheckResult[
     "- Anything the program produces (an export, a report, a download) has to be opened and read: click the button that makes it, then read the file (downloads are saved in downloads/). Check its format and its values, and that the program can read its own output back in.",
     "- Test the cases the request names and the ones it implies: an empty field, a negative number, a bad row in an import, a reload, a narrow screen. Check order, totals, wording and every number against what the request says.",
     "- Judge by what you see, not by what the code says it does or the README says.",
+    ...(documents(a)
+      ? [
+          "- For Excel, PowerPoint, Word and PDF files, read them as a person would: extract the text and numbers with python (openpyxl, python-pptx, python-docx; for a workbook's calculated values convert a copy with `soffice --headless --convert-to xlsx --outdir scratch FILE`), and render pages with `soffice --headless --convert-to pdf --outdir scratch FILE` then `pdftotext -layout`. Read every slide and page.",
+          "- Recompute every statement of fact in the deck and report from the source data with your own code: which region or product leads or trails, a top-5 list, a share, a growth figure, a total. A sentence you cannot reproduce from the data is a fail, with the right answer in \"observed\". Check the same figure is the same in every file. An item says speaker notes, a contents page, page numbers or a page count: look for them in the file; the automatic audit above already settled what it lists.",
+          "- Look for what a person would trip on: text in another language or a stray symbol, a placeholder or code left in the text, a heading with nothing under it, a chart without a title or with the wrong title for its data, numbers with no unit, and a deck or report that reads like a list of fields instead of saying what the numbers mean.",
+        ]
+      : []),
     "- Don't install anything or download anything, and don't delete or move files: such commands are refused here. Everything you need is in the browser tools and this folder; if something can't be tested, say so in your report.",
     "",
     `REPORT: when you have tested every item, write the file ${REVIEW_FILE} in this folder, and then reply with one line saying it's written. It is JSON in exactly this shape:`,
@@ -89,6 +98,8 @@ export interface Outcome {
   untested: AcceptanceItem[];
   /** The leftovers check, which isn't one of the request's items. */
   hygiene: CheckResult | null;
+  /** The figures-agree check of a workbook and the files made from it (also not one of the items). */
+  consistency: CheckResult | null;
 }
 
 /**
@@ -130,11 +141,12 @@ export function mergeResults(a: Acceptance, det: CheckResult[], report: ReviewRe
     failed: a.items.filter((i) => i.status === "fail"),
     untested: a.items.filter((i) => i.status === "unchecked"),
     hygiene: byDet.get(HYGIENE_ID) ?? null,
+    consistency: byDet.get(CONSISTENCY_ID) ?? null,
   };
 }
 
 /** Everything is verified: every item passed and nothing is left over. */
-export const allGood = (o: Outcome) => o.failed.length === 0 && o.untested.length === 0 && o.hygiene?.status !== "fail";
+export const allGood = (o: Outcome) => o.failed.length === 0 && o.untested.length === 0 && o.hygiene?.status !== "fail" && o.consistency?.status !== "fail";
 
 /* ───────────── What goes back to the builder ───────────── */
 
@@ -150,6 +162,7 @@ export function feedbackText(o: Outcome, round: number, opts: { source?: string;
     ...(o.failed.length ? ["", "Not right:", ...o.failed.map((i) => `- ${i.id} ${i.requirement}\n    found: ${cut(i.observed, 400)}`)] : []),
     ...(o.untested.length ? ["", "Could not be tested (make sure it can be used and shows its result):", ...o.untested.map((i) => `- ${i.id} ${i.requirement}\n    ${cut(i.observed, 200)}`)] : []),
     ...(o.hygiene?.status === "fail" ? ["", `Leftovers to delete: ${cut(o.hygiene.observed, 300).replace(/^leftover files: /, "")}`] : []),
+    ...(o.consistency?.status === "fail" ? ["", `Figures that don't come from the workbook: ${cut(o.consistency.observed, 500)}`] : []),
     "",
     `The checklist is in ${ACCEPTANCE_FILE} with each item's state. You cannot edit it.`,
   ].join("\n");
@@ -165,6 +178,7 @@ export function verificationOf(a: Acceptance, o: Outcome, opts: { rounds: number
     status: i.status === "pass" ? "pass" : i.status === "fail" ? "fail" : "untested",
     ...(i.observed ? { observed: i.observed.slice(0, 400) } : {}),
   }));
+  if (o.consistency) items.push({ id: CONSISTENCY_ID, requirement: CONSISTENCY_TEXT, status: o.consistency.status, observed: o.consistency.observed.slice(0, 400) });
   if (o.hygiene) items.push({ id: HYGIENE_ID, requirement: HYGIENE_TEXT, status: o.hygiene.status, observed: o.hygiene.observed.slice(0, 300) });
   return {
     rounds: opts.rounds,

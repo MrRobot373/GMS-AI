@@ -1,14 +1,16 @@
 /**
  * The checks of a build task that code decides. The bad inputs are the ones live runs produced.
  */
+import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { librarySkill } from "@aatmiq/skills";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BrowserService, findChromium } from "./services/browser";
 import { startEgressProxy, type EgressProxy } from "./services/egress";
-import { HYGIENE_ID, parseCsv, runChecks, strayFiles } from "./services/work-checks";
+import { CONSISTENCY_ID, HYGIENE_ID, parseCsv, runChecks, strayFiles } from "./services/work-checks";
 import { buildAcceptance, type Acceptance, type Check } from "./services/work-spec";
 
 describe("reading a CSV strictly", () => {
@@ -137,4 +139,102 @@ const chrome = findChromium();
     expect(by.R2!.observed).toContain("RR is not defined");
     expect(by.R3).toMatchObject({ status: "fail", observed: "blank.html opens as a blank page" });
   }, 60_000);
+});
+
+/* ───────────── Excel, PowerPoint and Word files (the Northwind run's defects, as files) ───────────── */
+
+const py = (code: string, ...args: string[]) => execFileSync("python3", ["-c", code, ...args], { encoding: "utf8", timeout: 120_000 });
+const hasPython = (() => {
+  try {
+    py("import openpyxl, pptx, docx");
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const skillScript = (skill: string, script: string) => join(librarySkill(skill)!.dir, "scripts", script);
+
+(hasPython ? describe : describe.skip)("the audit of documents", () => {
+  it("fails a workbook that shows 9.37 as 937%, passes one that stores a fraction", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "office-x-"));
+    py(
+      `import sys, openpyxl
+for name, v in (("bad.xlsx", 9.37), ("good.xlsx", 0.0937)):
+    wb = openpyxl.Workbook(); ws = wb.active; ws.append(["Order", "Discount %"]); ws.append([1, v]); ws["B2"].number_format = "0.0%"
+    wb.save(sys.argv[1] + "/" + name)`,
+      dir,
+    );
+    const a = listOf({ kind: "office_audit", path: "bad.xlsx" }, { kind: "office_audit", path: "good.xlsx" }, { kind: "office_audit", path: "missing.xlsx" });
+    const by = Object.fromEntries((await runChecks(a, { workdir: dir, browserKey: "k", profileDir: join(dir, "p") })).map((r) => [r.id, r]));
+    expect(by.R1).toMatchObject({ status: "fail" });
+    expect(by.R1!.observed).toContain("formatted as percent");
+    expect(by.R1!.observed).toContain("937%");
+    expect(by.R2).toMatchObject({ status: "pass" });
+    expect(by.R3).toMatchObject({ status: "fail", observed: "missing.xlsx isn't in the working folder" });
+  }, 120_000);
+
+  it("fails a deck with a chart on its table and no speaker notes; passes the deck the skill builds", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "office-p-"));
+    py(
+      `import sys
+from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
+from pptx.util import Inches
+prs = Presentation(); s = prs.slides.add_slide(prs.slide_layouts[5]); s.shapes.title.text = "Revenue by region"
+s.shapes.add_table(4, 3, Inches(0.5), Inches(1.5), Inches(6), Inches(2)); cd = CategoryChartData(); cd.categories = ["A", "B"]; cd.add_series("R", [1, 2])
+s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(2), Inches(5), Inches(3), cd)
+prs.save(sys.argv[1] + "/bad.pptx")`,
+      dir,
+    );
+    await writeFile(join(dir, "outline.md"), "# Review\nSample data\n> Welcome.\n\n## West leads at 4.5M\n- Central follows\n```chart bar \"Revenue\"\nWest, 4527582\nCentral, 3988472\n```\n> Notes here.\n");
+    execFileSync("python3", [skillScript("presentations", "outline_to_pptx.py"), join(dir, "outline.md"), join(dir, "good.pptx")], { timeout: 60_000 });
+    const a = listOf({ kind: "office_audit", path: "bad.pptx", require: ["notes", "charts:1"] }, { kind: "office_audit", path: "good.pptx", require: ["notes", "charts:1", "slides:2-2"] });
+    const by = Object.fromEntries((await runChecks(a, { workdir: dir, browserKey: "k", profileDir: join(dir, "p") })).map((r) => [r.id, r]));
+    expect(by.R1).toMatchObject({ status: "fail" });
+    expect(by.R1!.observed).toContain("overlaps");
+    expect(by.R1!.observed).toContain("speaker notes are missing");
+    expect(by.R2).toMatchObject({ status: "pass" });
+  }, 120_000);
+
+  it("fails a typed table of contents and a leaked template, passes the report the skill builds", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "office-d-"));
+    py(
+      `import sys
+from docx import Document
+d = Document(); d.add_heading("Report", 1); d.add_paragraph("Table of Contents")
+for t, n in (("Summary", 2), ("Regions", 3), ("Risks", 4)): d.add_paragraph(f"{t}..........................{n}")
+d.add_heading("Summary", 1); d.add_paragraph("Generated: {datetime.now().strftime('%d %B %Y')}")
+d.save(sys.argv[1] + "/bad.docx")`,
+      dir,
+    );
+    await writeFile(join(dir, "report.md"), "# Sales report\nSample data\n\n---\n## Contents\n[TOC]\n---\n## Summary\nWest led.\n\n1. One\n2. Two\n\n## Risks\n1. Again from one\n");
+    execFileSync("python3", [skillScript("word-documents", "md_to_docx.py"), join(dir, "report.md"), join(dir, "good.docx"), "--title", "Sales report", "--cover"], { timeout: 180_000 });
+    const a = listOf({ kind: "office_audit", path: "bad.docx", require: ["toc"] }, { kind: "office_audit", path: "good.docx", require: ["toc", "page_numbers", "header_title"] });
+    const by = Object.fromEntries((await runChecks(a, { workdir: dir, browserKey: "k", profileDir: join(dir, "p") })).map((r) => [r.id, r]));
+    expect(by.R1).toMatchObject({ status: "fail" });
+    expect(by.R1!.observed).toContain("typed text");
+    expect(by.R1!.observed).toContain("datetime.now()");
+    expect(by.R2).toMatchObject({ status: "pass" });
+  }, 240_000);
+
+  it("a figure the workbook doesn't have, or a 0.0%, fails the figures check; the workbook's own figures pass", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "office-f-"));
+    py(
+      `import sys, openpyxl
+from pptx import Presentation
+from pptx.util import Inches
+wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Summary"; ws.append(["Region", "Revenue"]); ws.append(["West", 4527582]); ws.append(["North", 3593890]); wb.save(sys.argv[1] + "/Sales.xlsx")
+for name, text in (("ok.pptx", "West earned 4,527,582 and North 3,593,890"), ("bad.pptx", "Overall achievement of 0.0% against targets")):
+    prs = Presentation(); s = prs.slides.add_slide(prs.slide_layouts[5]); s.shapes.title.text = "Revenue"
+    s.shapes.add_textbox(Inches(1), Inches(2), Inches(6), Inches(1)).text_frame.text = text; prs.save(sys.argv[1] + "/" + name)`,
+      dir,
+    );
+    const run = (deck: string) => runChecks(listOf({ kind: "office_audit", path: "Sales.xlsx" }, { kind: "office_audit", path: deck }), { workdir: dir, browserKey: "k", profileDir: join(dir, "p") });
+    const ok = (await run("ok.pptx")).find((r) => r.id === CONSISTENCY_ID);
+    expect(ok).toMatchObject({ status: "pass" });
+    const bad = (await run("bad.pptx")).find((r) => r.id === CONSISTENCY_ID);
+    expect(bad).toMatchObject({ status: "fail" });
+    expect(bad!.observed).toContain('"0.0%" looks like a failed calculation');
+  }, 120_000);
 });

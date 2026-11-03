@@ -185,7 +185,24 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
     file parses (JSON; CSV read strictly, which catches a stray quote on every row and one character
     per line; HTML with a broken comment or a script it names that isn't there; a script's syntax),
     a page opens in the browser with no script errors, and no leftover files that only said "done"
-    (`DONE`, `finish.txt`, test pages). A fail goes straight back to the builder.
+    (`DONE`, `finish.txt`, test pages, `test.csv`). A fail goes straight back to the builder.
+  - **Excel, PowerPoint, Word and PDF files** are checked as carefully as software. A request for
+    them ("an Excel workbook, a deck and a report") gets a checklist too, and each file the request
+    names is audited by `office_audit.py` of the `document-checks` skill, the same script the agent is
+    told to run while it builds: formulas that don't calculate (`#DIV/0!`), a percent format on
+    9.37 (shows as 937%), a chart on top of a table or off the slide, empty slides, missing speaker
+    notes, a "table of contents" typed by hand, the page count against what was asked, pages that are
+    mostly blank, text in a stray script (a Chinese sentence in an English report), leftover template
+    text (`{datetime.now()}`), `NaN` and `0.0%`. With a workbook and a deck or report it also checks
+    that the figures written in the others are figures from the workbook (check **H2**; a figure that
+    isn't there may be derived, so it goes to the reviewer). The reviewer reads the files, renders the
+    pages, and recomputes every statement of fact ("West leads", a top 5, a share) from the data.
+    Page, layout and recalculation checks use LibreOffice, which the production image installs
+    (`--build-arg OFFICE_TOOLS=false` leaves it out: those checks then say what they couldn't check).
+    The helper scripts build what these files need: `outline_to_pptx.py` makes real title
+    placeholders, native charts (a `chart` block) laid out so they can't overlap a table, and notes;
+    `md_to_docx.py` makes a real contents field with page numbers, a cover page, header and
+    "Page X of Y", figures with captions and numbered lists that restart.
   - **The reviewer** is a task of its own (hidden from lists; its timeline opens from a link in the
     parent), working on a **copy** of the folder, on a different Advanced-tier model when there is
     one. It gets the original request and the checklist, never the builder's account of what it did,

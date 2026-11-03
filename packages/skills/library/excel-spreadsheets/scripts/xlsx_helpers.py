@@ -27,6 +27,10 @@ def write_sheets(path, sheets: dict[str, pd.DataFrame], money=(), percent=(), da
     wb.remove(wb.active)
     money_fmt = f'"{currency}"#,##0.00' if currency else "#,##0.00"
     for name, df in sheets.items():
+        for col in percent:
+            if col in df.columns and pd.api.types.is_numeric_dtype(df[col]) and df[col].abs().max() > 1.5:
+                # A percent format multiplies by 100: 9.37 would show as 937%.
+                raise ValueError(f"column '{col}' is formatted as a percent but holds values up to {df[col].abs().max():g}. Give fractions (0.0937 for 9.37%): divide by 100.")
         ws = wb.create_sheet(title=str(name)[:31])
         cols = list(df.columns)
         ws.append([str(c) for c in cols])

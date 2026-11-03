@@ -39,7 +39,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      - run: sudo python3 -m pip install -q --break-system-packages python-docx openpyxl
+      - run: sudo python3 -m pip install -q --break-system-packages python-docx python-pptx openpyxl pypdf pillow
       - name: Names for the editors' users in terminals (as in the API image)
         run: sudo apt-get update -q && sudo apt-get install -y -q libnss-wrapper
       - name: Let task users reach the checkout

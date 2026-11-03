@@ -29,6 +29,8 @@ export const checkSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("path_exists"), path: z.string().trim().min(1).max(200) }),
   z.object({ kind: z.literal("file_parses"), path: z.string().trim().min(1).max(200), format: z.enum(["json", "csv", "html", "js"]) }),
   z.object({ kind: z.literal("page_loads_clean"), page: z.string().trim().min(1).max(200) }),
+  /** An Excel, PowerPoint, Word or PDF file the request names: audited by the document-checks skill's script. */
+  z.object({ kind: z.literal("office_audit"), path: z.string().trim().min(1).max(200), require: z.array(z.string().trim().max(30)).max(12).optional() }),
 ]);
 export type Check = z.infer<typeof checkSchema>;
 
@@ -74,18 +76,25 @@ export interface Acceptance {
 /* ───────────── Is this a build? ───────────── */
 
 const BUILD_VERB = /\b(build|create|make|write|develop|implement|generate|code|design|prototype|set up|put together)\b/i;
+/** Office files and PDFs a person asks to be made: a deliverable, checked like a build. */
+const FILE_NOUN = /\b(excel|workbook|spreadsheet|xlsx|powerpoint|pptx|slide ?deck|slides|deck|word (?:report|document|doc|file)|docx|pdf (?:report|document|file))\b|\.(?:xlsx|pptx|docx)\b/i;
+const FILE_VERB = /\b(build|create|make|write|develop|generate|prepare|produce|put together|draft|compile|need|give me|design)\b/i;
 const BUILD_NOUN = /\b(app|application|web ?site|web ?page|page|game|tool|script|program|dashboard|api|cli|extension|bot|calculator|tracker|system|site|plugin|module|library|frontend|backend|server|service|widget|form|portal)\b/i;
 /** A long brief is a build whatever it's called, when it asks for one. */
 const LONG_BRIEF_CHARS = 1500;
 
 /**
  * Whether a request is worth a checklist: it asks for something to be built (an app, a page, a
- * script, a game…), not a question or a document. A cheap check before any model call; the planner
- * says `build: false` for what slips through.
+ * script, a game…) or for Excel, PowerPoint, Word or PDF files to be made, not a question or a note
+ * written in the chat. A cheap check before any model call; the planner says `build: false` for
+ * what slips through.
  */
 export function isBuildRequest(text: string): boolean {
   const t = text.trim();
   if (t.length < 40) return false;
+  // "How do I make a pivot table in Excel" asks about Excel; "Could you prepare a deck" asks for one.
+  const question = /^\s*(how (?:do|does|can|to|should)|what|why|which|when|where|who|is|are|does|do|did)\b/i.test(t);
+  if (!question && FILE_VERB.test(t) && FILE_NOUN.test(t)) return true;
   return BUILD_VERB.test(t) && (BUILD_NOUN.test(t) || t.length >= LONG_BRIEF_CHARS);
 }
 
@@ -98,8 +107,18 @@ export function safeRelPath(p: string): string | null {
   return clean;
 }
 
+/** What a request can ask of a document, as the audit script takes it (notes, toc, pages:6-8, charts:2…). */
+const REQUIRE_TOKEN = /^(notes|toc|page_numbers|header_title|(?:pages|slides):\d{1,3}(?:-\d{1,3})?|(?:charts|formulas):\d{1,4})$/;
+export const OFFICE_FILE = /\.(xlsx|xlsm|pptx|docx|pdf)$/i;
+
 const checkOf = (c: Check | undefined): Check => {
   if (!c || c.kind === "judged") return { kind: "judged" };
+  if (c.kind === "office_audit") {
+    const path = safeRelPath(c.path);
+    if (!path || !OFFICE_FILE.test(path)) return { kind: "judged" };
+    const require = [...new Set((c.require ?? []).map((r) => r.toLowerCase().replace(/\s+/g, "")).filter((r) => REQUIRE_TOKEN.test(r)))];
+    return { kind: "office_audit", path, ...(require.length ? { require } : {}) };
+  }
   if (c.kind === "page_loads_clean") {
     const page = safeRelPath(c.page);
     return page && /\.html?$/i.test(page) ? { kind: "page_loads_clean", page } : { kind: "judged" };
@@ -196,10 +215,11 @@ const PLANNER_SYSTEM = [
   'Shape: {"build": true|false, "milestones": [{"name": "…"}], "items": [{"requirement": "…", "how": "…", "milestone": 1, "check": {"kind": "judged"}}]}',
   "",
   "Rules:",
-  '- "build" is false when the request is not asking for something to be built or produced with behaviour you can test (a question, a summary, research, a letter). Then "items" is [].',
+  '- "build" is false when the request is not asking for something to be built or files to be made (a question, a summary in the chat, research, a short letter). Then "items" is []. It is true for software and for Excel, PowerPoint, Word or PDF files the request asks for.',
   "- One item per requirement, each a single thing that is true or false: a feature, a rule (\"rejects a negative amount with a message on the page\"), a file or folder the request names, a format, a limit it states (\"no libraries\", \"works offline\", \"works on a phone-sized screen\"). Quote the request's own words and numbers. 6 to 30 items; don't invent features the request doesn't ask for.",
   '- "how": how a tester would check it, in one sentence (what to do and what to look at). For anything the program produces (an export, a report), the check is to open that output and read it, and for an import, to read an exported file back in.',
   '- "check": {"kind": "judged"} unless code can decide it for certain from the request alone: {"kind": "path_exists", "path": "expense-tracker/index.html"} when the request names a folder or file; {"kind": "file_parses", "path": "…", "format": "json"|"csv"|"html"|"js"} for a named data or script file; {"kind": "page_loads_clean", "page": "expense-tracker/index.html"} for the main HTML page of something to open in a browser (it loads with no script errors). Paths are relative to the working folder. When unsure of a path, use judged.',
+  '- For each Excel, PowerPoint, Word or PDF file the request names or clearly asks for, use {"kind": "office_audit", "path": "Sales.xlsx", "require": ["notes", "toc", "page_numbers", "header_title", "pages:6-8", "slides:10-12", "charts:2", "formulas:10"]} on the item that says the file exists and has what the request asks for: "require" holds only the things the request asks for (notes = speaker notes on every slide; toc = a table of contents; pages:A-B and slides:A-B the length asked; charts:N the number of charts; formulas:N formulas rather than typed values). The audit also opens the file and finds formulas that fail, charts over tables, empty pages and leftovers, so do NOT add a separate "the file exists" item for it. Then one judged item per thing the request wants IN each file (the sheets and what they hold, each slide topic, each report section), and one judged item that the numbers agree across the files when there are several.',
   "- If the request names a folder, put an item for it. If it asks for a README or notes file, put an item for it.",
   `- "milestones": when there are ${MILESTONE_MIN_ITEMS} or more items, group them into 3 to ${MAX_MILESTONES} build stages in the order they should be built (data and core first, then features, then screens, then documentation), each with at least one item, and give each item its stage number in "milestone". With fewer items, "milestones" is [] and no item has "milestone".`,
 ].join("\n");
