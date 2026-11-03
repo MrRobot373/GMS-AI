@@ -658,6 +658,22 @@ d("Work AI", () => {
     expect(t.task.status).toBe("completed");
   }, 60_000);
 
+  it("an edit whose old_string is off by indentation is aimed at the file's own text; one that isn't there is told where the text is", async () => {
+    const script = [
+      ["write", { file_path: "app.js", content: "function f() {\n    return 1;\n}\n" }],
+      // The model remembers two-space indentation: the file has four.
+      ["edit", { file_path: "app.js", old_string: "function f() {\n  return 1;\n}", new_string: "function f() {\n  return 2;\n}" }],
+      // Text that isn't in the file at all.
+      ["edit", { file_path: "app.js", old_string: "    return 3;", new_string: "    return 4;" }],
+    ];
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: `script: ${JSON.stringify(script)}` });
+    const t = await waitStatus(r.json.id, "completed", "failed");
+    expect(await readFile(join(workDir, r.json.id, "files", "app.js"), "utf8")).toBe("function f() {\n    return 2;\n}\n");
+    const results = t.events.filter((e) => e.kind === "tool_result").map((e) => JSON.stringify(e.data));
+    expect(results.some((x) => /old_string was not found/.test(x) && /closest text is at lines 2-2/.test(x) && /2: +return 2;/.test(x))).toBe(true);
+    expect(results.filter((x) => /has been updated successfully/.test(x))).toHaveLength(1);
+  }, 90_000);
+
   it("never passes on a reply that broke down into <unk> tokens: asks again, then carries on", async () => {
     const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo junk-after-step" });
     const t = await waitStatus(r.json.id, "completed", "failed");

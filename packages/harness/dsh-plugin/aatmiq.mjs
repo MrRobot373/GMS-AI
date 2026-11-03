@@ -2,7 +2,8 @@
  * Aatmiq plugin for the DeepSeek Harness runtime (mounted by the task patch).
  *
  *  - tools/pre-execute: asks for approval before risky actions (policy.mjs)
- *  - tools/execute:     fixes common argument slips before the tool checks them (tooling.mjs)
+ *  - tools/execute:     fixes common argument slips before the tool checks them (tooling.mjs), and finds
+ *                       where an edit's old_string really is when it is off by spacing or a line (editfix.mjs)
  *  - tools/post-execute: reminds the agent to keep its plan current
  *  - approval/request:  the answerer: the question goes to Aatmiq, where a person approves or rejects it
  *  - web search:        a "aatmiq" provider that searches through Aatmiq (self-hosted SearXNG)
@@ -14,11 +15,14 @@
  * Everything talks to Aatmiq's internal API with the per-task token from $AATMIQ_TOKEN.
  * Failures fail closed: an unanswerable approval is "unavailable", which DSH treats as a denial.
  */
+import { readFile, realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { browserTools } from "./browser.mjs";
 import { calculatorTools } from "./calculators.mjs";
 import { documentTools } from "./documents.mjs";
+import { editHint, repairEdit } from "./editfix.mjs";
 import { classifyRisk, reviewDenial } from "./policy.mjs";
 import { cleanArgs, planReminder } from "./tooling.mjs";
 import { SEARCH_CITE_LINE, SEARCH_READ_LINE, WEB_GUIDANCE, webTools } from "./web.mjs";
@@ -57,6 +61,30 @@ function client(config) {
   };
 }
 
+/** A task file's text, for an edit: only inside the working folder, and only a text file of a sane size. */
+async function taskFileText(path) {
+  if (typeof path !== "string" || !path) return null;
+  try {
+    const root = await realpath(process.cwd());
+    const real = await realpath(resolve(root, path));
+    if (real !== root && !real.startsWith(root + sep)) return null;
+    const info = await stat(real);
+    if (!info.isFile() || info.size > 2 * 1024 * 1024) return null;
+    const buf = await readFile(real);
+    return buf.includes(0) ? null : buf.toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** An edit whose old_string is off by spacing or a line: aimed at the file's own text instead. */
+async function repairedEdit(args) {
+  if (args?.replace_all === true || typeof args?.old_string !== "string" || typeof args?.new_string !== "string") return args;
+  const text = await taskFileText(args.file_path);
+  const fix = text === null ? null : repairEdit(text, args.old_string, args.new_string);
+  return fix ? { ...args, old_string: fix.oldString, new_string: fix.newString } : args;
+}
+
 export function apply(ctx, config) {
   const call = client(config);
   const policy = { approvals: config.approvals ?? "risky", askForNetwork: !!config.askForNetwork, connectors: config.connectors ?? [] };
@@ -75,14 +103,16 @@ export function apply(ctx, config) {
   // 2. Arguments: models add `sandbox_permissions` to every call (often with made-up values),
   //    misname todo fields, leave out display-only labels and leak chat-template markers. Fix
   //    what's unambiguous; the tool still checks the result.
-  ctx.on("tools/execute", (exec, next) => {
-    const args = cleanArgs(exec.name, exec.arguments, SANDBOX_MODE);
+  ctx.on("tools/execute", async (exec, next) => {
+    let args = cleanArgs(exec.name, exec.arguments, SANDBOX_MODE);
+    if (exec.name === "edit") args = await repairedEdit(args);
     if (args !== exec.arguments) exec.arguments = Object.freeze(args);
     return next();
   });
 
   // 3. Plan: after a few steps without a todo_write, remind the agent (in the tool result) to
   //    update it, so the progress people see stays true. Kept per agent and per turn.
+  const editMisses = new Map();
   const plans = new WeakMap();
   const planOf = (agent) => {
     const key = agent ?? ctx;
@@ -96,6 +126,19 @@ export function apply(ctx, config) {
   });
   ctx.on("tools/post-execute", async (exec, result, next) => {
     let decision = await next();
+    // Edits in a row that did not match, per file: the model's memory of the file is stale.
+    if (exec.name === "edit") {
+      const key = String(exec.arguments?.file_path ?? "");
+      editMisses.set(key, result.isError && /old_string was not found/.test((result.content ?? []).map((b) => b.text ?? "").join("")) ? (editMisses.get(key) ?? 0) + 1 : 0);
+    }
+    // A failed edit says where the text really is (or that nothing needs changing), so the retry works.
+    if (exec.name === "edit" && result.isError && decision.kind === "accept") {
+      const error = (result.content ?? []).map((b) => (b.type === "text" ? (b.text ?? "") : "")).join("\n");
+      const a = exec.arguments ?? {};
+      const text = /old_string was not found/.test(error) ? await taskFileText(a.file_path) : "";
+      const hint = text === null ? null : editHint(error, text, String(a.old_string ?? ""), String(a.new_string ?? ""), String(a.file_path ?? ""), editMisses.get(String(a.file_path ?? "")) ?? 1);
+      if (hint) return { kind: "block", feedback: [...(result.content ?? []), { type: "text", text: hint }] };
+    }
     // Search results end with "cite the URLs above"; a snippet isn't a source, the page is.
     if (exec.name === "web_search" && !result.isError && decision.kind === "accept" && !Object.hasOwn(decision, "value")) {
       const blocks = decision.content ?? result.content ?? [];

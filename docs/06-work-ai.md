@@ -174,6 +174,14 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   tracker finished with a CSV export nobody opened: every row began with a stray quote, so the app
   couldn't read its own export, and the list ran oldest first.) The stored result is this
   message's answer, never an earlier one.
+- **Edits that don't fail on a technicality** (`dsh-plugin/editfix.mjs`). The stock `edit` tool needs
+  `old_string` byte for byte, and 41% of recorded edits failed (183 "not found"). A hook fixes what
+  is unambiguous before the tool runs: text that differs only in trailing spaces or indentation, or a
+  3+ line block whose first and last lines are right and whose middle is close, is replaced by the
+  file's own text, with the new text indented to match, when there is exactly one such place (never
+  with `replace_all`, and only for files inside the task folder). A failed edit then says where the
+  text really is (closest lines, numbered), that the change may already be there, or, after a second
+  miss in a row, to read the file again, since the model's picture of it is stale.
 - **Checked before it's called done** (docs/19-work-ai-reliability-plan.md). A Work AI task that asks
   for something to be built (an app, page, script, game; or a long brief) gets an **acceptance
   checklist** before the builder starts: an Advanced-tier model turns the request into items, each one

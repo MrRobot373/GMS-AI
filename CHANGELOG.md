@@ -9,6 +9,16 @@ without one.
 
 ## Unreleased
 
+- **Work AI's `edit` tool stops failing on near-misses.** Across the recorded Work AI tasks 41% of
+  `edit` calls failed (201 of 485; the next worst tool was 1%), 183 of them "old_string was not
+  found": the model's copy of the text off by indentation, trailing spaces, a line it remembered
+  differently, or lines that were never in the file. Each one cost a step and sent weaker models into
+  retry loops. Now an `old_string` that is off by spacing, indentation or one drifted line is aimed
+  at the file's own text (only when there is exactly one such place, and the new text is indented to
+  match the file); one that can't be found comes back with the closest lines of the file and their
+  numbers, a warning when the block is very long, and, from the second miss in a row on a file, an
+  instruction to read it again. `read` no longer fails on an `offset` of 0.
+
 - **Work AI checks Excel, PowerPoint, Word and PDF files, not only software.** A live run of "an Excel
   workbook, a deck and a report" came back looking done with: no speaker notes (it said there were),
   a chart sitting on top of a table, discounts that display as 937%, a typed "table of contents" with

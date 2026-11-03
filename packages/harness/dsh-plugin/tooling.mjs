@@ -63,7 +63,9 @@ function isRecord(v) {
 const SHELL_TOOLS = new Set(["bash", "pwsh"]);
 const HELPER_TOOLS = new Set(["subagent", "subagent_fork"]);
 /** Aatmiq's tools' whole-number arguments, which models often send as text ("20000"). */
-const INTEGER_ARGS = { web_fetch: ["offset"], documents_read: ["offset"], documents_search: ["limit"] };
+const INTEGER_ARGS = { web_fetch: ["offset"], documents_read: ["offset"], documents_search: ["limit"], read: ["offset", "limit"] };
+/** `read` refuses an offset or limit below 1 ("offset must be a positive integer"); 0 meant "from the start", so it is left out. */
+const POSITIVE_ARGS = { read: ["offset", "limit"] };
 
 /** File tools take `file_path`; models often call it `path` or `filename`. */
 const FILE_TOOLS = new Set(["read", "write", "edit", "read_image"]);
@@ -318,6 +320,12 @@ export function cleanArgs(name, args, mode) {
   for (const key of INTEGER_ARGS[name] ?? []) {
     const v = out[key];
     if (typeof v === "string" && /^\s*\d{1,9}\s*$/.test(v)) out = { ...out, [key]: Number(v) };
+  }
+  for (const key of POSITIVE_ARGS[name] ?? []) {
+    if (typeof out[key] === "number" && out[key] < 1) {
+      out = { ...out };
+      delete out[key];
+    }
   }
   if (FILE_TOOLS.has(name) && out.file_path === undefined) {
     const alias = FILE_ALIASES.find((k) => typeof out[k] === "string" && out[k].trim());
