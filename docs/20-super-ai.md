@@ -86,8 +86,7 @@ node scripts/engine-compare.mjs --prompt-file scripts/briefs/northwind-q3-pack.m
 `--audit` runs the document audit on any Excel, PowerPoint and Word files each engine made. Super AI has to be
 on (Admin → Work AI → Super AI) and installed. `--engine dsh` or `--engine claude` runs just one.
 
-Judging: 
-Run the same brief on both, with the same model, from the two tabs, and judge the outputs the same way
+Judging: run the same brief on both, with the same model, from the two tabs, and judge the outputs the same way
 (open the files, read the pages; for documents `packages/skills/library/document-checks/scripts/office_audit.py`
 is the shared yardstick). Briefs used so far: the Northwind Q3 pack (Excel + PowerPoint + Word that must
 agree) and the Ridge Riders game. Things to record per run: time, tokens, tool calls and tool errors,
