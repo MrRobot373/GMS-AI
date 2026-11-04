@@ -70,6 +70,23 @@ questions to put to Anthropic are in the answer to "Instead of dsh I can use cla
 
 ## How to compare the two
 
+`scripts/engine-compare.mjs` runs one brief on Work AI and then on Super AI with the same model, approves what the
+task asks for, saves each run's timeline and files, and writes a side-by-side `summary.md` (Node 22, nothing to
+install). The briefs used so far are in `scripts/briefs/` (a small primes task, the expense tracker, the Northwind
+Q3 pack, Ridge Riders).
+
+```bash
+export AATMIQ_EMAIL=you@example.com AATMIQ_PASSWORD='…'      # never saved or printed
+export AATMIQ_URL=http://localhost:4000 AATMIQ_ORIGIN=http://localhost:3000
+node scripts/engine-compare.mjs --prompt-file scripts/briefs/primes-smoke.md --model main
+node scripts/engine-compare.mjs --prompt-file scripts/briefs/northwind-q3-pack.md --model main \
+     --audit notes,toc,page_numbers,header_title,pages:5-9,slides:10-12,charts:2,formulas:10
+```
+
+`--audit` runs the document audit on any Excel, PowerPoint and Word files each engine made. Super AI has to be
+on (Admin → Work AI → Super AI) and installed. `--engine dsh` or `--engine claude` runs just one.
+
+Judging: 
 Run the same brief on both, with the same model, from the two tabs, and judge the outputs the same way
 (open the files, read the pages; for documents `packages/skills/library/document-checks/scripts/office_audit.py`
 is the shared yardstick). Briefs used so far: the Northwind Q3 pack (Excel + PowerPoint + Word that must

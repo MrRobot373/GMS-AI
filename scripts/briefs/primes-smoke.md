@@ -1,0 +1,1 @@
+Create a Python script primes.py in the working folder that prints all prime numbers up to 60, one per line. Run it and tell me how many primes it printed. Then write a short notes.md saying what you did.
