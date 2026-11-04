@@ -174,6 +174,7 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
   tracker finished with a CSV export nobody opened: every row began with a stray quote, so the app
   couldn't read its own export, and the list ran oldest first.) The stored result is this
   message's answer, never an earlier one.
+- **Super AI** (docs/20-super-ai.md): the same tasks on the Claude Code engine, plain, in a tab of their own, to compare with this engine.
 - **Edits that don't fail on a technicality** (`dsh-plugin/editfix.mjs`). The stock `edit` tool needs
   `old_string` byte for byte, and 41% of recorded edits failed (183 "not found"). A hook fixes what
   is unambiguous before the tool runs: text that differs only in trailing spaces or indentation, or a

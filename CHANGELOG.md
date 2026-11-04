@@ -9,6 +9,15 @@ without one.
 
 ## Unreleased
 
+- **Super AI: Work AI on the Claude Code engine, to compare.** A second, plain engine beside Work AI: Anthropic's
+  Agent SDK runs the Claude Code loop on the same models, quotas and approvals (through a new
+  Anthropic-format endpoint on the gateway that translates to our model servers). It has its own tab and task
+  list under Work AI and none of Work AI's checklist, reviewer, stages, audit or edit repair, so the two can be
+  run on the same briefs and judged alike. Off until an admin turns it on (Admin → Work AI), an optional
+  install (the production image adds it only with `--build-arg SUPER_AI=true`). Claude Code is proprietary
+  (Anthropic's Commercial Terms): read [docs/20-super-ai.md](docs/20-super-ai.md) before shipping it. Migration
+  0028 adds `work_task.engine`.
+
 - **Work AI's `edit` tool stops failing on near-misses.** Across the recorded Work AI tasks 41% of
   `edit` calls failed (201 of 485; the next worst tool was 1%), 183 of them "old_string was not
   found": the model's copy of the text off by indentation, trailing spaces, a line it remembered
