@@ -32,6 +32,7 @@ import { codeRoutes } from "./routes/code";
 import { codeInternalRoutes } from "./routes/code-internal";
 import { createCodeProxy } from "./routes/code-proxy";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { workAnthropicRoutes } from "./routes/work-anthropic";
 import { workInternalRoutes } from "./routes/work-internal";
 import { connectorRoutes } from "./routes/connectors";
 import { accountRoutes } from "./routes/account";
@@ -222,6 +223,7 @@ export async function buildApp(
   await licenseRoutes(app, ctx);
   await workRoutes(app, ctx);
   await workInternalRoutes(app, ctx);
+  await workAnthropicRoutes(app, ctx);
   await workConfigRoutes(app, ctx);
   await codeRoutes(app, ctx);
   await codeInternalRoutes(app, ctx);
