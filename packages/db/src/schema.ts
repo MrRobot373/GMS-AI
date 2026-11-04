@@ -888,6 +888,8 @@ export const workTask = pgTable(
     parentId: text("parent_id").references((): AnyPgColumn => workTask.id, { onDelete: "cascade" }),
     /** What the independent review found when the task ended (docs/19-work-ai-reliability-plan.md). */
     verification: jsonb("verification").$type<WorkVerification>(),
+    /** The agent engine that runs it: "dsh" (Work AI) or "claude" (Super AI, the Claude Code engine; docs/20-super-ai.md). */
+    engine: text("engine").notNull().default("dsh"),
     /** The Unix user its runtime runs as (see workUidSeq). */
     runUid: integer("run_uid").notNull().default(sql`nextval('work_uid_seq')`),
     createdAt: createdAt(),

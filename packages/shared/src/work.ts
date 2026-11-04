@@ -12,6 +12,8 @@ export const DEFAULT_WORK_SETTINGS = {
   disabledLibrarySkills: [] as string[],
   /** The agent may use a browser (open pages, click, fill in forms). */
   browser: true,
+  /** Super AI: the Claude Code engine, offered beside Work AI (docs/20-super-ai.md). Off until an admin turns it on. */
+  superAi: false,
   /** Internal hosts the browser may open anyway (private addresses are refused otherwise). */
   browserAllowedHosts: [] as string[],
   /** Container mode: CPUs, memory and internet access per task. */
@@ -31,6 +33,7 @@ export const workSettingsSchema = z.object({
   idleMinutes: z.number().int().min(1).max(240).optional(),
   disabledLibrarySkills: z.array(z.string().max(80)).max(500).optional(),
   browser: z.boolean().optional(),
+  superAi: z.boolean().optional(),
   containerCpus: z.number().min(0.25).max(64).optional(),
   containerMemoryMb: z.number().int().min(256).max(262_144).optional(),
   containerNetwork: z.enum(["proxy", "none"]).optional(),
@@ -45,6 +48,8 @@ export const workTaskCreateSchema = z.object({
   prompt: z.string().trim().min(1).max(50_000),
   modelId: z.string().optional(),
   projectId: z.string().optional(),
+  /** Which agent engine runs it: Work AI's ("dsh") or Super AI's Claude Code ("claude"). */
+  engine: z.enum(["dsh", "claude"]).default("dsh"),
   /** false: create the task without starting it (to add files first), then send the prompt as a message. */
   start: z.boolean().default(true),
 });

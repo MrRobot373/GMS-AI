@@ -7,6 +7,7 @@ import { AUTO_MODEL_ID, DEFAULT_WORK_SETTINGS, orgCan, scheduleSchema, skillSche
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { audit, parse, requireOrgCap, requireUser, type AppContext, type SessionUser } from "../context";
+import { claudeAvailable } from "@aatmiq/harness";
 import { badRequest, forbidden, notFound } from "../errors";
 import { resolveModel } from "../services/models";
 import { getProjectAccess } from "../services/projects";
@@ -254,7 +255,7 @@ export async function workConfigRoutes(app: FastifyInstance, ctx: AppContext) {
         week: sql<number>`count(*) filter (where ${workTask.createdAt} > now() - interval '7 days')::int`,
       })
       .from(workTask);
-    return { settings, defaults: DEFAULT_WORK_SETTINGS, licensed: await ctx.license.hasSection("work"), stats: counts, browserInstalled: ctx.browser.available, isolation: ctx.work.mode };
+    return { settings, defaults: DEFAULT_WORK_SETTINGS, licensed: await ctx.license.hasSection("work"), stats: counts, browserInstalled: ctx.browser.available, superAiInstalled: await claudeAvailable(), isolation: ctx.work.mode };
   });
 
   app.put("/api/admin/work", async (req) => {

@@ -34,7 +34,7 @@ import {
   type DB,
   type WorkVerification,
 } from "@aatmiq/db";
-import { containerLauncher, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
+import { containerLauncher, createClaudeEngine, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
 import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
@@ -126,6 +126,8 @@ interface Live {
   reviewTimer?: NodeJS.Timeout;
   /** Review attempts so far (the code checks count as one when they alone sent the builder back). */
   reviewRound?: number;
+  /** Super AI: Claude Code as it is, without Work AI's checklist, nudges, plan enforcement and context re-injection. */
+  plain?: boolean;
   /** The items that passed the last full review: what a later round must not break. */
   lastPassed?: Set<string>;
   /** What the checks code ran said in the current attempt. */
@@ -555,13 +557,15 @@ export class WorkRunner {
   private freshStarts = new Map<string, number>();
   private approvalWaiters = new Map<string, Set<() => void>>();
   private engine: HarnessEngine;
+  /** The Claude Code engine of Super AI (docs/20-super-ai.md), made when the first such task starts. */
+  private claudeEngine: HarnessEngine | null = null;
   /** Container mode: Work AI tasks run here (Aatmiq Code's agent stays in the person's IDE workspace). */
   private containerEngine: HarnessEngine | null = null;
   private stopped = false;
 
   constructor(
     private ctx: AppContext,
-    private opts: { controlUrl: () => string; engine?: HarnessEngine; log?: (msg: string, err?: unknown) => void },
+    private opts: { controlUrl: () => string; engine?: HarnessEngine; claudeEngine?: HarnessEngine; log?: (msg: string, err?: unknown) => void },
   ) {
     this.engine = opts.engine ?? createDshEngine();
     const c = ctx.cfg.workContainer;
@@ -901,8 +905,11 @@ export class WorkRunner {
         l.connectorIds = proj.connectorIds ?? null;
       }
       // Container mode: Work AI tasks get their own container; the container is their sandbox.
-      const inContainer = !code && !!this.containerEngine;
-      const engine = inContainer ? this.containerEngine! : this.engine;
+      const superAi = task.engine === "claude" && !code && !task.parentId;
+      if (superAi && this.containerEngine) throw new Error("Super AI doesn't run in container mode yet.");
+      l.plain = superAi;
+      const inContainer = !code && !superAi && !!this.containerEngine;
+      const engine = superAi ? (this.claudeEngine ??= this.opts.claudeEngine ?? createClaudeEngine()) : inContainer ? this.containerEngine! : this.engine;
       l.internet = inContainer && settings.containerNetwork === "proxy";
       l.inContainer = inContainer;
       const runtime = await engine.start(
@@ -966,7 +973,7 @@ export class WorkRunner {
    * request that asks for something to be built (Work AI tasks only; a reviewer's task has none).
    */
   private async acceptanceFor(l: Live, task: typeof workTask.$inferSelect, section: "work" | "code", request: string): Promise<Acceptance | null> {
-    if (!l.workdir || section === "code" || task.parentId) return null;
+    if (!l.workdir || section === "code" || task.parentId || task.engine === "claude") return null;
     const have = await loadAcceptance(l.workdir);
     if (have) return have;
     // Only a task's first message gets a checklist; a later "continue" on an old task doesn't.
@@ -1390,7 +1397,7 @@ export class WorkRunner {
       case "compacted": {
         // What the agent goes on from, for people to read (like Claude Code's "continued from" summary).
         await this.record(taskId, "context", { compacted: true, summary: clip(e.summary, MAX_TOOL_TEXT), steps: e.steps, tokens: e.tokens });
-        const back = await reinjection(l);
+        const back = l.plain ? null : await reinjection(l);
         if (back && l.runtime?.alive) await this.sendTo(l, back.text);
         if (back) await this.record(taskId, "context", { reinjected: back.files, notes: back.notes });
         return;
@@ -1399,7 +1406,7 @@ export class WorkRunner {
         if (l.cancelled) return;
         // Not finished yet: a sentence cut off after tools, a reply that hit its length limit, or a
         // plan with open steps. The agent is sent back (a few times, while it keeps making progress).
-        const open = l.planActive ? (l.plan ?? []).filter((i) => i.status !== "completed") : [];
+        const open = l.planActive && !l.plain ? (l.plan ?? []).filter((i) => i.status !== "completed") : [];
         const hanging = !!l.lastAnswer && answerLeftHanging(l.lastAnswer) && (l.usedTools || e.reason === "max-tokens");
         const cutOff = e.reason === "max-tokens" && !!l.turnOutput;
         const planOpen = e.reason === "completed" && open.length > 0 && (!!l.usedTools || !l.idleNudge);
@@ -1411,7 +1418,7 @@ export class WorkRunner {
         const verify = e.reason === "completed" && !!l.wroteCode && !l.verifyNudged && !l.acceptance && !l.parentId;
         // A reviewer ends with its report in the folder.
         const reportMissing = !!l.parentId && e.reason === "completed" && !(await this.reportReady(l));
-        const nudge = hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
+        const nudge = l.plain ? null : hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
         if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
           l.continues = (l.continues ?? 0) + 1;
           l.idleNudge = !l.usedTools;

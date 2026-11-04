@@ -69,7 +69,7 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
     return say(JSON.stringify({ build: lastUser.includes("tool.py"), milestones: [], items }));
   }
   if (sys.startsWith("You check an acceptance checklist")) return say('{"add": [], "remove": []}');
-  const asking = textOf(body.messages.findLast((m) => m.role === "user" && !/^Current runtime context|^<system-reminder>/.test(textOf(m.content).trim()))?.content);
+  const asking = textOf(body.messages.findLast((m) => m.role === "user" && !/^Current runtime context|^<system-reminder>|^# Environment/.test(textOf(m.content).trim()))?.content);
   if (asking.includes("You are an independent reviewer")) {
     const stepsDone = body.messages.slice(body.messages.findLastIndex((m) => m.role === "user" && textOf(m.content).includes("You are an independent reviewer"))).filter((m) => m.role === "tool").length;
     if (stepsDone > 0) return say(asking.includes("REVIEW-SLOW") ? "I looked at it and it's fine." : "review.json is written.");
@@ -93,7 +93,7 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
     ]);
   }
   // "script: [[tool, args], …]": those calls one after another, then "Done.".
-  const askAt = body.messages.findLastIndex((m) => m.role === "user" && !/^Current runtime context|^<system-reminder>/.test(textOf(m.content).trim()));
+  const askAt = body.messages.findLastIndex((m) => m.role === "user" && !/^Current runtime context|^<system-reminder>|^# Environment/.test(textOf(m.content).trim()));
   const script = /script: (\[\[.*?\]\])/s.exec(textOf(body.messages[askAt]?.content));
   if (script) {
     const next = (JSON.parse(script[1]!) as [string, unknown][])[body.messages.slice(askAt).filter((m) => m.role === "tool").length];
@@ -673,6 +673,36 @@ d("Work AI", () => {
     expect(results.some((x) => /old_string was not found/.test(x) && /closest text is at lines 2-2/.test(x) && /2: +return 2;/.test(x))).toBe(true);
     expect(results.filter((x) => /has been updated successfully/.test(x))).toHaveLength(1);
   }, 90_000);
+
+  it("Super AI: a task on the Claude Code engine runs plain, in its own list, behind the admin switch", async () => {
+    // Off until an admin turns it on.
+    const refused = await call("POST", "/api/work/tasks", { workspaceId, prompt: "hello", engine: "claude" });
+    expect(refused.status).toBe(400);
+    expect(refused.json.error).toContain("Super AI is turned off");
+    expect((await call("PUT", "/api/admin/work", { superAi: true })).json.superAi).toBe(true);
+    expect((await call("GET", `/api/work/info?workspaceId=${workspaceId}`)).json.superAi).toBe(true);
+    // Created first, started with a message: Claude Code's tools take absolute paths, and the folder is the task's own.
+    const r = await call("POST", "/api/work/tasks", { workspaceId, engine: "claude", prompt: "a placeholder", start: false });
+    const id = r.json.id as string;
+    expect(r.json.engine).toBe("claude");
+    const script = [["Write", { file_path: join(workDir, id, "files", "notes.md"), content: "# Super AI\n" }], ["Bash", { command: "cat notes.md", description: "Read it back" }]];
+    expect((await call("POST", `/api/work/tasks/${id}/messages`, { prompt: `script: ${JSON.stringify(script)}` })).status).toBe(200);
+    const t = await waitStatus(id, "completed", "failed");
+    expect(t.task.status, t.task.error ?? "").toBe("completed");
+    expect(await readFile(join(workDir, id, "files", "notes.md"), "utf8")).toBe("# Super AI\n");
+    expect(t.events.filter((e) => e.kind === "tool_call").map((e) => e.data.name)).toEqual(["write", "bash"]);
+    expect(JSON.stringify(t.events.filter((e) => e.kind === "tool_result").at(-1))).toContain("# Super AI");
+    // Plain: no checklist, no stages, no review, no nudges.
+    expect(t.events.some((e) => ["acceptance", "stage", "review"].includes(e.kind))).toBe(false);
+    expect((t.task as { verification?: unknown }).verification ?? null).toBeNull();
+    // Each page lists its own engine's tasks.
+    const work = (await call("GET", `/api/work/tasks?workspaceId=${workspaceId}`)).json as { id: string; engine: string }[];
+    const sup = (await call("GET", `/api/work/tasks?workspaceId=${workspaceId}&engine=claude`)).json as { id: string; engine: string }[];
+    expect(work.some((x) => x.id === id)).toBe(false);
+    expect(sup.map((x) => x.id)).toContain(id);
+    expect(sup.every((x) => x.engine === "claude")).toBe(true);
+    await call("PUT", "/api/admin/work", { superAi: false });
+  }, 180_000);
 
   it("never passes on a reply that broke down into <unk> tokens: asks again, then carries on", async () => {
     const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo junk-after-step" });

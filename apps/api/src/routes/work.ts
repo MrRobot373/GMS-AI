@@ -11,6 +11,7 @@ import { lstat, readdir, readFile, realpath, stat, writeFile } from "node:fs/pro
 import { basename, extname, join, relative, sep } from "node:path";
 import { z } from "zod";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
+import { claudeAvailable } from "@aatmiq/harness";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { resolveModel, type AvailableModel } from "../services/models";
 import { chooseModel } from "../services/router";
@@ -138,17 +139,20 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     if (req.query.workspaceId) await requireWorkSection(ctx, u, req.query.workspaceId);
     const s = await getWorkSettings(db);
-    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser };
+    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser, superAi: s.superAi && (await claudeAvailable()) };
   });
 
-  app.get<{ Querystring: { workspaceId?: string; q?: string } }>("/api/work/tasks", async (req) => {
+  app.get<{ Querystring: { workspaceId?: string; q?: string; engine?: string } }>("/api/work/tasks", async (req) => {
     const u = await requireUser(ctx, req);
     const wsId = req.query.workspaceId ?? "";
     await requireWorkSection(ctx, u, wsId);
     const q = req.query.q?.trim();
+    // Work AI and Super AI each list their own tasks.
+    const engine = req.query.engine === "claude" ? "claude" : "dsh";
     return db
       .select({
         id: workTask.id,
+        engine: workTask.engine,
         title: workTask.title,
         status: workTask.status,
         result: workTask.result,
@@ -171,7 +175,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       .from(workTask)
       .leftJoin(project, eq(project.id, workTask.projectId))
       .leftJoin(codeWorkspace, eq(codeWorkspace.id, workTask.codeWorkspaceId))
-      .where(and(eq(workTask.workspaceId, wsId), eq(workTask.userId, u.id), isNull(workTask.parentId), q ? ilike(workTask.title, `%${q.replace(/[%_\\]/g, "\\$&")}%`) : undefined))
+      .where(and(eq(workTask.workspaceId, wsId), eq(workTask.userId, u.id), isNull(workTask.parentId), eq(workTask.engine, engine), q ? ilike(workTask.title, `%${q.replace(/[%_\\]/g, "\\$&")}%`) : undefined))
       .orderBy(desc(workTask.pinned), desc(workTask.updatedAt))
       .limit(200);
   });
@@ -180,6 +184,11 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     const b = parse(workTaskCreateSchema, req.body);
     await requireWorkSection(ctx, u, b.workspaceId);
+    if (b.engine === "claude") {
+      if (!(await getWorkSettings(db)).superAi) throw badRequest("Super AI is turned off. An admin can turn it on under Admin → Work AI.");
+      if (!(await claudeAvailable())) throw badRequest("Super AI isn't installed on this server.");
+      if (work.mode === "container") throw badRequest("Super AI doesn't run in container mode yet.");
+    }
     // The model asked for, or Auto's pick for this task (it keeps the model for its follow-ups).
     const { model: m, routing } = await chooseModel(db, ctx.box, {
       workspaceId: b.workspaceId,
@@ -196,7 +205,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     }
     const [t] = await db
       .insert(workTask)
-      .values({ workspaceId: b.workspaceId, userId: u.id, title: titleFrom(b.prompt), modelId: m.id, routing, projectId: b.projectId ?? null })
+      .values({ workspaceId: b.workspaceId, userId: u.id, title: titleFrom(b.prompt), modelId: m.id, routing, projectId: b.projectId ?? null, engine: b.engine })
       .returning();
     if (b.start) await work.submit(t!.id, b.prompt);
     const [fresh] = await db.select().from(workTask).where(eq(workTask.id, t!.id));

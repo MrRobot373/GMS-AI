@@ -1,0 +1,1 @@
+ALTER TABLE "work_task" ADD COLUMN "engine" text DEFAULT 'dsh' NOT NULL;
