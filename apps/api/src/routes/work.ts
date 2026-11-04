@@ -22,7 +22,7 @@ import { getProjectAccess, requireProjectEdit } from "../services/projects";
 import { quotaFor } from "../services/quota";
 import { workWebSearchDeps } from "../services/gem";
 import { webSearchReady } from "../services/web-search";
-import { getWorkSettings, titleFrom, type WorkStreamEvent } from "../services/work";
+import { getWorkSettings, superAiWindowProblem, titleFrom, type WorkStreamEvent } from "../services/work";
 import { localeOf, tr } from "../i18n";
 
 const MAX_FILES = 1000;
@@ -199,6 +199,10 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       hasSources: Boolean(b.projectId),
     });
     await checkQuota(ctx, b.workspaceId, u.id, m);
+    if (b.engine === "claude") {
+      const tooSmall = superAiWindowProblem(m.displayName, m.contextLength);
+      if (tooSmall) throw badRequest(tooSmall);
+    }
     if (b.projectId) {
       const p = await getProjectAccess(ctx, u, b.projectId);
       if (p.project.workspaceId !== b.workspaceId) throw badRequest("That project is in another workspace.");

@@ -54,6 +54,21 @@ POST /api/internal/work/llm/v1/chat/completions  the existing gateway route: mod
    installed. With it on, **Work AI → Super AI** has its own composer and task list (its tasks are not listed
    under Work AI's tasks, and the other way round).
 
+## Requirements found by real use
+
+* **A model window of at least 32,768 tokens.** Claude Code's own prompt and tool list take 10-18K tokens of every
+  request, and it condenses at 75% of the window. On a 16K window (a model server's default) it condenses every few
+  steps and gets nowhere: one task did so 16 times in an hour and wrote a single file. Super AI now refuses a model
+  whose window is below this, with a message that says so (the create route and the task start both check). Set the
+  model's context length in Admin → Models and make sure the model server really loads it (`ollama ps` at 100% GPU).
+  64K or more is comfortable.
+* **A real Windows environment.** On Windows the Claude Code process needs the system's variables and a profile
+  (`APPDATA`, `LOCALAPPDATA`, `TEMP`, `USERPROFILE`); without `APPDATA` npm builds a corrupt install path and every
+  `npm install` dies. The engine now passes the system's variables through and gives each task a profile of its own
+  under its folder (`claude/engine.ts`, `windowsEnv`).
+* **A provider without a small per-minute token cap.** A plan limited to 8,000 tokens per minute (a free tier) refuses
+  Claude Code's first request outright (HTTP 413). The gateway reports the provider's own words for it.
+
 ## License: read before shipping
 
 Claude Code and the Agent SDK are **not open source**. Their license is "All rights reserved. Use is subject

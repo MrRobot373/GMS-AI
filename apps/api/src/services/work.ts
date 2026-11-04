@@ -34,7 +34,7 @@ import {
   type DB,
   type WorkVerification,
 } from "@aatmiq/db";
-import { containerLauncher, createClaudeEngine, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
+import { SUPER_AI_MIN_WINDOW, containerLauncher, createClaudeEngine, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
 import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
@@ -398,6 +398,14 @@ export async function notesText(workdir: string, window: number): Promise<string
 const OVERFLOW = /context_length_exceeded|maximum context length|context window/i;
 const DEFAULT_WINDOW = 32_768;
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Why Super AI can't run on a model of this window, or null. A model whose window isn't known is let through. */
+export function superAiWindowProblem(name: string, window: number | null | undefined): string | null {
+  if (!window || window >= SUPER_AI_MIN_WINDOW) return null;
+  const min = SUPER_AI_MIN_WINDOW.toLocaleString("en");
+  const have = window.toLocaleString("en");
+  return msg(`Super AI needs a model with a context window of at least ${min} tokens, and ${name} has ${have}. Raise the model's context length (in Admin → Models, and on the model server), or choose another model.`);
+}
 
 export async function getWorkSettings(db: DB): Promise<WorkSettingsValue> {
   const [org] = await db.select({ s: organization.workSettings }).from(organization).limit(1);
@@ -908,6 +916,8 @@ export class WorkRunner {
       const superAi = task.engine === "claude" && !code && !task.parentId;
       if (superAi && this.containerEngine) throw new Error("Super AI doesn't run in container mode yet.");
       l.plain = superAi;
+      const tooSmall = superAi ? superAiWindowProblem(m.displayName, m.contextLength) : null;
+      if (tooSmall) throw new Error(tooSmall);
       const inContainer = !code && !superAi && !!this.containerEngine;
       const engine = superAi ? (this.claudeEngine ??= this.opts.claudeEngine ?? createClaudeEngine()) : inContainer ? this.containerEngine! : this.engine;
       l.internet = inContainer && settings.containerNetwork === "proxy";

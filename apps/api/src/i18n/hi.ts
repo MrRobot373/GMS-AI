@@ -452,4 +452,5 @@ export const HI: Record<string, string> = {
   "Super AI is turned off. An admin can turn it on under Admin → Work AI.": "Super AI बंद है। कोई एडमिन इसे Admin → Work AI में चालू कर सकता है।",
   "Super AI isn't installed on this server.": "Super AI इस सर्वर पर स्थापित नहीं है।",
   "Super AI doesn't run in container mode yet.": "Super AI अभी कंटेनर मोड में नहीं चलता।",
+  "Super AI needs a model with a context window of at least {min} tokens, and {name} has {have}. Raise the model's context length (in Admin → Models, and on the model server), or choose another model.": "Super AI को कम से कम {min} टोकन की कॉन्टेक्स्ट विंडो वाला मॉडल चाहिए, और {name} में {have} है। मॉडल की कॉन्टेक्स्ट लंबाई बढ़ाएँ (Admin → Models में, और मॉडल सर्वर पर), या कोई दूसरा मॉडल चुनें।",
 };

@@ -4,4 +4,4 @@ export { buildPatch, contextBudget, DISABLED_ROWS, PROVIDER_ID } from "./dsh/pat
 export { classifyRisk } from "./policy";
 export { harnessFile, harnessRoot } from "./files";
 export { containerArgs, containerEnv, containerLauncher, containerName, egressToken, removeStaleContainers, type ContainerLimits, type ContainerOptions } from "./dsh/container";
-export { claudeAvailable, createClaudeEngine, ClaudeUnavailable, claudeSettings, MODEL_ALIAS, type ClaudeSdk } from "./claude/engine";
+export { SUPER_AI_MIN_WINDOW, claudeAvailable, createClaudeEngine, windowsEnv, ClaudeUnavailable, claudeSettings, MODEL_ALIAS, type ClaudeSdk } from "./claude/engine";

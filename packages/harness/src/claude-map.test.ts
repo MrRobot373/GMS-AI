@@ -62,3 +62,23 @@ describe("the plan", () => {
     expect(plans(mapMessage(use("w1", "TodoWrite", { todos: [{ content: "A", status: "in_progress" }] }), st))).toEqual([[{ content: "A", status: "in_progress" }]]);
   });
 });
+
+describe("the environment of a Windows task", () => {
+  it("has the system's own variables and a profile of the task's own, so npm and other programs find APPDATA", async () => {
+    const { windowsEnv } = await import("./claude/engine");
+    const env = windowsEnv({ homeDir: "E:\\work\\t1\\home" }, { SystemRoot: "C:\\Windows", ComSpec: "C:\\Windows\\System32\\cmd.exe", PATHEXT: ".COM;.EXE;.CMD", ProgramFiles: "C:\\Program Files", SECRET_TOKEN: "x" });
+    expect(env).toMatchObject({
+      SystemRoot: "C:\\Windows",
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+      PATHEXT: ".COM;.EXE;.CMD",
+      ProgramFiles: "C:\\Program Files",
+      USERPROFILE: "E:\\work\\t1\\home",
+      APPDATA: "E:\\work\\t1\\home\\AppData\\Roaming",
+      LOCALAPPDATA: "E:\\work\\t1\\home\\AppData\\Local",
+      TEMP: "E:\\work\\t1\\home\\tmp",
+      TMP: "E:\\work\\t1\\home\\tmp",
+    });
+    // Only what a program needs: nothing else of the server's environment.
+    expect(env).not.toHaveProperty("SECRET_TOKEN");
+  });
+});

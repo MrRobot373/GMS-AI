@@ -48,6 +48,13 @@ export async function claudeAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * The smallest model window Super AI runs in. Claude Code's own prompt and tool list take about 10-18K tokens
+ * of every request, and it condenses at 75% of the window: on a 16K window it condenses every few steps
+ * and gets nowhere (a task did that sixteen times in an hour and wrote one file).
+ */
+export const SUPER_AI_MIN_WINDOW = 32_768;
+
 /** The name Claude Code is given for every request: our gateway answers from the task's model whatever it's called. */
 export const MODEL_ALIAS = "aatmiq";
 
@@ -116,6 +123,21 @@ export function claudeSettings(spec: TaskSpec): Record<string, string> {
   };
 }
 
+/**
+ * What a Windows program expects to find in its environment. Without it npm builds its install path from an
+ * empty %APPDATA% and dies on every install (a task that spent an hour on exactly that). The system's own
+ * variables are passed through; the user folders are the task's own, so tasks don't share a profile.
+ */
+export function windowsEnv(spec: { homeDir: string }, source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of ["SystemRoot", "windir", "SystemDrive", "ComSpec", "PATHEXT", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "ProgramData", "ALLUSERSPROFILE", "PUBLIC", "OS", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "COMPUTERNAME"]) {
+    const v = source[k] ?? source[k.toUpperCase()];
+    if (v) out[k] = v;
+  }
+  const w = (...p: string[]) => [spec.homeDir, ...p].join("\\");
+  return { ...out, USERPROFILE: spec.homeDir, APPDATA: w("AppData", "Roaming"), LOCALAPPDATA: w("AppData", "Local"), TEMP: w("tmp"), TMP: w("tmp"), HOMEDRIVE: spec.homeDir.slice(0, 2), HOMEPATH: spec.homeDir.slice(2) };
+}
+
 /** The environment of the Claude Code process: its settings, the person's task folder as home, and nothing of the server's. */
 async function claudeEnv(spec: TaskSpec, configDir: string): Promise<Record<string, string>> {
   const sep_ = process.platform === "win32" ? ";" : ":";
@@ -127,6 +149,7 @@ async function claudeEnv(spec: TaskSpec, configDir: string): Promise<Record<stri
     PYTHONIOENCODING: "utf-8",
     PYTHONUTF8: "1",
     CLAUDE_CONFIG_DIR: configDir,
+    ...(process.platform === "win32" ? windowsEnv(spec) : {}),
     ...claudeSettings(spec),
     ...(await networkEnv({ uid: spec.uid, gid: spec.gid, dir: join(spec.homeDir, "ca") })),
   };
@@ -172,6 +195,7 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
         for (const p of [spec.workdir, spec.homeDir, configDir, join(configDir, "settings.json")]) await chown(p, spec.uid, gid).catch(() => undefined);
       }
       const env = await claudeEnv(spec, configDir);
+      if (process.platform === "win32") for (const k of ["APPDATA", "LOCALAPPDATA", "TEMP"]) await mkdir(env[k]!, { recursive: true });
       // Only the task's own skills are enabled, by name: Claude Code's built-in ones are for Anthropic's apps.
       const skillNames = spec.skillsDir ? (await readdir(spec.skillsDir, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory() || d.isSymbolicLink()).map((d) => d.name) : [];
 

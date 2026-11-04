@@ -695,6 +695,13 @@ d("Work AI", () => {
     // Plain: no checklist, no stages, no review, no nudges.
     expect(t.events.some((e) => ["acceptance", "stage", "review"].includes(e.kind))).toBe(false);
     expect((t.task as { verification?: unknown }).verification ?? null).toBeNull();
+    // A model whose window is too small for Claude Code's own prompt is refused up front, not after an hour of condensing.
+    const [fk] = await db.select({ id: model.id, contextLength: model.contextLength }).from(model).where(eq(model.modelKey, "fake-agent"));
+    await db.update(model).set({ contextLength: 16_384 }).where(eq(model.id, fk!.id));
+    const small = await call("POST", "/api/work/tasks", { workspaceId, prompt: "hello", engine: "claude", start: false });
+    expect(small.status).toBe(400);
+    expect(small.json.error).toContain("at least 32,768 tokens");
+    await db.update(model).set({ contextLength: fk!.contextLength }).where(eq(model.id, fk!.id));
     // Each page lists its own engine's tasks.
     const work = (await call("GET", `/api/work/tasks?workspaceId=${workspaceId}`)).json as { id: string; engine: string }[];
     const sup = (await call("GET", `/api/work/tasks?workspaceId=${workspaceId}&engine=claude`)).json as { id: string; engine: string }[];
