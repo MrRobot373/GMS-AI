@@ -9,7 +9,8 @@ import { Tooltip } from "@/components/ui/misc";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/overlay";
 import { cn } from "@/lib/cn";
 import type { AvailableModel } from "@/lib/types";
-import { STATUS_LABEL, type TaskStatus } from "@/lib/work";
+import { useSession } from "@/components/app/session";
+import { STATUS_LABEL, useWorkInfo, type TaskStatus } from "@/lib/work";
 import { msg, useT } from "@/i18n";
 
 export function StatusIcon({ status, className }: { status: TaskStatus; className?: string }) {
@@ -60,10 +61,14 @@ const TABS = [
 export function WorkTabs() {
   const t = useT();
   const pathname = usePathname();
+  const { workspaceId } = useSession();
+  const info = useWorkInfo(workspaceId);
+  // Super AI (the Claude Code engine) is a tab of its own, only when an admin has turned it on.
+  const tabs = info.data?.superAi ? [TABS[0]!, { href: "/app/work/super", label: msg("Super AI") }, ...TABS.slice(1)] : TABS;
   return (
     <div className="flex h-10 shrink-0 items-end gap-5 border-b border-border px-4 sm:px-6">
-      {TABS.map((tab) => {
-        const active = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
+      {tabs.map((tab) => {
+        const active = "exact" in tab && tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
         return (
           <Link
             key={tab.href}

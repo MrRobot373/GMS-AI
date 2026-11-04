@@ -2247,4 +2247,10 @@ export const HI: Record<string, string> = {
   "No questions match.": "कोई सवाल मेल नहीं खाता।",
   "FAQ": "FAQ",
   "Answers for running {org}: people, models, budgets, Work AI and the server.": "{org} चलाने के जवाब: लोग, मॉडल, बजट, Work AI और सर्वर।",
+  "Super AI": "Super AI",
+  "A second engine for tasks: the Claude Code agent loop, running on the same models, so you can compare it with Work AI. It has its own tab, and tasks on it are plain: none of Work AI's checklist, reviewer or extra checks.": "टास्क के लिए दूसरा इंजन: Claude Code एजेंट लूप, उन्हीं मॉडलों पर चलता है, ताकि आप इसकी तुलना Work AI से कर सकें। इसका अपना टैब है, और इस पर चलने वाले टास्क सादे होते हैं: Work AI की चेकलिस्ट, समीक्षक या अतिरिक्त जाँचें इसमें नहीं हैं।",
+  "Offer Super AI": "Super AI उपलब्ध कराएँ",
+  "Adds a Super AI tab under Work AI. It uses your Work AI models, quotas and approvals, and runs the Claude Code program on this server. Anthropic's terms apply to that program: check them before offering it to others.": "Work AI के अंतर्गत एक Super AI टैब जोड़ता है। यह आपके Work AI मॉडल, कोटा और अनुमोदनों का उपयोग करता है, और इस सर्वर पर Claude Code प्रोग्राम चलाता है। उस प्रोग्राम पर Anthropic की शर्तें लागू होती हैं: इसे दूसरों को देने से पहले उन्हें जाँच लें।",
+  "The Claude Code engine isn't installed on this server. It is an optional package of the harness (@anthropic-ai/claude-agent-sdk).": "इस सर्वर पर Claude Code इंजन स्थापित नहीं है। यह हार्नेस का एक वैकल्पिक पैकेज है (@anthropic-ai/claude-agent-sdk)।",
+  "Super AI runs your task on the Claude Code engine, with its own prompts and tools, so you can compare it with Work AI. It works in a private folder and asks you before anything risky.": "Super AI आपका टास्क Claude Code इंजन पर चलाता है, अपने प्रॉम्प्ट और टूल के साथ, ताकि आप इसकी तुलना Work AI से कर सकें। यह एक निजी फ़ोल्डर में काम करता है और किसी भी जोखिम भरे काम से पहले आपसे पूछता है।",
 };

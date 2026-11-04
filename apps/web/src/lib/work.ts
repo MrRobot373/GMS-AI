@@ -29,6 +29,8 @@ export interface ChecklistItem {
 
 export interface WorkTaskSummary {
   id: string;
+  /** Work AI's engine ("dsh") or Super AI's Claude Code ("claude"). */
+  engine?: "dsh" | "claude";
   title: string;
   status: TaskStatus;
   result: string | null;
@@ -94,6 +96,8 @@ export interface WorkInfo {
   approvals: "risky" | "always" | "never";
   allowNetwork: boolean;
   maxConcurrentPerUser: number;
+  /** Super AI (the Claude Code engine) is turned on and installed. */
+  superAi?: boolean;
 }
 
 export interface Skill {
@@ -127,10 +131,10 @@ export interface Schedule {
 
 export const ACTIVE: TaskStatus[] = ["queued", "running", "needs_approval"];
 
-export function useWorkTasks(workspaceId: string) {
+export function useWorkTasks(workspaceId: string, engine: "dsh" | "claude" = "dsh") {
   return useQuery({
-    queryKey: ["work-tasks", workspaceId],
-    queryFn: () => get<WorkTaskSummary[]>(`/api/work/tasks?workspaceId=${workspaceId}`),
+    queryKey: ["work-tasks", workspaceId, engine],
+    queryFn: () => get<WorkTaskSummary[]>(`/api/work/tasks?workspaceId=${workspaceId}${engine === "claude" ? "&engine=claude" : ""}`),
     enabled: !!workspaceId,
     // Keep statuses fresh while something is running.
     refetchInterval: (q) => (q.state.data?.some((t) => ACTIVE.includes(t.status)) ? 4000 : false),

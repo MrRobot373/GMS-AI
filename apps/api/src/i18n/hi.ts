@@ -449,4 +449,7 @@ export const HI: Record<string, string> = {
   // Rated lesson videos.
   "That video isn't in this lesson.": "यह वीडियो इस पाठ में नहीं है।",
   "That isn't a YouTube video ID.": "यह YouTube वीडियो ID नहीं है।",
+  "Super AI is turned off. An admin can turn it on under Admin → Work AI.": "Super AI बंद है। कोई एडमिन इसे Admin → Work AI में चालू कर सकता है।",
+  "Super AI isn't installed on this server.": "Super AI इस सर्वर पर स्थापित नहीं है।",
+  "Super AI doesn't run in container mode yet.": "Super AI अभी कंटेनर मोड में नहीं चलता।",
 };

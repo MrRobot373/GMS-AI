@@ -28,12 +28,13 @@ const STARTERS = [
   { icon: FileSearch, label: msg("Review documents"), prompt: msg("Read the attached documents and list the decisions, open questions and deadlines in a table.") },
 ];
 
-export function WorkHome() {
+export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {}) {
   const t = useT();
   const { me, workspaceId } = useSession();
   const router = useRouter();
   const qc = useQueryClient();
-  const tasks = useWorkTasks(workspaceId);
+  const tasks = useWorkTasks(workspaceId, engine);
+  const superAi = engine === "claude";
   const approvals = usePendingApprovals(workspaceId);
   const info = useWorkInfo(workspaceId);
   const models = useQuery({
@@ -62,7 +63,7 @@ export function WorkHome() {
     try {
       // With files, the task is created first, the files go into its folder, then it starts.
       const inProject = projectId && project.data ? project.data.id : undefined;
-      const task = await post<{ id: string }>("/api/work/tasks", { workspaceId, prompt, modelId: model?.id, projectId: inProject, start: files.length === 0 });
+      const task = await post<{ id: string }>("/api/work/tasks", { workspaceId, prompt, modelId: model?.id, projectId: inProject, start: files.length === 0, ...(superAi ? { engine } : {}) });
       if (files.length) {
         for (const f of files) {
           const form = new FormData();
@@ -88,14 +89,16 @@ export function WorkHome() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <TopBar icon={<Workflow />} title={t("Work AI")} />
+      <TopBar icon={<Workflow />} title={superAi ? t("Super AI") : t("Work AI")} />
       <WorkTabs />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[760px] flex-col px-4 pt-[9vh] pb-8 sm:px-6">
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }} className="text-center">
             <h1 className="font-serif text-[36px] leading-tight tracking-[-0.02em] text-fg">{t("What should I work on, {firstName}?", { firstName: firstName })}</h1>
             <p className="mx-auto mt-2 max-w-md text-[13px] text-fg-subtle">
-              {t("Give {productName} a goal. It plans, runs tools in a private folder and asks you before anything risky.", { productName: me.org.productName })}
+              {superAi
+                ? t("Super AI runs your task on the Claude Code engine, with its own prompts and tools, so you can compare it with Work AI. It works in a private folder and asks you before anything risky.")
+                : t("Give {productName} a goal. It plans, runs tools in a private folder and asks you before anything risky.", { productName: me.org.productName })}
             </p>
           </motion.div>
           {projectId && project.data && (

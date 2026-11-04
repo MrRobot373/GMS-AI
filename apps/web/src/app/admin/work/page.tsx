@@ -23,6 +23,7 @@ interface WorkSettings {
   maxRunning: number;
   idleMinutes: number;
   browser: boolean;
+  superAi: boolean;
   browserAllowedHosts: string[];
   containerCpus: number;
   containerMemoryMb: number;
@@ -32,6 +33,8 @@ interface AdminWork {
   settings: WorkSettings;
   licensed: boolean;
   browserInstalled: boolean;
+  /** The Claude Code engine (Super AI) is installed on this server. */
+  superAiInstalled: boolean;
   /** "container" when the server runs each task in its own Docker container. */
   isolation: "container" | "process";
   stats: { running: number; queued: number; week: number };
@@ -128,6 +131,22 @@ export default function AdminWorkPage() {
               </Button>
             </div>
           </Field>
+        </Card>
+      </Section>
+
+      <Section title={t("Super AI")} description={t("A second engine for tasks: the Claude Code agent loop, running on the same models, so you can compare it with Work AI. It has its own tab, and tasks on it are plain: none of Work AI's checklist, reviewer or extra checks.")}>
+        <Card className="divide-y divide-border">
+          <div className="flex items-start gap-4 p-5">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13.5px] text-fg">{t("Offer Super AI")}</div>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-fg-subtle">
+                {d.superAiInstalled
+                  ? t("Adds a Super AI tab under Work AI. It uses your Work AI models, quotas and approvals, and runs the Claude Code program on this server. Anthropic's terms apply to that program: check them before offering it to others.")
+                  : t("The Claude Code engine isn't installed on this server. It is an optional package of the harness (@anthropic-ai/claude-agent-sdk).")}
+              </p>
+            </div>
+            <Switch checked={form.superAi && d.superAiInstalled} disabled={!d.superAiInstalled || d.isolation === "container"} onCheckedChange={(v) => setForm({ ...form, superAi: v })} label={t("Offer Super AI")} data-testid="super-ai-switch" />
+          </div>
         </Card>
       </Section>
 
