@@ -66,6 +66,14 @@ POST /api/internal/work/llm/v1/chat/completions  the existing gateway route: mod
   (`APPDATA`, `LOCALAPPDATA`, `TEMP`, `USERPROFILE`); without `APPDATA` npm builds a corrupt install path and every
   `npm install` dies. The engine now passes the system's variables through and gives each task a profile of its own
   under its folder (`claude/engine.ts`, `windowsEnv`).
+* **Tool calls that are valid JSON.** Open models often write a Windows path with single backslashes inside a tool
+  call (`E:\GEM AI\...\files`): `\G` is not a JSON escape and `\f` is a form feed, so Claude Code refuses the call
+  ("could not be parsed as JSON") or runs the wrong path. The gateway endpoint now repairs such arguments (a string
+  holding a drive path is read with literal backslashes) and sends each call's arguments whole when its block closes.
+* **Replies that fit the output limit.** One reply holds a quarter of the window (8,192 tokens at 32K). A big file
+  written in one tool call is cut off and the call is lost; Claude Code reports "exceeded the output token maximum"
+  and stops. Super AI's brief now says how much a reply holds and to write long files in parts, and a task that hits
+  the limit is told once more (up to the usual continuation limit) before it fails with a plain message.
 * **A provider without a small per-minute token cap.** A plan limited to 8,000 tokens per minute (a free tier) refuses
   Claude Code's first request outright (HTTP 413). The gateway reports the provider's own words for it.
 

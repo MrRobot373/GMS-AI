@@ -119,6 +119,69 @@ export function toOpenAi(req: AnthropicRequest): Record<string, unknown> {
   return body;
 }
 
+/* ───────────── Tool-call arguments that aren't valid JSON ───────────── */
+
+/**
+ * A tool call's arguments as the model wrote them, made into valid JSON when they aren't. Open models often put
+ * a Windows path in with single backslashes ("E:\GEM AI\apps\files"): `\G` is not a JSON escape, and `\f` and
+ * `\n` are, so a parser either refuses the call or turns "\files" into a form feed. A string that holds a drive path
+ * is read with its backslashes literal; any other string only has its invalid escapes and raw control characters
+ * fixed. Valid JSON is returned as it came; what can't be repaired is returned unchanged.
+ */
+export function repairJson(s: string): string {
+  try {
+    JSON.parse(s);
+    return s;
+  } catch {
+    /* repair below */
+  }
+  const control = (c: string) => (c === "\n" ? "\\n" : c === "\r" ? "\\r" : c === "\t" ? "\\t" : `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  const fixString = (raw: string): string => {
+    const drivePath = /[A-Za-z]:\\(?!\\)/.test(raw);
+    let out = "";
+    for (let i = 0; i < raw.length; i++) {
+      const c = raw[i]!;
+      const n = raw[i + 1];
+      if (c === "\\") {
+        if (n === '"') {
+          out += '\\"';
+          i++;
+        } else if (n === "\\") {
+          out += "\\\\";
+          i++;
+        } else if (!drivePath && n !== undefined && "/bfnrt".includes(n)) {
+          out += c + n;
+          i++;
+        } else if (!drivePath && n === "u" && /^[0-9a-fA-F]{4}$/.test(raw.slice(i + 2, i + 6))) {
+          out += raw.slice(i, i + 6);
+          i += 5;
+        } else out += "\\\\";
+      } else if (c < " ") out += control(c);
+      else out += c;
+    }
+    return out;
+  };
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== '"') {
+      out += s[i];
+      continue;
+    }
+    let j = i + 1;
+    while (j < s.length && s[j] !== '"') j += s[j] === "\\" ? 2 : 1;
+    if (j >= s.length) return s; // a string that never closes: cut off, not repairable
+    out += `"${fixString(s.slice(i + 1, j))}"`;
+    i = j;
+  }
+  out = out.replace(/,(\s*[}\]])/g, "$1");
+  try {
+    JSON.parse(out);
+    return out;
+  } catch {
+    return s;
+  }
+}
+
 /* ───────────── Reply: OpenAI → Anthropic ───────────── */
 
 export type StopReason = "end_turn" | "max_tokens" | "tool_use" | "stop_sequence";
@@ -144,7 +207,7 @@ export function fromOpenAi(json: Completion, model: string): Record<string, unkn
   for (const c of choice?.message?.tool_calls ?? []) {
     let input: unknown = {};
     try {
-      input = c.function?.arguments ? JSON.parse(c.function.arguments) : {};
+      input = c.function?.arguments ? JSON.parse(repairJson(c.function.arguments)) : {};
     } catch {
       input = {};
     }
@@ -185,7 +248,7 @@ export class MessageStream {
   private done = false;
   private open: { index: number; kind: "text" | "tool" } | null = null;
   private next = 0;
-  private tools = new Map<number, { index: number; sentArgs: boolean }>();
+  private tools = new Map<number, { index: number; args: string }>();
   private pending = new Map<number, string>();
   private finish: string | null = null;
   private usage = { input: 0, output: 0 };
@@ -208,13 +271,10 @@ export class MessageStream {
 
   private close(out: string[]) {
     if (!this.open) return;
-    // A tool call that never got arguments is a call with none: say so, as the API does.
+    // A tool call's arguments go out whole when it closes, repaired if the model wrote them badly; none is {}.
     if (this.open.kind === "tool") {
       const t = [...this.tools.values()].find((x) => x.index === this.open!.index);
-      if (t && !t.sentArgs) {
-        t.sentArgs = true;
-        out.push(this.ev("content_block_delta", { index: t.index, delta: { type: "input_json_delta", partial_json: "{}" } }));
-      }
+      if (t) out.push(this.ev("content_block_delta", { index: t.index, delta: { type: "input_json_delta", partial_json: t.args.trim() ? repairJson(t.args) : "{}" } }));
     }
     out.push(this.ev("content_block_stop", { index: this.open.index }));
     this.open = null;
@@ -255,23 +315,15 @@ export class MessageStream {
           continue;
         }
         this.close(out);
-        t = { index: this.next++, sentArgs: false };
+        t = { index: this.next++, args: "" };
         this.tools.set(i, t);
         this.open = { index: t.index, kind: "tool" };
         this.anything = true;
         out.push(this.ev("content_block_start", { index: t.index, content_block: { type: "tool_use", id: tc.id || toolId(), name, input: {} } }));
-        const early = this.pending.get(i);
+        t.args = this.pending.get(i) ?? "";
         this.pending.delete(i);
-        if (early) {
-          t.sentArgs = true;
-          out.push(this.ev("content_block_delta", { index: t.index, delta: { type: "input_json_delta", partial_json: early } }));
-        }
       }
-      const args = tc.function?.arguments;
-      if (args) {
-        t.sentArgs = true;
-        out.push(this.ev("content_block_delta", { index: t.index, delta: { type: "input_json_delta", partial_json: args } }));
-      }
+      if (tc.function?.arguments) t.args += tc.function.arguments;
     }
     if (choice.finish_reason) this.finish = choice.finish_reason;
   }

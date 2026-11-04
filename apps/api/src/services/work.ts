@@ -501,6 +501,10 @@ const TRY_NUDGE = `You wrote code in this task but haven't run or opened it sinc
 /** A reviewer that ended without its report. */
 const REVIEW_NUDGE = `You haven't written ${REVIEW_FILE} yet. Test whatever is left, then write ${REVIEW_FILE} as JSON in the shape you were given, with an entry for every item to test, and reply with one line saying it's written.`;
 
+/** Super AI: a reply that hit the model's output limit (Claude Code reports it as an API error and stops the turn). */
+const OUTPUT_LIMIT = /output token maximum/i;
+const OUTPUT_LIMIT_NUDGE = "Your last reply was cut off because it reached the model's output limit before it was finished, so nothing in it was done. Don't write a large file in one step: write it in parts of about 200 lines (create it with the first part, then add the rest), and keep each reply short. Then carry on from where you stopped.";
+
 const CUT_OFF_NUDGE = "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence. Write a long file in several smaller parts.";
 
 /** Command output that is mostly control characters (an image or archive printed to the terminal). */
@@ -1428,7 +1432,9 @@ export class WorkRunner {
         const verify = e.reason === "completed" && !!l.wroteCode && !l.verifyNudged && !l.acceptance && !l.parentId;
         // A reviewer ends with its report in the folder.
         const reportMissing = !!l.parentId && e.reason === "completed" && !(await this.reportReady(l));
-        const nudge = l.plain ? null : hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
+        // A plain (Super AI) task is left alone, except to say again how to write a file that is too long for one reply.
+        const outputLimit = !!l.plain && OUTPUT_LIMIT.test(e.error ?? "");
+        const nudge = l.plain ? (outputLimit ? OUTPUT_LIMIT_NUDGE : null) : hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
         if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
           l.continues = (l.continues ?? 0) + 1;
           l.idleNudge = !l.usedTools;
@@ -1465,7 +1471,9 @@ export class WorkRunner {
               ? msg("The model's context window was full, so it couldn't answer. Send the message again; older steps are condensed to make room.")
               : msg("The model sent back an empty answer, so nothing was done. Send the task again, or pick another model.")
             : !ok
-              ? (e.error ?? `The agent stopped (${e.reason}).`)
+              ? OUTPUT_LIMIT.test(e.error ?? "")
+                ? msg("The model's reply kept hitting its output limit, so the work was cut off. Ask for it in smaller parts, or choose a model with a larger context window.")
+                : (e.error ?? `The agent stopped (${e.reason}).`)
               : // A plan with steps never done is not a finished task, whatever the last sentence says.
                 e.reason !== "blocked" && open.length > 0
                 ? unfinishedNote(open, l.plan!.length)

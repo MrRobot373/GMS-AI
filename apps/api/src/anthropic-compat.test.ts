@@ -3,7 +3,7 @@
  * completion, and what comes back is read as Messages.
  */
 import { describe, expect, it } from "vitest";
-import { anthropicError, fromOpenAi, MessageStream, stopReason, toOpenAi } from "./services/anthropic-compat";
+import { anthropicError, fromOpenAi, MessageStream, repairJson, stopReason, toOpenAi } from "./services/anthropic-compat";
 
 describe("a Messages request as a chat completion", () => {
   it("turns system, text, tool calls and their results into the chat roles, results straight after the calls", () => {
@@ -127,5 +127,42 @@ describe("the stream", () => {
     const empty = events(new MessageStream("m").end());
     expect(empty.map((e) => e.type)).toEqual(["message_start", "content_block_start", "content_block_stop", "message_delta", "message_stop"]);
     expect(empty[1]!.content_block).toEqual({ type: "text", text: "" });
+  });
+});
+
+describe("tool arguments a model wrote as invalid JSON", () => {
+  it("leaves valid JSON exactly as it was", () => {
+    const ok = '{"command":"cd E:\\\\GEM AI\\\\files; echo \\"hi\\"\\nls","n":1}';
+    expect(repairJson(ok)).toBe(ok);
+    expect(repairJson("")).toBe("");
+  });
+
+  it("reads a Windows path written with single backslashes literally, even where \\f, \\n, \\t, \\r or \\b would be escapes", () => {
+    // What Qwen sent: E:\GEM AI\apps\api\.data\work\19fe\files\node_modules\tmp\runtime\bin
+    const raw = '{"command":"cd \\"E:\\GEM AI\\apps\\api\\.data\\work\\19fe\\files\\node_modules\\tmp\\runtime\\bin\\x\\" ; npm install","description":"Install"}';
+    expect(() => JSON.parse(raw)).toThrow();
+    const fixed = JSON.parse(repairJson(raw));
+    expect(fixed.command).toBe('cd "E:\\GEM AI\\apps\\api\\.data\\work\\19fe\\files\\node_modules\\tmp\\runtime\\bin\\x" ; npm install');
+    // (A backslash right before a quote can't be told from an escaped quote: that one is read as the quote.)
+    expect(fixed.description).toBe("Install");
+  });
+
+  it("fixes an invalid escape and a raw newline in an ordinary string, a trailing comma, and gives up on a cut-off string", () => {
+    expect(JSON.parse(repairJson('{"pattern":"\\d+\\.\\w","path":"src",}'))).toEqual({ pattern: "\\d+\\.\\w", path: "src" });
+    expect(JSON.parse(repairJson('{"content":"line one\nline two\ttab"}'))).toEqual({ content: "line one\nline two\ttab" });
+    const cut = '{"content":"a very long file that was cut o';
+    expect(repairJson(cut)).toBe(cut);
+  });
+
+  it("a streamed call is repaired as a whole when its block closes, and the call arrives intact", () => {
+    const bad = '{"command":"cd E:\\GEM AI\\files"}';
+    const s = new MessageStream("m");
+    const out = s.push(sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "PowerShell", arguments: bad.slice(0, 18) } }] } }] }, { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: bad.slice(18) } }] } }] }, { choices: [{ delta: {}, finish_reason: "tool_calls" }] })) + s.end();
+    const ev = events(out);
+    const json = ev.filter((e) => e.delta?.type === "input_json_delta").map((e) => e.delta.partial_json).join("");
+    expect(JSON.parse(json)).toEqual({ command: "cd E:\\GEM AI\\files" });
+    // The same through a plain (non-streamed) reply.
+    const r = fromOpenAi({ choices: [{ message: { tool_calls: [{ id: "c", function: { name: "PowerShell", arguments: bad } }] }, finish_reason: "tool_calls" }] }, "m");
+    expect((r.content as { input: unknown }[])[0]!.input).toEqual({ command: "cd E:\\GEM AI\\files" });
   });
 });

@@ -453,4 +453,5 @@ export const HI: Record<string, string> = {
   "Super AI isn't installed on this server.": "Super AI इस सर्वर पर स्थापित नहीं है।",
   "Super AI doesn't run in container mode yet.": "Super AI अभी कंटेनर मोड में नहीं चलता।",
   "Super AI needs a model with a context window of at least {min} tokens, and {name} has {have}. Raise the model's context length (in Admin → Models, and on the model server), or choose another model.": "Super AI को कम से कम {min} टोकन की कॉन्टेक्स्ट विंडो वाला मॉडल चाहिए, और {name} में {have} है। मॉडल की कॉन्टेक्स्ट लंबाई बढ़ाएँ (Admin → Models में, और मॉडल सर्वर पर), या कोई दूसरा मॉडल चुनें।",
+  "The model's reply kept hitting its output limit, so the work was cut off. Ask for it in smaller parts, or choose a model with a larger context window.": "मॉडल का जवाब बार-बार उसकी आउटपुट सीमा तक पहुँच गया, इसलिए काम बीच में कट गया। इसे छोटे हिस्सों में माँगें, या बड़ी कॉन्टेक्स्ट विंडो वाला मॉडल चुनें।",
 };

@@ -82,3 +82,16 @@ describe("the environment of a Windows task", () => {
     expect(env).not.toHaveProperty("SECRET_TOKEN");
   });
 });
+
+describe("what Super AI is told about the size of a reply", () => {
+  it("says how much one reply holds and to write long files in parts, scaled to the model's window", async () => {
+    const { briefFor } = await import("./claude/engine");
+    const base = { workdir: "/w", productName: "Aatmiq" } as never;
+    const small = briefFor({ ...(base as object), model: { key: "m", name: "M", contextWindow: 32_768 } } as never);
+    expect(small).toContain("about 8,192 tokens");
+    expect(small).toContain("about 303 lines");
+    expect(small).toContain("Never write a file longer than");
+    const big = briefFor({ ...(base as object), model: { key: "m", name: "M", contextWindow: 131_072 } } as never);
+    expect(big).toContain("about 32,000 tokens");
+  });
+});
