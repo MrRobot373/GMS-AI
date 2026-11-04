@@ -166,6 +166,10 @@ export function fromOpenAi(json: Completion, model: string): Record<string, unkn
 /** An error in the Messages format; the text Claude Code matches on to condense its context when a prompt is too long. */
 export function anthropicError(status: number, message: string, code?: string): { status: number; body: { type: "error"; error: { type: string; message: string } } } {
   if (code === "context_length_exceeded") return { status: 400, body: { type: "error", error: { type: "invalid_request_error", message: `prompt is too long: ${message}` } } };
+  // A model server's "413 request too large" (a free tier's tokens-per-minute cap, for one) can't be cured by
+  // sending the same thing again. Claude Code answers a 413 with its own text about 32 MB of images, which
+  // sends people looking in the wrong place: say what the server said, as an ordinary 400.
+  if (status === 413) return { status: 400, body: { type: "error", error: { type: "invalid_request_error", message: `The model server refused the request as too large (this is usually a per-minute token limit of the model's plan, not the size of your files): ${message}` } } };
   const type = status === 401 ? "authentication_error" : status === 402 || status === 403 ? "permission_error" : status === 404 ? "not_found_error" : status === 429 ? "rate_limit_error" : status === 529 || status === 503 ? "overloaded_error" : status >= 500 ? "api_error" : "invalid_request_error";
   return { status, body: { type: "error", error: { type, message } } };
 }

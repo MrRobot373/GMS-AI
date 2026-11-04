@@ -68,6 +68,11 @@ describe("a chat completion as a Messages reply", () => {
   it("errors use the Messages shape, and an overflow reads as 'prompt is too long' so Claude Code condenses", () => {
     expect(anthropicError(429, "slow down")).toEqual({ status: 429, body: { type: "error", error: { type: "rate_limit_error", message: "slow down" } } });
     expect(anthropicError(402, "allowance").body.error.type).toBe("permission_error");
+    // A provider's 413 (a per-minute token cap) keeps its own words and isn't dressed up as a 32 MB image problem.
+    const big = anthropicError(413, "The model server answered 413: Limit 8000, Requested 8027");
+    expect(big.status).toBe(400);
+    expect(big.body.error.message).toContain("per-minute token limit");
+    expect(big.body.error.message).toContain("Limit 8000, Requested 8027");
     const o = anthropicError(400, "this request needs 40,000 tokens", "context_length_exceeded");
     expect(o.body.error).toEqual({ type: "invalid_request_error", message: "prompt is too long: this request needs 40,000 tokens" });
   });
