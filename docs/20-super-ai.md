@@ -8,7 +8,7 @@ can be tested against each other and the better one chosen. Work AI is untouched
 
 | | Work AI (DSH) | Super AI (Claude Code) |
 |---|---|---|
-| Agent loop, system prompt, built-in tools | DSH's, patched by us | Claude Code's own (shell, read, write, edit, subagents, plan) |
+| Agent loop, system prompt, built-in tools, task list, skills, memory, compaction | DSH's, patched by us | Claude Code's own, unmodified |
 | Models, quotas, usage metering, retries, window fitting | Aatmiq's gateway | **the same gateway** (a translating endpoint, below) |
 | Task storage, files, task page, approvals, history, skills library | shared | shared |
 | Web search and page reading | our SearXNG-backed tools | the same, as two in-process tools |
@@ -36,13 +36,24 @@ POST /api/internal/work/llm/v1/chat/completions  the existing gateway route: mod
   names (Bash → `bash`, Edit → `edit`…), so the task page treats both alike.
 * A task has `engine = "dsh" | "claude"` (migration 0028). The task service starts the right engine and, for
   `claude`, sets `plain`, which switches off the Work-AI-only behaviors in `services/work.ts`.
-* Approvals reuse `classifyRisk` (the same rules) through the SDK's `canUseTool`; a path outside the task's
-  folder is refused; a reviewer-style task is refused instead of asked.
-* Claude Code is told every model is called `aatmiq`; the gateway answers from the task's model whatever the
-  name. Tool search is switched off (every tool is listed from the first request: weaker models lose steps
-  on a "find the tool" indirection), as are telemetry, error reports, update checks and Anthropic-hosted
-  search and fetch. Tools that don't fit a task product (cron, worktrees, peer messages, workflows, asking a
-  question nobody can answer) are disabled.
+* **Claude Code is left as it ships.** Its own tools (shell, read, write, edit, subagents, questions, plan mode,
+  worktrees, its task list, its tool search), its own skills, memory (`CLAUDE.md`, `.claude/` in the task's folder),
+  settings and context compaction all run unchanged. The task's skill library is added beside Claude Code's own
+  (`skills: "all"`), and the task's folder is its working directory.
+* **What we add is only what connects it here:** the gateway and the task token; the model name (`aatmiq`, the
+  gateway answers from the task's model whatever the name); the model's window, compaction point (75%) and output
+  cap; a per-task Unix user and home; a Windows profile; telemetry, error reports and update checks off; our two
+  private web tools (`web_search`, `web_fetch`), because Anthropic's hosted `WebSearch`/`WebFetch` can't work here;
+  and a short brief (reply size, web tools, the task's instructions).
+* **Tools switched off** are only those that can't work in a task: `WebSearch`, `WebFetch`, `ScheduleWakeup`,
+  `CronCreate/Delete/List` and `ReportFindings`.
+* **Permissions** use `classifyRisk` (the same rules as Work AI) through the SDK's `canUseTool`. What Claude Code
+  would ask in its terminal goes to the person's approvals list instead: risky commands, a change to a file outside
+  the task's folder, and a plan from plan mode (`ExitPlanMode`, shown as "Plan ready for review"). `AskUserQuestion`
+  has no dialog here, so the model is told to ask in its reply; the answer arrives as the next message.
+* **Tuning without a code change:** `AATMIQ_CLAUDE_ENV='{"ENABLE_TOOL_SEARCH":"false"}'` on the server passes any
+  Claude Code setting through to the task's process (not the gateway, token, home or PATH). Useful if a weaker model
+  loses steps on tool search, which Claude Code uses by default to list its rarer tools only on request.
 * A context that doesn't fit makes the gateway answer "prompt is too long: …", which Claude Code reads as
   its cue to condense and retry.
 

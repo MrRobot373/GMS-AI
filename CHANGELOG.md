@@ -16,7 +16,9 @@ without one.
   run on the same briefs and judged alike. Off until an admin turns it on (Admin → Work AI), an optional
   install (the production image adds it only with `--build-arg SUPER_AI=true`). Claude Code is proprietary
   (Anthropic's Commercial Terms): read [docs/20-super-ai.md](docs/20-super-ai.md) before shipping it. Migration
-  0028 adds `work_task.engine`.
+  0028 adds `work_task.engine`. Super AI runs Claude Code as it ships (its own tools, task list, plan mode, skills,
+  memory and compaction); only what connects it here is ours, and `AATMIQ_CLAUDE_ENV` passes any Claude Code
+  setting through.
 
 - **Work AI's `edit` tool stops failing on near-misses.** Across the recorded Work AI tasks 41% of
   `edit` calls failed (201 of 485; the next worst tool was 1%), 183 of them "old_string was not

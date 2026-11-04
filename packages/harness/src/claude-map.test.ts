@@ -95,3 +95,12 @@ describe("what Super AI is told about the size of a reply", () => {
     expect(big).toContain("about 32,000 tokens");
   });
 });
+
+describe("Claude Code settings from the server's environment", () => {
+  it("passes Claude Code's own settings through, but never what connects it to Aatmiq", async () => {
+    const { extraSettings } = await import("./claude/engine");
+    expect(extraSettings('{"ENABLE_TOOL_SEARCH":"false","CLAUDE_CODE_MAX_OUTPUT_TOKENS":4096,"ANTHROPIC_BASE_URL":"http://x","HOME":"/h","bad key":"1"}')).toEqual({ ENABLE_TOOL_SEARCH: "false", CLAUDE_CODE_MAX_OUTPUT_TOKENS: "4096" });
+    expect(extraSettings("not json")).toEqual({});
+    expect(extraSettings(undefined)).toEqual({});
+  });
+});

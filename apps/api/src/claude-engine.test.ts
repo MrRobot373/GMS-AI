@@ -128,8 +128,11 @@ async function run(prompts: string[], events: HarnessEvent[], mutate: (s: Parame
     // The model was asked in Claude Code's own words, with its own tools and our brief.
     const first = requests.find((r) => r.tools?.some((t) => t.function.name === "Write"))!;
     expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["Bash", "Read", "Write", "Edit", "Skill"]));
-    for (const unwanted of ["WebSearch", "WebFetch", "CronCreate", "EnterWorktree", "ScheduleWakeup", "AskUserQuestion"]) expect(first.tools!.map((t) => t.function.name)).not.toContain(unwanted);
-    expect(JSON.stringify(first.messages[0])).toContain("Your working folder is");
+    for (const unwanted of ["WebSearch", "WebFetch", "CronCreate", "ScheduleWakeup"]) expect(first.tools!.map((t) => t.function.name)).not.toContain(unwanted);
+    // Everything else of Claude Code stays as it ships: its questions, subagents and its own tool search (which lists
+    // the rarer tools, plan mode and worktrees among them, only when the model asks for them).
+    expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["AskUserQuestion", "Agent", "ToolSearch"]));
+    expect(JSON.stringify(first.messages)).toContain("You are working inside");
   }, 120_000);
 
   it("lists the skill library to the model, so it can choose one (and the Skill tool is there to load it)", async () => {
@@ -145,9 +148,6 @@ async function run(prompts: string[], events: HarnessEvent[], mutate: (s: Parame
     expect(first.tools!.map((t) => t.function.name)).toContain("Skill");
     expect(everything).toContain("word-documents");
     expect(everything).toContain("real contents page");
-    // Claude Code's own built-in skills are not offered.
-    expect(everything).not.toContain("plugin-authoring");
-    expect(everything).not.toContain("dataviz");
   }, 120_000);
 
   it("asks a person before a risky command, and carries on when they say no", async () => {
