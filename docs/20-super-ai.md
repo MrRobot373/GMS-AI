@@ -75,3 +75,30 @@ Run the same brief on both, with the same model, from the two tabs, and judge th
 is the shared yardstick). Briefs used so far: the Northwind Q3 pack (Excel + PowerPoint + Word that must
 agree) and the Ridge Riders game. Things to record per run: time, tokens, tool calls and tool errors,
 whether it finished or stopped early, what a person finds wrong, and what it claimed that was not true.
+
+## First measurements (2026-11-04)
+
+One brief (the Northwind pack), one model (Nemotron 3 Super, Auto's pick), one run each, judged with the same
+`office_audit.py` and the same requirements (notes, contents field, page numbers, header title, 5-9 pages,
+10-12 slides, 2 charts, formulas). Small samples: read them as a first look, not a verdict.
+
+| | Work AI as first built (plain DSH) | Super AI (plain Claude Code) | Work AI with all its additions |
+|---|---|---|---|
+| Time | 6.3 min | 6.6 min | 71 min (4 review rounds) |
+| Input / output tokens | 3.63 M / 57 K | 3.87 M / 74 K | not comparable |
+| Audit failures | 10 | 6 | a few (and a reviewer found formula bugs the audit then learned to catch) |
+| Speaker notes | 0 of 11 | 4 of 11 | 11 of 11 |
+| Native charts in the deck | 2 | 4 | 3 |
+| Report | 12 pages, typed contents | 5 pages, typed contents, no page numbers | 6 pages, real contents field |
+| What its final answer said | "all verified" (not true in places) | listed what was not met, candidly | "30 of 36 requirements met", rest named |
+
+* Plain Claude Code did somewhat better than plain DSH on this brief and was more candid about what it had not done. It
+  did not use the skill library (no `document-checks`, no `outline_to_pptx.py` charts), which is the main reason it
+  still fails the audit. Work AI's additions (checklist, reviewer, audit loop) are what closed most of the gap,
+  at a large cost in time.
+* Claude Code's own prompt and tool definitions are large: about 17,800 input tokens per request here (53K for a
+  three-step task). On a 32K window that leaves little room; Work AI's DSH setup is much smaller.
+* A real, correct small task (a primes script, run and explained) took 15.6 s on Super AI.
+
+What to try next: the same two engines with the same additions (give Super AI the checklist and reviewer through
+the engine-neutral task service), on a bigger model, and on the Ridge Riders brief.
