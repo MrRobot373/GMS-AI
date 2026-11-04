@@ -13,7 +13,7 @@
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chown, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chown, mkdir, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { classifyRisk } from "../../dsh-plugin/policy.mjs";
 import { formatPage } from "../../dsh-plugin/web.mjs";
@@ -108,6 +108,10 @@ export function claudeSettings(spec: TaskSpec): Record<string, string> {
     // Every tool is listed in full from the first request: a model that must first "search for tools" to find
     // Glob or the todo list loses steps on it (Claude Code defers them by default).
     ENABLE_TOOL_SEARCH: "false",
+    // The skill list the model sees is ours alone, with each skill's description (Claude Code's built-in skills
+    // are for Anthropic's own apps, and shared the list's small budget so that ours showed as bare names).
+    CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+    SLASH_COMMAND_TOOL_CHAR_BUDGET: String(clamp(window / 8, 4000, 20_000)),
     CLAUDE_CODE_ENABLE_TODO_TOOLS: "1",
   };
 }
@@ -168,6 +172,8 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
         for (const p of [spec.workdir, spec.homeDir, configDir, join(configDir, "settings.json")]) await chown(p, spec.uid, gid).catch(() => undefined);
       }
       const env = await claudeEnv(spec, configDir);
+      // Only the task's own skills are enabled, by name: Claude Code's built-in ones are for Anthropic's apps.
+      const skillNames = spec.skillsDir ? (await readdir(spec.skillsDir, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory() || d.isSymbolicLink()).map((d) => d.name) : [];
 
       const api = async (path: string, init: RequestInit = {}, signal?: AbortSignal) => {
         const res = await fetch(`${spec.controlUrl}${path}`, {
@@ -249,7 +255,7 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
         systemPrompt: { type: "preset", preset: "claude_code", append: briefFor(spec) },
         // Only the task's own skills and settings: not a project's CLAUDE.md or anything of the server's.
         settingSources: ["user"],
-        skills: spec.skillsDir ? "all" : [],
+        skills: skillNames,
         permissionMode: "default",
         canUseTool,
         allowedTools: [...(tools.length ? ["mcp__aatmiq__web_search", "mcp__aatmiq__web_fetch"] : [])],

@@ -2,7 +2,7 @@
  * Super AI's engine, for real: the Claude Code binary, started by our adapter, talking to our
  * Anthropic-format route, which answers from a model server (here a scripted one).
  */
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeAvailable, createClaudeEngine, type HarnessEvent } from "@aatmiq/harness";
@@ -130,6 +130,24 @@ async function run(prompts: string[], events: HarnessEvent[], mutate: (s: Parame
     expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["Bash", "Read", "Write", "Edit", "Skill"]));
     for (const unwanted of ["WebSearch", "WebFetch", "CronCreate", "EnterWorktree", "ScheduleWakeup", "AskUserQuestion"]) expect(first.tools!.map((t) => t.function.name)).not.toContain(unwanted);
     expect(JSON.stringify(first.messages[0])).toContain("Your working folder is");
+  }, 120_000);
+
+  it("lists the skill library to the model, so it can choose one (and the Skill tool is there to load it)", async () => {
+    const skills = await mkdtemp(join(tmpdir(), "claude-skills-"));
+    await mkdir(join(skills, "word-documents"), { recursive: true });
+    await writeFile(join(skills, "word-documents", "SKILL.md"), '---\nname: word-documents\ndescription: "Use when creating or editing Word documents (.docx): reports with a real contents page."\n---\n\n# Word documents\n\nBody.\n');
+    const before = requests.length;
+    await run(["Say hello"], [], (spec) => void (spec.skillsDir = skills));
+    const first = requests.slice(before).find((r) => r.tools?.some((t) => t.function.name === "Write"))!;
+    // Claude Code lists skills in its own words, in the messages or in the Skill tool's description.
+    const everything = JSON.stringify([first.messages, first.tools]);
+    if (process.env.DEBUG_EVENTS) console.log("SKILLTOOL", JSON.stringify(first.tools!.find((t) => t.function.name === "Skill")).slice(0, 1500), "\nMSGS", JSON.stringify(first.messages).match(/.{200}word-documents.{300}/)?.[0]);
+    expect(first.tools!.map((t) => t.function.name)).toContain("Skill");
+    expect(everything).toContain("word-documents");
+    expect(everything).toContain("real contents page");
+    // Claude Code's own built-in skills are not offered.
+    expect(everything).not.toContain("plugin-authoring");
+    expect(everything).not.toContain("dataviz");
   }, 120_000);
 
   it("asks a person before a risky command, and carries on when they say no", async () => {
