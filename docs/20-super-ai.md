@@ -131,6 +131,25 @@ folder. With the browser fixed (secure folder pages, module and fetch warnings, 
 a working app in less than half the time and a quarter of the tokens, and Work AI's extra checking did not catch the
 phone layout. One run each: read it as a direction, not a verdict.
 
+## Three briefs, both engines, Nemotron 3 Ultra (2026-11-05)
+
+Each output was opened and used the way a person would (apps and games from the folder, `file://`; office files
+through `office_audit.py`), not judged from the engines' own reports.
+
+| Brief | Work AI (DSH, checklist + reviewer) | Super AI (Claude Code) |
+|---|---|---|
+| Expense tracker | works; phone layout broken (table overflows). 13 min, 8.9 M tokens in | **works, phone layout fine**. 5.5 min, 2.1 M |
+| Northwind office pack | **0 audit failures** (8-page report, 12 slides with notes, 1,147 formulas); reviewer 25/25. 49 min, 14.0 M | 1 failure (report 13 pages, 5-9 asked) and stopped mid-fix ("Let me try a different approach…"). 15 min, 1.45 M |
+| Ridge Riders game | **playable**: menu, level select, driving with HUD, results; but the car tips over on the first hill at ~41 m every time and the camera doesn't keep it in view. 71 min, 50.5 M | **not playable**: Play by mouse throws `camera is not defined`; by keyboard the level ends "CRASHED · 0 m" at once. Never opened the game in the browser (it had the tool). Honest TESTING.md (14 items NOT CHECKED). 18.5 min, 2.1 M |
+
+* Small apps: Super AI is as good or better, at a fraction of the time and tokens.
+* Long, many-part deliverables (a 3-file office pack, a 19-file game): Work AI's checklist, stages, reviewer and
+  "not finished" nudges are what get the job over the line. Super AI ends early: it stops after a sentence that
+  announces the next step, and on the game it never tried what it built.
+* Cost: Work AI used 4x to 24x more input tokens than Super AI on the same brief.
+* Gap found in Super AI (plain): an answer that ends on "let me …" ends the task; Work AI resumes it. Not added,
+  to keep Super AI as Claude Code ships.
+
 ## License: read before shipping
 
 Claude Code and the Agent SDK are **not open source**. Their license is "All rights reserved. Use is subject
