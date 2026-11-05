@@ -99,6 +99,8 @@ interface Live {
   usedTools?: boolean;
   /** Times this turn was sent back to keep going (a cut-off answer, steps of its plan still open). */
   continues?: number;
+  /** Of those, the ones after a round that did real work (tools ran): they get more room. */
+  progressContinues?: number;
   /** The last nudge followed a round with no tool call: another such round ends the turn. */
   idleNudge?: boolean;
   /** The plan as the agent last wrote it (the runtime keeps it across turns, so it's kept here too). */
@@ -184,6 +186,12 @@ const LONG_REQUEST_SHARE = 0.15;
 export const REQUEST_FOLDER = ".task";
 /** How many times one message may be sent back to keep going before the turn ends as it is. */
 const MAX_CONTINUES = 8;
+/**
+ * Continuations after a round that did real work. A long job by a model that ends every few steps with "Let me
+ * fix …" needs more than 8 (an office pack used all 8 while fixing formulas, notes and the page count, and was
+ * cut off one step from done); rounds that did nothing still stop at MAX_CONTINUES.
+ */
+const MAX_PROGRESS_CONTINUES = 24;
 /** How many times one message may start over in a fresh runtime when its window can't be freed. */
 const MAX_FRESH_STARTS = 2;
 
@@ -848,6 +856,7 @@ export class WorkRunner {
     l.turnOutput = false;
     l.usedTools = false;
     l.continues = 0;
+    l.progressContinues = 0;
     l.idleNudge = false;
     l.planActive = false;
     l.untried = false;
@@ -1479,8 +1488,11 @@ export class WorkRunner {
                 ? PAGE_NUDGE
                 : null
           : hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
-        if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
-          l.continues = (l.continues ?? 0) + 1;
+        const worked = !!l.usedTools;
+        const room = worked ? (l.progressContinues ?? 0) < MAX_PROGRESS_CONTINUES : (l.continues ?? 0) < MAX_CONTINUES;
+        if (nudge && room && l.runtime?.alive && !l.lastError) {
+          if (worked) l.progressContinues = (l.progressContinues ?? 0) + 1;
+          else l.continues = (l.continues ?? 0) + 1;
           l.idleNudge = !l.usedTools;
           if (nudge === TRY_NUDGE || nudge === VERIFY_NUDGE) l.verifyNudged = true;
           if (nudge === PAGE_NUDGE) l.pageNudged = true;
