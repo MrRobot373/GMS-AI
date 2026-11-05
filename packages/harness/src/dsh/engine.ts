@@ -29,6 +29,18 @@ export interface Launcher {
   spawn(args: { cli: string; argv: string[]; cwd: string; env: NodeJS.ProcessEnv; spec: TaskSpec }): ChildProcess;
 }
 
+/**
+ * The runtime's last words worth showing: its error lines, without Node's version footer, stack frames, the
+ * source line and caret Node prints above an error, or blank lines.
+ */
+export function lastWords(stderr: string, n = 3): string {
+  const lines = stderr
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim() && !/^\s*at\s/.test(l) && !/^Node\.js v\d/.test(l.trim()) && !/^\s*\^+\s*$/.test(l) && !/^\s*(throw |code: |requireStack|\}|\]|\{)/.test(l) && !/^\S+:\d+(:\d+)?$/.test(l.trim()));
+  return lines.slice(-n).join(" ").trim().slice(0, 500);
+}
+
 export const processLauncher: Launcher = {
   spawn: ({ cli, argv, cwd, env, spec }) =>
     spawn(process.execPath, [cli, ...argv], {
@@ -333,10 +345,15 @@ export function createDshEngine(opts: { launcher?: Launcher; initializeTimeoutMs
         stderr = (stderr + b.toString()).slice(-4000);
       });
       let alive = true;
+      let exitCode: number | null = null;
+      let exitSignal: string | null = null;
       const exited = new Promise<void>((resolve) => {
-        child.on("exit", (code) => {
+        child.on("exit", (code, signal) => {
           alive = false;
-          onEvent({ type: "exit", code, ...(code ? { error: stderr.trim().split("\n").slice(-5).join("\n") } : {}) });
+          exitCode = code;
+          exitSignal = signal;
+          // Killed by a signal (out of memory, a crash) is a failure too, though it has no exit code.
+          onEvent({ type: "exit", code, ...(code || signal ? { error: lastWords(stderr) || `The agent runtime was stopped (${signal ?? `exit code ${code}`}).` } : {}) });
           resolve();
         });
         child.on("error", (e) => {
@@ -347,6 +364,18 @@ export function createDshEngine(opts: { launcher?: Launcher; initializeTimeoutMs
       });
 
       const transport = new JsonRpcLineTransport(child.stdout!, child.stdin!);
+      /**
+       * A call that failed because the runtime went away says only "JSON-RPC input closed": wait a moment for the
+       * process to finish exiting and say why, in the runtime's own last words when it left any.
+       */
+      const explain = async (e: unknown): Promise<Error> => {
+        const err = e instanceof Error ? e : new Error(String(e));
+        if (!/input closed|EPIPE|write after end|stream (was )?destroyed/i.test(err.message)) return err;
+        await Promise.race([exited, new Promise((r) => setTimeout(r, 2000))]);
+        const how = exitSignal ? ` (${exitSignal})` : exitCode !== null ? ` (exit code ${exitCode})` : "";
+        const tail = lastWords(stderr);
+        return new Error(`The agent runtime stopped${how}${tail ? `: ${tail}` : ". It left no message; the server's log may say more."}`);
+      };
       // The task's own session; subagents run in sessions of their own. Their steps are shown, but
       // their messages, plans and turn ends are theirs: the task ends when its own turn does and no
       // subagent is still working (a finished subagent wakes the main agent for another turn).
@@ -411,13 +440,14 @@ export function createDshEngine(opts: { launcher?: Launcher; initializeTimeoutMs
           transport.request("initialize", { cwd: spec.workdir, provider: PROVIDER_ID, model: spec.model.key }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("The agent runtime didn't start in time.")), timeout)),
           exited.then(() => {
-            throw new Error(`The agent runtime stopped while starting.${stderr ? ` ${stderr.trim().split("\n").slice(-3).join(" ")}` : ""}`);
+            throw new Error(`The agent runtime stopped while starting.${lastWords(stderr) ? ` ${lastWords(stderr)}` : ""}`);
           }),
         ]);
-      } catch (e) {
+      } catch (e0) {
+        const e = await explain(e0);
         child.kill("SIGKILL");
         // The runtime's own last words explain more than "input closed".
-        const tail = stderr.trim().split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 500);
+        const tail = lastWords(stderr);
         if (tail && !(e as Error).message.includes(tail)) throw new Error(`The agent runtime couldn't start: ${tail}`);
         if ((e as Error).message === "The agent runtime didn't start in time.") {
           throw new Error("The agent runtime was still starting when the time limit ran out. Send the task again.");
@@ -431,7 +461,11 @@ export function createDshEngine(opts: { launcher?: Launcher; initializeTimeoutMs
           return alive;
         },
         async send(text) {
-          await transport.request("session/prompt", { sessionId, contentBlocks: [{ type: "text", text }] });
+          try {
+            await transport.request("session/prompt", { sessionId, contentBlocks: [{ type: "text", text }] });
+          } catch (e) {
+            throw await explain(e);
+          }
         },
         async stop() {
           if (!alive) return;

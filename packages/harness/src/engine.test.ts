@@ -4,11 +4,12 @@
  */
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDshEngine, mapEvent, networkEnv, notRunReason, prependPath, readableBy, shellFailure } from "./dsh/engine";
+import { createDshEngine, lastWords, mapEvent, networkEnv, notRunReason, prependPath, readableBy, shellFailure } from "./dsh/engine";
 import { buildPatch, contextBudget } from "./dsh/patch";
 import { parse } from "yaml";
 import { APPROVAL_PRESETS } from "@aatmiq/shared";
@@ -932,4 +933,33 @@ describe("DeepSeek Harness engine", () => {
     expect(results[1]!.exitCode).toBeUndefined();
     expect(results[2]).toMatchObject({ isError: true, notRun: 'missing required property "file_path"' });
   }, 60_000);
+});
+
+describe("when the runtime goes away", () => {
+  // A stand-in runtime: answers initialize, then dies on the first prompt with its own last words.
+  const fake = `
+    const rl = require("node:readline").createInterface({ input: process.stdin });
+    rl.on("line", (l) => {
+      const m = JSON.parse(l);
+      if (m.method === "initialize") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: m.id, result: {} }) + "\\n");
+      else if (m.method === "session/prompt") { process.stderr.write("Error: Cannot find module './browser.mjs'\\n"); process.exit(7); }
+    });`;
+  const launcher = { spawn: ({ cwd }: { cwd: string }) => spawn(process.execPath, ["-e", fake], { cwd, stdio: ["pipe", "pipe", "pipe"] }) };
+  it("says why it stopped, in its own words, instead of \"JSON-RPC input closed\"", async () => {
+    const events: HarnessEvent[] = [];
+    const rt = await createDshEngine({ launcher: launcher as never }).start(await spec(), (e) => events.push(e));
+    const err = await rt.send("hi").then(() => null, (e: Error) => e);
+    expect(err?.message).toMatch(/^The agent runtime stopped \(exit code 7\): Error: Cannot find module '.\/browser.mjs'/);
+    expect(err?.message).not.toContain("JSON-RPC");
+    expect(events.find((e) => e.type === "exit")).toMatchObject({ code: 7 });
+  }, 30_000);
+});
+
+describe("the runtime's last words", () => {
+  it("quote the error, not Node's footer, stack frames or the source caret", () => {
+    const crash = "node:internal/modules/cjs/loader:1228\n  throw err;\n  ^\n\nError: Cannot find module '/x/dsh.js'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1225:15)\n    at node:internal/main/run_main_module:28:49 {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: []\n}\n\nNode.js v22.22.0\n";
+    expect(lastWords(crash)).toBe("Error: Cannot find module '/x/dsh.js'");
+    expect(lastWords("plugin aatmiq: SyntaxError: Unexpected token '?'\n")).toBe("plugin aatmiq: SyntaxError: Unexpected token '?'");
+    expect(lastWords("")).toBe("");
+  });
 });
