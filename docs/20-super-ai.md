@@ -110,6 +110,27 @@ The expense-tracker brief ("open it straight from a folder, no server") on Nemot
   only the fallback ran; from `file://` it exists and the broken branch runs. The browser now treats the folder's pages
   as secure, like a file opened from the folder. `browser_upload` also accepts a full path inside the folder.
 
+## Expense tracker, both engines on the fixed browser (2026-11-05)
+
+Same brief, Nemotron 3 Ultra, run one after the other on the same server, then each app opened from the folder
+(`file://`) and used by a script: add three expenses, a negative amount, totals and bars, reload, a category filter,
+CSV export, a CSV import with two bad rows, delete, a 375 px window.
+
+| | Work AI (DSH, checklist + reviewer) | Super AI (Claude Code) |
+|---|---|---|
+| Time | 13 min 13 s | 5 min 30 s |
+| Input / output tokens | 8.88 M / 47 K | 2.15 M / 16 K |
+| Approvals asked | 2 | 1 |
+| Browser actions | about 90 | about 40 |
+| Works opened from the folder | yes, no script errors | yes, no script errors |
+| Add, reject negative, totals, bars, reload, filter, export, import (skipped 2), delete | all pass | all pass |
+| Phone width (375 px) | **fails**: the table runs out of its card, the page scrolls sideways, category and delete are cut off | passes (the table scrolls inside its box) |
+
+The first round on the old browser: Work AI's app worked (one wrong skipped-row count); Super AI's crashed from the
+folder. With the browser fixed (secure folder pages, module and fetch warnings, uploads by full path), Super AI built
+a working app in less than half the time and a quarter of the tokens, and Work AI's extra checking did not catch the
+phone layout. One run each: read it as a direction, not a verdict.
+
 ## License: read before shipping
 
 Claude Code and the Agent SDK are **not open source**. Their license is "All rights reserved. Use is subject
