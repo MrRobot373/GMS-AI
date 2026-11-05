@@ -278,6 +278,9 @@ const chrome = findChromium();
     expect(mod.text).toContain("n=3");
     expect(mod.warnings?.join("\n")).toMatch(/JavaScript modules \(<script type="module">: src\/mod.js\)[\s\S]*straight from the folder/);
     expect(mod.warnings?.join("\n")).toMatch(/fetch or XMLHttpRequest \(\/game\/data.json\)/);
+    // Secure as a file opened from the folder is: what a page does with crypto.randomUUID is what gets tested.
+    await writeFile(join(game, "secure.html"), `<!doctype html><title>S</title><body><p id="o"></p><script>document.getElementById("o").textContent = "secure=" + window.isSecureContext + " uuid=" + typeof crypto.randomUUID;</script></body>`);
+    expect((await browser.open("t4", mine(), "game/secure.html")).text).toContain("secure=true uuid=function");
     // A plain page has nothing to warn about.
     expect((await browser.open("t4", mine(), "game/fits.html")).warnings).toBeUndefined();
     await browser.open("t4", mine(), "game/index.html");
@@ -372,6 +375,9 @@ const chrome = findChromium();
     const del = Number(/\[(\d+)\] button "Delete"/.exec(v.text)![1]);
     await expect(browser.upload("t8", mine(), del, ["imp/scratch/rows.csv"])).rejects.toThrow("isn't a file input");
     await expect(browser.upload("t8", mine(), input, ["../../etc/passwd"])).rejects.toThrow("isn't a file in your working folder");
+    await expect(browser.upload("t8", mine(), input, ["/etc/passwd"])).rejects.toThrow("isn't a file in your working folder");
+    // The same file by its full path inside the folder (agents use both).
+    expect((await browser.upload("t8", mine(), input, [join(work, "imp", "scratch", "rows.csv")])).text).toContain("read 4 lines of rows.csv");
     // The confirmation is accepted (the page goes on) and shown to the agent.
     const done = await browser.click("t8", mine(), del, false);
     expect(done.text).toContain("deleted");

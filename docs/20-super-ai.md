@@ -104,6 +104,11 @@ The expense-tracker brief ("open it straight from a folder, no server") on Nemot
   `fetch` work, so even a browser check **couldn't see the bug** (it now warns about both, for Work AI too); and
   `curl http://localhost:…` to try its own test server counted as **network**, so one run asked for 11 approvals
   (a request that only reaches this computer no longer asks; anything that could reach elsewhere still does).
+* With the browser, Ultra opened the page 7 times, followed the module warning (plain scripts now) and clicked through
+  every feature. The page still crashed when opened from the folder: it wrote a fallback for `crypto.randomUUID` that
+  calls itself. The browser's `http://task.local` was not a secure page, so `crypto.randomUUID` was missing there and
+  only the fallback ran; from `file://` it exists and the broken branch runs. The browser now treats the folder's pages
+  as secure, like a file opened from the folder. `browser_upload` also accepts a full path inside the folder.
 
 ## License: read before shipping
 

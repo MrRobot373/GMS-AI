@@ -19,7 +19,7 @@
 import { chown, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, relative, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright-core";
 import type { EgressProxy } from "./egress";
@@ -428,7 +428,10 @@ export class BrowserService {
               }
             : {}),
         },
-        args: ["--disable-dev-shm-usage", "--no-first-run", "--disable-features=ServiceWorker"],
+        // The task folder's pages count as secure, as they do when a person opens the file (file://): otherwise
+        // crypto.randomUUID, crypto.subtle, the clipboard and the like are missing here, and a page's fallback for
+        // them is what gets tested instead of the code the person runs.
+        args: ["--disable-dev-shm-usage", "--no-first-run", "--disable-features=ServiceWorker", `--unsafely-treat-insecure-origin-as-secure=${LOCAL_ORIGIN}`],
       })
       .catch(async (e: unknown) => {
         await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
@@ -803,7 +806,8 @@ export class BrowserService {
     const real: string[] = [];
     for (const f of files) {
       const rel = f.replace(/\\/g, "/").replace(/^\.\//, "");
-      const found = await realpath(join(root, rel)).catch(() => null);
+      // A path relative to the folder or a full one inside it (agents use both).
+      const found = await realpath(resolve(root, rel)).catch(() => null);
       if (!found || (found !== root && !found.startsWith(root + sep)) || !(await stat(found).catch(() => null))?.isFile())
         throw new BrowserError(`${f} isn't a file in your working folder.`);
       real.push(found);
