@@ -144,6 +144,12 @@ export interface PageView {
   downloads: string[];
   /** Script errors on the page since the last action. */
   errors?: string[];
+  /**
+   * Pages from the task folder: what works here but not when a person opens the file straight from the folder
+   * (file://), where browsers block JavaScript modules and reading other files. This browser serves the folder,
+   * so without these it would hide the most common reason a built page "does nothing" on the person's computer.
+   */
+  warnings?: string[];
   /** Pages from the task folder: text drawn on a canvas in its latest frames, with where it is ("START at 640,330"). */
   canvasText?: string[];
   /** browser_eval: the expression's value, as JSON. */
@@ -300,6 +306,24 @@ async function staysInTask(page: Page, ref: number): Promise<boolean> {
   return to.startsWith(`${LOCAL_ORIGIN}/`);
 }
 
+/** Why a page from the task folder would fail when opened straight from the folder (file://), as the agent reads it. */
+async function folderWarnings(s: Session): Promise<string[]> {
+  const out: string[] = [];
+  const modules = (await s.page
+    .evaluate(() => Array.from(document.querySelectorAll('script[type="module"], script[type="importmap"]')).map((e) => e.getAttribute("src") ?? "an inline module").slice(0, 5))
+    .catch(() => [])) as string[];
+  if (modules.length)
+    out.push(
+      `It loads JavaScript modules (<script type="module">: ${modules.join(", ")}). They run here because this browser serves your folder, but when a person opens the page straight from the folder (file://) the browser blocks them and nothing runs. Unless the person asked for a server, use plain <script> files (no import/export) that share what they need through globals.`,
+    );
+  const fetched = s.localFetches.splice(0);
+  if (fetched.length)
+    out.push(
+      `It reads files from your folder with fetch or XMLHttpRequest (${fetched.slice(0, 5).join(", ")}). That works here but not when a person opens the page straight from the folder (file://), where browsers block it. Unless the person asked for a server, put that data in a script file or let the person choose the file with an <input type="file">.`,
+    );
+  return out;
+}
+
 interface Session {
   context: BrowserContext;
   /** Short temp folder (Chromium's sockets live there; Unix socket paths max out at 108 bytes). */
@@ -314,6 +338,8 @@ interface Session {
   errors: string[];
   /** Dialogs since the last view. */
   dialogs: string[];
+  /** Files from the task folder a page asked for with fetch or XMLHttpRequest since the last view. */
+  localFetches: string[];
   lastUsed: number;
 }
 
@@ -414,8 +440,12 @@ export class BrowserService {
     await context.route(/^(?!https?:|data:|blob:|about:)/i, (route) => route.abort("accessdenied"));
     await context.addInitScript(CANVAS_TEXT_HOOK);
     // The task's own files, for trying what the agent built. Nothing under task.local reaches the network.
+    const localFetches: string[] = [];
     await context.route(`${LOCAL_ORIGIN}/**`, async (route) => {
-      const file = await localFile(target.workdir, new URL(route.request().url()).pathname);
+      const pathname = new URL(route.request().url()).pathname;
+      const kind = route.request().resourceType();
+      if ((kind === "fetch" || kind === "xhr") && localFetches.length < 20 && !localFetches.includes(pathname)) localFetches.push(pathname);
+      const file = await localFile(target.workdir, pathname);
       if (!file) return route.fulfill({ status: 404, contentType: "text/plain; charset=utf-8", body: "Not found in the task folder." });
       await route.fulfill({ status: 200, contentType: LOCAL_TYPES[extname(file).toLowerCase()] ?? "application/octet-stream", body: await readFile(file) });
     });
@@ -430,6 +460,7 @@ export class BrowserService {
       blocked: null,
       errors: [],
       dialogs: [],
+      localFetches,
       lastUsed: Date.now(),
     };
     const error = (text: string) => {
@@ -525,6 +556,7 @@ export class BrowserService {
     const text = ((await s.page.evaluate(SNAPSHOT).catch(() => "")) as string) || "";
     const downloads = s.downloads.splice(0);
     const errors = s.errors.splice(0);
+    const warnings = s.page.url().startsWith(`${LOCAL_ORIGIN}/`) ? await folderWarnings(s) : [];
     const dialogs = s.dialogs.splice(0);
     const canvasText = s.page.url().startsWith(`${LOCAL_ORIGIN}/`)
       ? (((await s.page
@@ -549,6 +581,7 @@ export class BrowserService {
       truncated: text.length > MAX_TEXT,
       downloads,
       ...(errors.length ? { errors } : {}),
+      ...(warnings.length ? { warnings } : {}),
       ...(dialogs.length ? { dialogs } : {}),
       ...(canvasText.length ? { canvasText } : {}),
     };

@@ -19,6 +19,11 @@ without one.
   0028 adds `work_task.engine`. Super AI runs Claude Code as it ships (its own tools, task list, plan mode, skills,
   memory and compaction); only what connects it here is ours, and `AATMIQ_CLAUDE_ENV` passes any Claude Code
   setting through.
+  Super AI has Work AI's browser, documents, calculator and connector tools (always listed, not behind tool
+  search) and a brief that says to try a built page the way a person opens it. The browser now warns when a page
+  from the task folder uses JavaScript modules or reads folder files, which work in its served view but not when a
+  person opens the file straight from the folder (both engines). A `curl`/`wget` that only reaches this computer
+  (a test server the agent started) no longer counts as network use and isn't held for approval.
 
 - **Work AI's `edit` tool stops failing on near-misses.** Across the recorded Work AI tasks 41% of
   `edit` calls failed (201 of 485; the next worst tool was 1%), 183 of them "old_string was not

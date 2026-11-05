@@ -270,6 +270,17 @@ const chrome = findChromium();
     expect(JSON.parse((await browser.resize("t4", mine(), 375, 800)).result!)).toMatchObject({ scrollsSideways: false });
     await browser.resize("t4", mine(), 1280, 900);
     await browser.open("t4", mine(), "game/index.html");
+    // A page that works only because this browser serves the folder: modules and reading folder files fail from file://.
+    await writeFile(join(game, "mod.html"), `<!doctype html><title>Mod</title><body><p id="o">-</p><script type="module" src="src/mod.js"></script></body>`);
+    await writeFile(join(game, "src/mod.js"), `export const x = 1; fetch("data.json").then((r) => r.json()).then((d) => { document.getElementById("o").textContent = "n=" + d.n; });`);
+    await writeFile(join(game, "data.json"), `{"n": 3}`);
+    const mod = await browser.open("t4", mine(), "game/mod.html");
+    expect(mod.text).toContain("n=3");
+    expect(mod.warnings?.join("\n")).toMatch(/JavaScript modules \(<script type="module">: src\/mod.js\)[\s\S]*straight from the folder/);
+    expect(mod.warnings?.join("\n")).toMatch(/fetch or XMLHttpRequest \(\/game\/data.json\)/);
+    // A plain page has nothing to warn about.
+    expect((await browser.open("t4", mine(), "game/fits.html")).warnings).toBeUndefined();
+    await browser.open("t4", mine(), "game/index.html");
     const clicked = await browser.clickAt("t4", mine(), 58, 100);
     expect(clicked.text).toMatch(/clicked \d+,\d+/);
     // The same page by its file address; a folder opens its index.html.

@@ -12,6 +12,7 @@ export function formatView(v) {
   if (v.url) lines.push(`URL: ${v.url}`);
   if (v.downloads?.length) lines.push(`Downloaded: ${v.downloads.join(", ")}`);
   if (v.errors?.length) lines.push("Script errors on the page:", ...v.errors.map((e) => `- ${e}`));
+  if (v.warnings?.length) lines.push("Warnings (this page would fail when opened straight from the folder):", ...v.warnings.map((w) => `- ${w}`));
   if (v.dialogs?.length) lines.push("Dialogs the page opened:", ...v.dialogs.map((d) => `- ${d}`));
   if (v.result !== undefined) lines.push("Result:", v.result);
   if (v.canvasText?.length) lines.push("Text drawn on the canvas (with where it is, for browser_click_at):", ...v.canvasText.map((t) => `- ${t}`));

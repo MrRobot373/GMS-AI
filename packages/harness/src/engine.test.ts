@@ -184,6 +184,22 @@ describe("risk policy", () => {
     expect(classifyRisk({ name: "bash", args: { command: "curl https://x.test" } }, { ...p, askForNetwork: false })).toBeNull();
     expect(classifyRisk({ name: "write", args: {} }, p)).toBeNull();
   });
+  it("doesn't count a request to this computer as the network (trying a page the agent serves), but anything beyond it still asks", () => {
+    for (const command of ["curl -s http://localhost:8765/index.html", 'sleep 2 && curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/', "wget -qO- localhost:3000/", "curl -sI http://[::1]:8000/ | head -5"])
+      expect(classifyRisk({ name: "bash", args: { command } }, p), command).toBeNull();
+    for (const command of [
+      "curl https://example.com",
+      "curl http://localhost/ && curl https://evil.test",
+      "curl http://localhost.evil.test/",
+      "curl http://localhost@evil.test/",
+      "curl $URL",
+      "ssh localhost",
+      "curl --resolve localhost:80:1.2.3.4 http://localhost/",
+      "curl -x http://proxy.test:1 http://localhost/",
+      "curl -K cfg http://localhost/",
+    ])
+      expect(classifyRisk({ name: "bash", args: { command } }, p), command).toBe("Uses the network");
+  });
   it("asks before certificate checks are switched off, even where the network needs no approval", () => {
     const open = { ...p, askForNetwork: false };
     for (const command of [

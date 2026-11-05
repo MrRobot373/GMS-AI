@@ -104,3 +104,37 @@ describe("Claude Code settings from the server's environment", () => {
     expect(extraSettings(undefined)).toEqual({});
   });
 });
+
+describe("Work AI's tools for Super AI", () => {
+  it("turns the browser, documents and calculator tools into SDK tools with the same names, arguments and text", async () => {
+    const { z } = await import("zod");
+    const { workAiTools, zodShape, runDshTool } = await import("./claude/tools");
+    const calls: { path: string; body: unknown }[] = [];
+    const call = async (path: string, init: RequestInit = {}) => {
+      calls.push({ path, body: JSON.parse(String(init.body ?? "{}")) });
+      if (path === "/browser") return { url: "http://task.local/a/index.html", title: "A", text: "[1] button \"Add\"", truncated: false, downloads: [], warnings: ["It loads JavaScript modules"] };
+      throw new Error("The calculator refused: R must be positive");
+    };
+    const tools = workAiTools({ browser: true, calculators: true }, call);
+    const names = tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["browser_open", "browser_click", "browser_upload", "browser_resize", "documents_search", "documents_read", "documents_save", "calculators_search", "calculators_run"]));
+    expect(workAiTools({ review: true }, call).map((t) => t.name)).toEqual([]);
+    // Claude Code looks at a screenshot with its Read tool.
+    expect(tools.find((t) => t.name === "browser_screenshot")!.description).toContain("Use Read on it");
+    const shape = z.object(zodShape(z, tools.find((t) => t.name === "browser_upload")!.parameters) as never);
+    expect(shape.safeParse({ element: 7, files: ["scratch/a.csv"] }).success).toBe(true);
+    expect(shape.safeParse({ files: ["a"] }).success).toBe(false);
+    const open = await runDshTool(tools.find((t) => t.name === "browser_open")!, { url: "a/index.html" });
+    expect(calls[0]).toEqual({ path: "/browser", body: { action: "open", url: "a/index.html" } });
+    expect(open.content[0]!.text).toContain("Warnings (this page would fail when opened straight from the folder):");
+    const refused = await runDshTool(tools.find((t) => t.name === "calculators_run")!, { calculator_id: "ohms-law", inputs_json: "{}" });
+    expect(refused).toMatchObject({ isError: true, content: [{ text: "The calculator refused: R must be positive" }] });
+  });
+
+  it("tells the model about the browser and how people open what it builds", async () => {
+    const { briefFor } = await import("./claude/engine");
+    const base = { workdir: "/w", productName: "Aatmiq", model: { key: "m", name: "M", contextWindow: 65_536 }, connectors: [], webSearch: false };
+    expect(briefFor({ ...base, browser: true } as never)).toMatch(/browser_open with its path[\s\S]*straight from the folder/);
+    expect(briefFor({ ...base, browser: false } as never)).toContain("No browser is available");
+  });
+});

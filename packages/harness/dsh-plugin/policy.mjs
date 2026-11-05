@@ -36,6 +36,27 @@ const NETWORK_COMMANDS = [
   [/\bgit\s+(clone|fetch|pull)\b/, "Downloads from a git server"],
 ];
 
+const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?|0\.0\.0\.0)$/i;
+
+/**
+ * A curl or wget that only talks to this computer (a server the agent started to try what it built,
+ * like `curl -s http://localhost:8765/`): not "the network", so it isn't held for approval. Anything
+ * else in the command that reaches out (another host, ssh, a package install) still counts.
+ */
+function loopbackOnly(cmd) {
+  const tools = [...cmd.matchAll(/(^|[\s;&|(])(curl|wget|ssh|scp|sftp|rsync|nc|ncat|netcat|telnet|ftp|ping)\b/g)].map((m) => m[2]);
+  if (!tools.length || tools.some((t) => t !== "curl" && t !== "wget")) return false;
+  // Options that send the request elsewhere or read more addresses from a file.
+  if (/(^|\s)(--(resolve|connect-to|proxy|preproxy|socks\w*|config|input-file|execute)\b|-[xKie]\b)/.test(cmd)) return false;
+  const hosts = [
+    ...[...cmd.matchAll(/\b[a-z][a-z0-9+.-]*:\/\/(\[[^\]\s]+\]|[^/\s'":?#]+)/gi)].map((m) => m[1]),
+    ...[...cmd.matchAll(/(^|[\s'"=])(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0)(?=[:/\s'"]|$)/gi)].map((m) => m[2]),
+  ];
+  // Every URL of the command, and a curl/wget without one isn't known to be local.
+  const urls = [...cmd.matchAll(/(^|[\s;&|(])(curl|wget)\b([^\n;&|]*)/g)].every((m) => /\b[a-z][a-z0-9+.-]*:\/\/|(^|\s)['"]?(localhost|127(\.\d{1,3}){3}|0\.0\.0\.0)[:/]/i.test(m[3]));
+  return urls && hosts.length > 0 && hosts.every((h) => LOOPBACK.test(h));
+}
+
 const CHANGING_TOOLS = new Set(["bash", "pwsh", "write", "edit", "str_replace_editor", "run_code", "web_fetch", "documents_save"]);
 
 function globToRegExp(glob) {
@@ -80,7 +101,8 @@ export function classifyRisk(call, policy) {
     for (const [re, reason] of RISKY_COMMANDS) if (re.test(cmd)) return reason;
     // As written too: `bash -c "curl -k …"` is quoted whole.
     if (CURL_INSECURE.test(cmd) || CURL_INSECURE.test(unquoted(cmd))) return "Turns off certificate checks";
-    if (policy.askForNetwork) for (const [re, reason] of NETWORK_COMMANDS) if (re.test(cmd)) return reason;
+    if (policy.askForNetwork)
+      for (const [re, reason] of NETWORK_COMMANDS) if (re.test(cmd) && !(reason === "Uses the network" && loopbackOnly(cmd))) return reason;
   }
   return null;
 }

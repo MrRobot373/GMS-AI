@@ -12,7 +12,7 @@ can be tested against each other and the better one chosen. Work AI is untouched
 | Models, quotas, usage metering, retries, window fitting | Aatmiq's gateway | **the same gateway** (a translating endpoint, below) |
 | Task storage, files, task page, approvals, history, skills library | shared | shared |
 | Web search and page reading | our SearXNG-backed tools | the same, as two in-process tools |
-| Browser, documents and calculators tools | yes | not in this first version |
+| Browser, documents, calculators and connectors | yes | **the same** (Work AI's own tool definitions, as an in-process MCP server; connectors as Claude Code's own MCP servers) |
 | Acceptance checklist, independent reviewer, stages, office audit, edit repair, "check your work" nudges, plan-completion enforcement, context re-injection | yes (docs/19) | **no**: that is the point of "plain" |
 | Context condensing | DSH's, with budgets from the model's window | Claude Code's own, set to the model's window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`) |
 | Where it runs | process or container | process only for now |
@@ -44,7 +44,11 @@ POST /api/internal/work/llm/v1/chat/completions  the existing gateway route: mod
   gateway answers from the task's model whatever the name); the model's window, compaction point (75%) and output
   cap; a per-task Unix user and home; a Windows profile; telemetry, error reports and update checks off; our two
   private web tools (`web_search`, `web_fetch`), because Anthropic's hosted `WebSearch`/`WebFetch` can't work here;
-  and a short brief (reply size, web tools, the task's instructions).
+  Work AI's browser, documents and calculator tools (`claude/tools.ts` adapts the definitions in `dsh-plugin/`, so
+  there is one copy) and the task's connectors; and a short brief for this platform (whose product it is, check the
+  work by running it and say plainly what was and wasn't checked, how to try a page in the browser, the limits).
+* **Our tools are always listed** (`alwaysLoad`): Claude Code would otherwise put MCP tools behind its tool search, and a
+  model can't use a browser it doesn't know it has.
 * **Tools switched off** are only those that can't work in a task: `WebSearch`, `WebFetch`, `ScheduleWakeup`,
   `CronCreate/Delete/List` and `ReportFindings`.
 * **Permissions** use `classifyRisk` (the same rules as Work AI) through the SDK's `canUseTool`. What Claude Code
@@ -87,6 +91,19 @@ POST /api/internal/work/llm/v1/chat/completions  the existing gateway route: mod
   the limit is told once more (up to the usual continuation limit) before it fails with a plain message.
 * **A provider without a small per-minute token cap.** A plan limited to 8,000 tokens per minute (a free tier) refuses
   Claude Code's first request outright (HTTP 413). The gateway reports the provider's own words for it.
+
+## What live runs taught (2026-11-05)
+
+The expense-tracker brief ("open it straight from a folder, no server") on Nemotron 3 Super and Ultra:
+
+* Both shipped a page that does nothing when opened from the folder: the scripts were JavaScript modules, which
+  browsers block on `file://`. Neither model opened the page; both said everything was verified. Ultra did write and
+  run 24 real unit tests (Super ran none).
+* Causes in the harness, now fixed: Super AI had **no browser** (Work AI's browser, documents, calculators and
+  connectors were never wired in); the browser serves the folder over `http://task.local`, where modules and
+  `fetch` work, so even a browser check **couldn't see the bug** (it now warns about both, for Work AI too); and
+  `curl http://localhost:…` to try its own test server counted as **network**, so one run asked for 11 approvals
+  (a request that only reaches this computer no longer asks; anything that could reach elsewhere still does).
 
 ## License: read before shipping
 

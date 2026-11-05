@@ -86,6 +86,8 @@ async function run(prompts: string[], events: HarnessEvent[], mutate: (s: Parame
     approvals: "risky" as const,
     askForNetwork: false,
     webSearch: false,
+    browser: true,
+    calculators: true,
     skillsDir: null,
     connectors: [],
     productName: "Aatmiq",
@@ -133,6 +135,8 @@ async function run(prompts: string[], events: HarnessEvent[], mutate: (s: Parame
     // the rarer tools, plan mode and worktrees among them, only when the model asks for them).
     expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["AskUserQuestion", "Agent", "ToolSearch"]));
     expect(JSON.stringify(first.messages)).toContain("You are working inside");
+    // Work AI's browser, documents and calculators are listed from the first request (not behind tool search).
+    expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["mcp__aatmiq__browser_open", "mcp__aatmiq__browser_click", "mcp__aatmiq__documents_search", "mcp__aatmiq__calculators_run"]));
   }, 120_000);
 
   it("lists the skill library to the model, so it can choose one (and the Skill tool is there to load it)", async () => {

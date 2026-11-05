@@ -65,7 +65,7 @@ export const DISABLED_ROWS = [
 ];
 
 /** Names the connected apps, so the agent knows which tools reach which service (and whose account). */
-function connectedApps(spec: TaskSpec): string {
+export function connectedApps(spec: TaskSpec): string {
   if (spec.connectors.length === 0) return "";
   const apps = spec.connectors.map((c) => `${c.displayName ?? c.name}${c.account ? ` (${c.account})` : ""}: tools named mcp__${c.name}__…`);
   return `Connected apps you can use through their tools: ${apps.join("; ")}. Use them when the person refers to that service.`;
