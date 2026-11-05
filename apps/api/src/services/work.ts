@@ -446,7 +446,7 @@ export const answerLeftHanging = (text: string) => {
 export function announcesNextStep(text: string): boolean {
   const last = text.trim().split(/\n+/).pop()?.trim() ?? "";
   if (!last || last.length > 400 || /\?\s*$/.test(last) || /\blet (me|us) know\b/i.test(last)) return false;
-  return /(^|[.!:]\s+)(let me|let's|now,? let me|now,? i'?ll|now,? i will|i'?ll now|i will now|next,? i'?ll|next,? i will|i'?m going to|i am going to)\b/i.test(last);
+  return /(^|[.!:]\s+)(now,? |next,? |then,? |first,? )?(let me|let's|i'?ll|i will|i need to|i have to|i should|i must|i'?m going to|i am going to|the next step is)\b/i.test(last);
 }
 
 /** A file of a web page, app or game (what a person opens in a browser). */

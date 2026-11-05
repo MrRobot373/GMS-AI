@@ -49,6 +49,9 @@ describe("long requests and unfinished plans", () => {
     expect(announcesNextStep("Still 13 pages. Let me try a different approach - use python-docx directly to create a more compact document.")).toBe(true);
     expect(announcesNextStep("The tests pass.\n\nNow I'll write the README.")).toBe(true);
     expect(announcesNextStep("I'm going to fix the camera next.")).toBe(true);
+    expect(announcesNextStep("All three files are created. Now I need to run the document-checks audit on all three files to verify they're correct.")).toBe(true);
+    expect(announcesNextStep("The deck was created but has warnings. I need to fix the outline to add speaker notes.")).toBe(true);
+    expect(announcesNextStep("Everything is in place. I'll be glad to adjust anything?")).toBe(false);
     expect(announcesNextStep("Done. Let me know if you want any changes.")).toBe(false);
     expect(announcesNextStep("Should I also add a dark mode?")).toBe(false);
     expect(announcesNextStep("The game is in ridge-riders/index.html. Open it from the folder to play.")).toBe(false);
