@@ -153,6 +153,27 @@ through `office_audit.py`), not judged from the engines' own reports.
   page, app or game and never opened it in the browser is sent back once to try it. The rest of Work AI (checklist,
   stages, reviewer, plan enforcement, context re-injection) stays off.
 
+## Super AI with the two continuations (2026-11-05)
+
+Same model (Nemotron 3 Ultra), Super AI only, after adding "finish what you announced" and "try the page you built":
+
+| Run | Office pack audit failures | How it ended |
+|---|---|---|
+| Plain | 1 (report 13 pages) | stopped on "Let me try a different approach…" |
+| + continuations, first detector | 5 (15 slides, 22 pages, no report charts, "0.0%") | stopped on "Now I need to run the audit…" (not recognised) |
+| + wider detector | 2 (report 16 pages, no charts) | ran the audit, fixed workbook and deck, found the cause, then used up its 8 continuations |
+| + more room for rounds that did work | 18 (16 `#VALUE!` cells, 13 slides, 18 pages) | finished and said "all three files pass the quality checks": it never ran the audit, only its own python checks that don't calculate formulas or render pages |
+
+Ridge Riders with the continuations: it opened the game 22 times and pressed keys 25 times (the first run never
+opened it), and said honestly that the level's physics run away; but the menu can't be left (the loop clears "key
+pressed" before the scene reads it, and there is no mouse), a level forced open starts at 57 km/h and crashes at 2 m,
+and TESTING.md still marks 28 items PASS. 29.5 min, 24 M tokens in.
+
+What this shows: the continuations make Super AI finish (it now ends with a summary rather than a half-sentence),
+but finishing is not checking. The runs vary a lot from one to the next, and on long deliverables the model's own
+"it passes" is not reliable. Work AI's checklist and reviewer, which run the audit and use the app themselves rather
+than asking the model whether it did, are what made its office pack correct.
+
 ## License: read before shipping
 
 Claude Code and the Agent SDK are **not open source**. Their license is "All rights reserved. Use is subject

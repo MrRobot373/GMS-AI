@@ -225,7 +225,8 @@ async function runOne({ engine, workspaceId, modelId, dir }) {
 
 /** The document audit on the Excel, PowerPoint and Word files a run made. */
 function audit(result, dir) {
-  const files = (result.files ?? []).filter((f) => f.saved && /\.(xlsx|pptx|docx)$/i.test(f.path) && !f.path.includes("/")).map((f) => join(dir, "files", f.path));
+  // The deliverables, wherever the engine put them (top level, output/, a pack folder), not working copies in scratch/.
+  const files = (result.files ?? []).filter((f) => f.saved && /\.(xlsx|pptx|docx)$/i.test(f.path) && !/(^|\/)(scratch|tmp|\.task)\//.test(f.path) && !/(^|\/)~\$/.test(f.path)).map((f) => join(dir, "files", f.path));
   if (!files.length) return null;
   const script = join(dirname(fileURLToPath(import.meta.url)), "..", "packages", "skills", "library", "document-checks", "scripts", "office_audit.py");
   if (!existsSync(script)) return { error: "document-checks/scripts/office_audit.py not found" };
