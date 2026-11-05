@@ -24,6 +24,9 @@ without one.
   from the task folder uses JavaScript modules or reads folder files, which work in its served view but not when a
   person opens the file straight from the folder (both engines). A `curl`/`wget` that only reaches this computer
   (a test server the agent started) no longer counts as network use and isn't held for approval.
+  Super AI is sent back to finish when a reply stops before the work is done (cut off, or announcing a next step
+  like "Let me try a different approach…" and ending), and once to try a web page, app or game it built but never
+  opened in the browser. Work AI also treats a reply that announces its next step as unfinished.
 
 - **Work AI's `edit` tool stops failing on near-misses.** Across the recorded Work AI tasks 41% of
   `edit` calls failed (201 of 485; the next worst tool was 1%), 183 of them "old_string was not

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fitWindow } from "./routes/work-internal";
-import { answerLeftHanging, definedNames, folderSummary, notesText, symbolIndex, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
+import { announcesNextStep, answerLeftHanging, definedNames, folderSummary, notesText, symbolIndex, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
 
 describe("a model request and the context window", () => {
   const messages = (chars: number) => [{ role: "user", content: "x".repeat(chars) }];
@@ -44,6 +44,15 @@ describe("long requests and unfinished plans", () => {
     expect(answerLeftHanging("Result: hello-work")).toBe(false);
     expect(answerLeftHanging("Done. The game is in index.html.")).toBe(false);
     expect(answerLeftHanging("```js\nconst a = 1;\n```")).toBe(false);
+  });
+  it("sends back a reply that announces its next step and stops, not an offer or a question", () => {
+    expect(announcesNextStep("Still 13 pages. Let me try a different approach - use python-docx directly to create a more compact document.")).toBe(true);
+    expect(announcesNextStep("The tests pass.\n\nNow I'll write the README.")).toBe(true);
+    expect(announcesNextStep("I'm going to fix the camera next.")).toBe(true);
+    expect(announcesNextStep("Done. Let me know if you want any changes.")).toBe(false);
+    expect(announcesNextStep("Should I also add a dark mode?")).toBe(false);
+    expect(announcesNextStep("The game is in ridge-riders/index.html. Open it from the folder to play.")).toBe(false);
+    expect(announcesNextStep("## Summary\n\nAll 22 files are created and the terrain test passes.")).toBe(false);
   });
   it("keeps broken-down tokens and leaked reasoning tags out of answers", () => {
     expect(withoutJunk("All tasks are completed.\n\n</think>\n\n## Summary")).toBe("All tasks are completed.\n\n\n\n## Summary");

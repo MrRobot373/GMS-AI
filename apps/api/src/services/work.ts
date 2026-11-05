@@ -126,8 +126,18 @@ interface Live {
   reviewTimer?: NodeJS.Timeout;
   /** Review attempts so far (the code checks count as one when they alone sent the builder back). */
   reviewRound?: number;
-  /** Super AI: Claude Code as it is, without Work AI's checklist, nudges, plan enforcement and context re-injection. */
+  /**
+   * Super AI: Claude Code as it is, without Work AI's checklist, plan enforcement and context re-injection. It is
+   * sent back only when it stops before it's done (a cut-off reply, a reply that announces its next step) or calls
+   * a page it built done without opening it in the browser.
+   */
   plain?: boolean;
+  /** The task has the browser (so a built page can be tried in it). */
+  browser?: boolean;
+  /** This message wrote a web page, app or game file and hasn't opened one in the browser since. */
+  pageUntried?: boolean;
+  /** Super AI was already sent back once to try its page in the browser. */
+  pageNudged?: boolean;
   /** The items that passed the last full review: what a later round must not break. */
   lastPassed?: Set<string>;
   /** What the checks code ran said in the current attempt. */
@@ -429,6 +439,20 @@ export const answerLeftHanging = (text: string) => {
 };
 
 /**
+ * A reply that ends by announcing its next step instead of taking it ("Let me try a different approach - use
+ * python-docx directly."): open models write that and stop, and the task would end with the work undone.
+ * Not an offer to the person ("Let me know if…") or a question.
+ */
+export function announcesNextStep(text: string): boolean {
+  const last = text.trim().split(/\n+/).pop()?.trim() ?? "";
+  if (!last || last.length > 400 || /\?\s*$/.test(last) || /\blet (me|us) know\b/i.test(last)) return false;
+  return /(^|[.!:]\s+)(let me|let's|now,? let me|now,? i'?ll|now,? i will|i'?ll now|i will now|next,? i'?ll|next,? i will|i'?m going to|i am going to)\b/i.test(last);
+}
+
+/** A file of a web page, app or game (what a person opens in a browser). */
+const PAGE_FILE = /\.(html?|js|css)$/i;
+
+/**
  * What the agent gets instead of a request too long for its context: where the whole text is, and
  * its opening. It reads the rest from the file, again after older steps are condensed.
  */
@@ -504,6 +528,9 @@ const REVIEW_NUDGE = `You haven't written ${REVIEW_FILE} yet. Test whatever is l
 /** Super AI: a reply that hit the model's output limit (Claude Code reports it as an API error and stops the turn). */
 const OUTPUT_LIMIT = /output token maximum/i;
 const OUTPUT_LIMIT_NUDGE = "Your last reply was cut off because it reached the model's output limit before it was finished, so nothing in it was done. Don't write a large file in one step: write it in parts of about 200 lines (create it with the first part, then add the rest), and keep each reply short. Then carry on from where you stopped.";
+
+const PAGE_NUDGE =
+  "You built a web page, app or game but haven't opened it in the browser. Before you finish, open it with browser_open by its path in your folder (like game/index.html), fix every script error and warning it reports, then use it the way a person would: click its buttons, use the keyboard (browser_press), fill its forms, and check that what should happen does. Then finish, saying what you tried and what you saw.";
 
 const CUT_OFF_NUDGE = "You stopped before the task was finished. Continue from the last step, finish every file that was asked for, and end with a short summary. Do not stop mid-sentence. Write a long file in several smaller parts.";
 
@@ -826,6 +853,8 @@ export class WorkRunner {
     l.untried = false;
     l.wroteCode = false;
     l.verifyNudged = false;
+    l.pageUntried = false;
+    l.pageNudged = false;
     // The answer to show is this turn's; the plan stays (the runtime keeps its todo list too).
     l.lastAnswer = "";
     await this.setStatus(l.taskId, "running", { error: null });
@@ -938,7 +967,7 @@ export class WorkRunner {
           askForNetwork: !settings.allowNetwork,
           ...(task.parentId ? { review: true } : {}),
           webSearch: webSearchReady(await workWebSearchDeps(this.ctx)),
-          browser: settings.browser && !!this.ctx.browser?.available,
+          browser: (l.browser = settings.browser && !!this.ctx.browser?.available),
           calculators: await this.calculatorsOn(task.userId, task.workspaceId),
           skillsDir,
           connectors: await this.connectorSpecs(task.userId, token, l.connectorIds ?? null),
@@ -1391,6 +1420,11 @@ export class WorkRunner {
           l.untried = true;
           l.wroteCode = true;
         } else if (triesCode(e.name, e.args)) l.untried = false;
+        {
+          const path = (e.args as { file_path?: unknown } | null)?.file_path;
+          if ((e.name === "write" || e.name === "edit") && typeof path === "string" && PAGE_FILE.test(path)) l.pageUntried = true;
+          else if (e.name.startsWith("browser_")) l.pageUntried = false;
+        }
         await this.record(taskId, "tool_call", { callId: e.callId, name: e.name, args: e.args as Record<string, unknown> });
         return;
       case "tool_result":
@@ -1421,7 +1455,7 @@ export class WorkRunner {
         // Not finished yet: a sentence cut off after tools, a reply that hit its length limit, or a
         // plan with open steps. The agent is sent back (a few times, while it keeps making progress).
         const open = l.planActive && !l.plain ? (l.plan ?? []).filter((i) => i.status !== "completed") : [];
-        const hanging = !!l.lastAnswer && answerLeftHanging(l.lastAnswer) && (l.usedTools || e.reason === "max-tokens");
+        const hanging = !!l.lastAnswer && (answerLeftHanging(l.lastAnswer) || announcesNextStep(l.lastAnswer)) && (l.usedTools || e.reason === "max-tokens");
         const cutOff = e.reason === "max-tokens" && !!l.turnOutput;
         const planOpen = e.reason === "completed" && open.length > 0 && (!!l.usedTools || !l.idleNudge);
         // An empty reply after real work this round is the model server's glitch: carry on.
@@ -1432,13 +1466,24 @@ export class WorkRunner {
         const verify = e.reason === "completed" && !!l.wroteCode && !l.verifyNudged && !l.acceptance && !l.parentId;
         // A reviewer ends with its report in the folder.
         const reportMissing = !!l.parentId && e.reason === "completed" && !(await this.reportReady(l));
-        // A plain (Super AI) task is left alone, except to say again how to write a file that is too long for one reply.
+        // A plain (Super AI) task is sent back only when it stopped before it was done (a reply too long for the output
+        // limit, cut off, or announcing a next step it didn't take) or calls a page it built done untried.
         const outputLimit = !!l.plain && OUTPUT_LIMIT.test(e.error ?? "");
-        const nudge = l.plain ? (outputLimit ? OUTPUT_LIMIT_NUDGE : null) : hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
+        const pageUntried = !!l.plain && e.reason === "completed" && !!l.pageUntried && !!l.browser && !l.pageNudged && !l.parentId;
+        const nudge = l.plain
+          ? outputLimit
+            ? OUTPUT_LIMIT_NUDGE
+            : hanging || cutOff
+              ? CUT_OFF_NUDGE
+              : pageUntried
+                ? PAGE_NUDGE
+                : null
+          : hanging || cutOff ? CUT_OFF_NUDGE : planOpen ? openStepsNudge(open) : blank ? RESUME_NUDGE : reportMissing ? REVIEW_NUDGE : verify ? (l.untried ? TRY_NUDGE : VERIFY_NUDGE) : null;
         if (nudge && (l.continues ?? 0) < MAX_CONTINUES && l.runtime?.alive && !l.lastError) {
           l.continues = (l.continues ?? 0) + 1;
           l.idleNudge = !l.usedTools;
           if (nudge === TRY_NUDGE || nudge === VERIFY_NUDGE) l.verifyNudged = true;
+          if (nudge === PAGE_NUDGE) l.pageNudged = true;
           l.busy = true;
           l.usedTools = false;
           await this.setStatus(taskId, "running");

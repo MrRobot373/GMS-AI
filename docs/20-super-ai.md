@@ -13,7 +13,7 @@ can be tested against each other and the better one chosen. Work AI is untouched
 | Task storage, files, task page, approvals, history, skills library | shared | shared |
 | Web search and page reading | our SearXNG-backed tools | the same, as two in-process tools |
 | Browser, documents, calculators and connectors | yes | **the same** (Work AI's own tool definitions, as an in-process MCP server; connectors as Claude Code's own MCP servers) |
-| Acceptance checklist, independent reviewer, stages, office audit, edit repair, "check your work" nudges, plan-completion enforcement, context re-injection | yes (docs/19) | **no**: that is the point of "plain" |
+| Acceptance checklist, independent reviewer, stages, office audit, edit repair, "check your work" nudges, plan-completion enforcement, context re-injection | yes (docs/19) | **no**: that is the point of "plain"; only "you stopped before finishing" and "open the page you built" are sent |
 | Context condensing | DSH's, with budgets from the model's window | Claude Code's own, set to the model's window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`) |
 | Where it runs | process or container | process only for now |
 
@@ -147,8 +147,11 @@ through `office_audit.py`), not judged from the engines' own reports.
   "not finished" nudges are what get the job over the line. Super AI ends early: it stops after a sentence that
   announces the next step, and on the game it never tried what it built.
 * Cost: Work AI used 4x to 24x more input tokens than Super AI on the same brief.
-* Gap found in Super AI (plain): an answer that ends on "let me …" ends the task; Work AI resumes it. Not added,
-  to keep Super AI as Claude Code ships.
+* Gap found in Super AI (plain): an answer that ends on "let me …" ended the task; Work AI resumes it. Now Super AI
+  gets the same two continuations, and only these (`services/work.ts`): a reply that stops before it's done (cut off,
+  or announcing a next step it didn't take: `announcesNextStep`) is sent back to finish, and a task that built a web
+  page, app or game and never opened it in the browser is sent back once to try it. The rest of Work AI (checklist,
+  stages, reviewer, plan enforcement, context re-injection) stays off.
 
 ## License: read before shipping
 

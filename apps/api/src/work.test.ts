@@ -97,7 +97,8 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   const script = /script: (\[\[.*?\]\])/s.exec(textOf(body.messages[askAt]?.content));
   if (script) {
     const next = (JSON.parse(script[1]!) as [string, unknown][])[body.messages.slice(askAt).filter((m) => m.role === "tool").length];
-    if (!next) return say("Done.");
+    // ' end: "…"' after the script: the reply to end on instead of "Done." (a model that announces a step and stops).
+    if (!next) return say(/ end: "([^"]*)"/.exec(textOf(body.messages[askAt]?.content))?.[1] ?? "Done.");
     return sse(res, [
       { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, type: "function", function: { name: next[0], arguments: JSON.stringify(next[1]) } }] } }] },
       { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
@@ -695,6 +696,14 @@ d("Work AI", () => {
     // Plain: no checklist, no stages, no review, no nudges.
     expect(t.events.some((e) => ["acceptance", "stage", "review"].includes(e.kind))).toBe(false);
     expect((t.task as { verification?: unknown }).verification ?? null).toBeNull();
+    // Except when it stops before it's done: a reply that announces its next step and ends is sent back once.
+    const before = modelRequests.length;
+    const more = [["Write", { file_path: join(workDir, id, "files", "notes2.md"), content: "# More\n" }]];
+    await call("POST", `/api/work/tasks/${id}/messages`, { prompt: `script: ${JSON.stringify(more)} end: "The page count is still 13. Let me try a different approach - use python-docx directly."` });
+    const t2 = await waitStatus(id, "completed", "failed");
+    expect(t2.task.status).toBe("completed");
+    const sentBack = modelRequests.slice(before).filter((m) => m.some((x) => x.role === "user" && textOf(x.content).includes("You stopped before the task was finished")));
+    expect(sentBack.length).toBeGreaterThan(0);
     // A model whose window is too small for Claude Code's own prompt is refused up front, not after an hour of condensing.
     const [fk] = await db.select({ id: model.id, contextLength: model.contextLength }).from(model).where(eq(model.modelKey, "fake-agent"));
     await db.update(model).set({ contextLength: 16_384 }).where(eq(model.id, fk!.id));
