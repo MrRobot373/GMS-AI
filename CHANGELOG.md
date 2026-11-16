@@ -9,6 +9,16 @@ without one.
 
 ## Unreleased
 
+- **`task_recall`: after condensing, the agent searches its own record instead of guessing.** A summary loses the exact
+  line (a command's output, a path, a number, an error). The whole task record is still stored, so a new tool searches it
+  word for word by words and time (newest matches, oldest first, with when each happened), or reads one entry whole. After
+  every condensing the agent also gets "where you were" (its last eight steps) and the pointer. Both engines. Idea from
+  Kortix and lossless-memory, which reached it independently.
+- **A design skill and three shared rules.** `ui-polish` (adapted from unslop, CC BY 4.0, credit kept) audits a screen for
+  AI-looking "slop", writes a short direction and fixes in nine ordered passes. Both engines also state three rules: look in
+  the person's own documents before the web; read anything that can change from its latest source and say where and when;
+  don't invent names, owners, dates or numbers: mark them as gaps.
+
 - **An eval set: the behaviors our agents must keep, scored per criterion.** `evals/` has 14 tasks (a one-number reply,
   CSV totals, a script that must be run before it is trusted, no invented owners or dates, "I can't send email" instead of a
   false "sent", a page that works when opened straight from the folder, an Excel budget, a Word memo, a six-slide deck…),

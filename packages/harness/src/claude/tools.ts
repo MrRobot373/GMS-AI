@@ -6,6 +6,7 @@
 import { browserTools } from "../../dsh-plugin/browser.mjs";
 import { calculatorTools } from "../../dsh-plugin/calculators.mjs";
 import { documentTools } from "../../dsh-plugin/documents.mjs";
+import { recallTools } from "../../dsh-plugin/recall.mjs";
 
 /** A tool as dsh-plugin/ defines it (DSH's defineTool input). */
 export interface DshTool {
@@ -73,6 +74,7 @@ export function workAiTools(
     ...(spec.browser ? (browserTools(define, browser) as DshTool[]) : []),
     ...(spec.review ? [] : (documentTools(define, call) as DshTool[])),
     ...(spec.calculators ? (calculatorTools(define, call) as DshTool[]) : []),
+    ...(recallTools(define, call) as DshTool[]),
   ];
   // Claude Code reads an image with its own Read tool (there is no read_image here).
   return all.map((t) => ({ ...t, description: t.description.replace(/\bread_image\b/g, "Read") }));

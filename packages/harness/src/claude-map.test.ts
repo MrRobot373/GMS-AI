@@ -118,7 +118,9 @@ describe("Work AI's tools for Super AI", () => {
     const tools = workAiTools({ browser: true, calculators: true }, call);
     const names = tools.map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(["browser_open", "browser_click", "browser_upload", "browser_resize", "documents_search", "documents_read", "documents_save", "calculators_search", "calculators_run"]));
-    expect(workAiTools({ review: true }, call).map((t) => t.name)).toEqual([]);
+    // A reviewer has no documents or browser here; the record of its own task is always searchable.
+    expect(workAiTools({ review: true }, call).map((t) => t.name)).toEqual(["task_recall"]);
+    expect(names).toContain("task_recall");
     // Claude Code looks at a screenshot with its Read tool.
     expect(tools.find((t) => t.name === "browser_screenshot")!.description).toContain("Use Read on it");
     const shape = z.object(zodShape(z, tools.find((t) => t.name === "browser_upload")!.parameters) as never);

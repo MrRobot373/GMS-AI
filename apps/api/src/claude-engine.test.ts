@@ -136,7 +136,7 @@ async function run(prompts: string[], events: HarnessEvent[], mutate: (s: Parame
     expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["AskUserQuestion", "Agent", "ToolSearch"]));
     expect(JSON.stringify(first.messages)).toContain("You are working inside");
     // Work AI's browser, documents and calculators are listed from the first request (not behind tool search).
-    expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["mcp__aatmiq__browser_open", "mcp__aatmiq__browser_click", "mcp__aatmiq__documents_search", "mcp__aatmiq__calculators_run"]));
+    expect(first.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["mcp__aatmiq__browser_open", "mcp__aatmiq__browser_click", "mcp__aatmiq__documents_search", "mcp__aatmiq__calculators_run", "mcp__aatmiq__task_recall"]));
   }, 120_000);
 
   it("lists the skill library to the model, so it can choose one (and the Skill tool is there to load it)", async () => {

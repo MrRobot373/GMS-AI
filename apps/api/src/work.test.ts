@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "./app";
+import { recall } from "./services/work-recall";
 import type { Config } from "./config";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -681,6 +682,43 @@ d("Work AI", () => {
     const results = t.events.filter((e) => e.kind === "tool_result").map((e) => JSON.stringify(e.data));
     expect(results.some((x) => /old_string was not found/.test(x) && /closest text is at lines 2-2/.test(x) && /2: +return 2;/.test(x))).toBe(true);
     expect(results.filter((x) => /has been updated successfully/.test(x))).toHaveLength(1);
+  }, 90_000);
+
+  it("task_recall: the agent gets exact lines of its own record back, and only its own", async () => {
+    const r = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo recall-marker-7391 && echo noise-line" });
+    await waitStatus(r.json.id, "completed", "failed");
+    // The service: oldest first, verbatim, labelled, with the call that made it.
+    const found = await recall(db, r.json.id, { query: "marker 7391" });
+    expect(found).toContain("Word for word from this task's record");
+    expect(found).toMatch(/#\d+ · [\d:]+Z \(\d+ s ago\) · tool result \(bash\)/);
+    expect(found).toContain("recall-marker-7391");
+    // Only one kind of entry; the person's request and the agent's own answer say the same words.
+    const onlyResults = await recall(db, r.json.id, { query: "marker 7391", kind: "tool_result" });
+    expect(onlyResults).toContain("tool result (bash)");
+    expect(onlyResults).not.toMatch(/· (you|the person)\n/);
+    expect(await recall(db, r.json.id, { query: "marker 7391" })).toMatch(/· the person\n/);
+    expect(await recall(db, r.json.id, { query: "no-such-words-anywhere", kind: "assistant" })).toContain("Nothing in this task's record matches");
+    expect(await recall(db, r.json.id, { query: "marker", beforeMinutes: 60 })).toContain("Nothing in this task's record matches");
+    const seq = Number(/#(\d+) · [\d:]+Z \(\d+ s ago\) · tool result/.exec(found)![1]);
+    expect(await recall(db, r.json.id, { seq })).toMatch(/recall-marker-7391\nnoise-line|recall-marker-7391/);
+    expect(await recall(db, r.json.id, { seq: 99999 })).toContain("There is no entry #99999");
+    // The agent, in the same task, asks for it through the tool; its own search does not match itself.
+    expect((await call("POST", `/api/work/tasks/${r.json.id}/messages`, { prompt: 'use task_recall {"query":"marker 7391"}' })).status).toBe(200);
+    await waitFor(async () => {
+      const t = await getTask(r.json.id);
+      return t.events.some((e) => e.kind === "tool_result" && /Word for word from this task's record/.test(String(e.data.text))) ? t : null;
+    });
+    const t = await getTask(r.json.id);
+    const recalled = t.events.filter((e) => e.kind === "tool_result" && /Word for word/.test(String(e.data.text))).at(-1)!;
+    expect(recalled.data.text).toContain("recall-marker-7391");
+    // Its own search is not among the matches (the person's message asking for it is: they did say those words).
+    expect(recalled.data.text).not.toContain("tool call (task_recall)");
+    expect(recalled.data.text).not.toContain("tool result (task_recall)");
+    expect(recalled.data.text).toMatch(/^\d+ match/);
+    // Another task's record is not reachable.
+    const other = await call("POST", "/api/work/tasks", { workspaceId, prompt: "run: echo something-else" });
+    await waitStatus(other.json.id, "completed", "failed");
+    expect(await recall(db, other.json.id, { query: "recall-marker-7391" })).toContain("Nothing in this task's record matches");
   }, 90_000);
 
   it("the eval runner runs tasks end to end and scores them per criterion (evals/, scripts/eval-run.mjs)", async () => {

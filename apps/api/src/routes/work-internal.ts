@@ -12,6 +12,7 @@
  *   POST /api/internal/work/browser                    the agent's browser
  *   POST /api/internal/work/calculators/search         tested calculators that match a question
  *   POST /api/internal/work/calculators/run            run one by id; the number comes from the calculator code
+ *   POST /api/internal/work/recall                     search this task's own full record, word for word (task_recall)
  */
 import { and, document, eq, sql, usageEvent, user, workspaceMember, workTask } from "@aatmiq/db";
 import { estimateUsage, fetchWithKeys, openAiBase, thinkingParams } from "@aatmiq/model-gateway";
@@ -35,6 +36,7 @@ import { dispatchCalculatorTool, saveChatCalculation } from "../services/calc-to
 import { getGemSettings, workWebSearchDeps } from "../services/gem";
 import { fetchPage, PageRefused, webSearch, WebSearchError, webSearchReady } from "../services/web-search";
 import { upstreamProxyFromEnv } from "../services/egress";
+import { RECALL_KINDS, recall } from "../services/work-recall";
 
 const BASE = "/api/internal/work";
 /** Statuses worth retrying: the server is busy or briefly broken, not refusing the request. */
@@ -543,6 +545,22 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       // The agent reads this and adjusts (a different element, confirm_submit, another page).
       return reply.status(422).send({ error: e instanceof BrowserError ? e.message : `The browser failed: ${(e as Error).message.split("\n")[0]}` });
     }
+  });
+
+  /* ───────────── The task's own record (task_recall) ───────────── */
+
+  const recallSchema = z.object({
+    query: z.string().max(300).optional(),
+    kind: z.enum(RECALL_KINDS).optional(),
+    sinceMinutes: z.number().int().min(1).max(525_600).optional(),
+    beforeMinutes: z.number().int().min(1).max(525_600).optional(),
+    seq: z.number().int().min(0).optional(),
+    offset: z.number().int().min(0).optional(),
+    limit: z.number().int().min(1).max(20).optional(),
+  });
+  app.post(`${BASE}/recall`, internal, async (req) => {
+    const t = taskOf(req);
+    return { text: await recall(db, t.taskId, parse(recallSchema, req.body)) };
   });
 
   /* ───────────── Calculators (calculators_search, calculators_run) ───────────── */

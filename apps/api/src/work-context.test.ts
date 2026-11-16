@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fitWindow } from "./routes/work-internal";
+import { ago, excerpt, recallTerms, trailLine } from "./services/work-recall";
 import { announcesNextStep, answerLeftHanging, definedNames, folderSummary, notesText, symbolIndex, openStepsNudge, pickSkills, reinjection, requestPointer, triesCode, unfinishedNote, withoutJunk, writesCode } from "./services/work";
 
 describe("a model request and the context window", () => {
@@ -185,6 +186,10 @@ ctx.fillStyle = "x";`;
     expect(back?.text).toContain("- src/vehicle.js (20,000 bytes; read the part you need)");
     expect(back?.text).not.toContain("top-secret");
     expect(back?.text).toContain("Your plan:\n- [pending] Write the menu");
+    // The trail of the last steps and the pointer to the full record are part of what the agent gets back.
+    const trailed = await reinjection({ workdir: await mkdtemp(join(tmpdir(), "trail-")), recentFiles: new Map(), contextWindow: 32_768, plan: null, trail: ["#41 bash: python3 make.py", "#43 edit: /w/files/app.js"] });
+    expect(trailed?.text).toContain("Where you were (your last steps, oldest first):\n#41 bash: python3 make.py\n#43 edit: /w/files/app.js");
+    expect(trailed?.text).toContain("search it with task_recall");
     // Nothing touched and nothing written: nothing to give back. Code in the folder is indexed even when no file was touched.
     expect(await reinjection({ workdir: await mkdtemp(join(tmpdir(), "empty-")), recentFiles: new Map(), contextWindow: 32_768, plan: null })).toBeNull();
     const indexed = await reinjection({ workdir: dir, recentFiles: new Map(), contextWindow: 32_768, plan: null });
@@ -193,3 +198,28 @@ ctx.fillStyle = "x";`;
   });
 });
 
+
+describe("task_recall's helpers", () => {
+  it("search words: every word, lower case, no quotes or wildcards, at most eight", () => {
+    expect(recallTerms('  "Traceback" camera  %_ x 100% ')).toEqual(["traceback", "camera", "100"]);
+    expect(recallTerms(undefined)).toEqual([]);
+    expect(recallTerms("aa bb cc dd ee ff gg hh ii jj kk")).toHaveLength(8);
+    expect(recallTerms("a b")).toEqual([]);
+  });
+  it("an excerpt is a window around the first match, cut with an ellipsis", () => {
+    const text = `${"x".repeat(500)} NEEDLE ${"y".repeat(500)}`;
+    const e = excerpt(text, ["needle"], 200);
+    expect(e.length).toBeLessThanOrEqual(202);
+    expect(e).toContain("NEEDLE");
+    expect(e.startsWith("…") && e.endsWith("…")).toBe(true);
+    expect(excerpt("short", ["short"], 200)).toBe("short");
+    expect(excerpt("0123456789".repeat(30), ["zzz"], 50).startsWith("0123")).toBe(true);
+  });
+  it("times read as how long ago; steps as one short line", () => {
+    const now = new Date("2026-11-16T12:00:00Z");
+    expect([ago(new Date("2026-11-16T11:59:30Z"), now), ago(new Date("2026-11-16T11:50:00Z"), now), ago(new Date("2026-11-16T07:00:00Z"), now)]).toEqual(["30 s ago", "10 min ago", "5 h ago"]);
+    expect(trailLine("bash", { command: "python3   make.py\n--out x" })).toBe("bash: python3 make.py --out x");
+    expect(trailLine("edit", { file_path: "/w/a.js" })).toBe("edit: /w/a.js");
+    expect(trailLine("browser_back", {})).toBe("browser_back");
+  });
+});

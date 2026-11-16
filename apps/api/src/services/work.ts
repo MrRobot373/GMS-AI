@@ -71,6 +71,7 @@ import { notify, type AppContext } from "../context";
 import { msg } from "../i18n";
 import { availableModels, resolveModel } from "./models";
 import { PROJECT_FOLDER, projectFor, projectInstructions, writeProjectFiles } from "./project-work";
+import { recentTrail } from "./work-recall";
 
 export type TaskStatus = (typeof workTask.$inferSelect)["status"];
 export interface WorkStreamEvent {
@@ -282,12 +283,14 @@ contextWindow?: number;
 plan: PlanItem[] | null;
 acceptance?: Acceptance | null;
 milestone?: number;
+/** The last few steps, oldest first ("#123 bash: python3 make.py"): where the agent was. */
+trail?: string[];
 }): Promise<{ text: string; files: string[]; notes: boolean } | null> {
   if (!l.workdir) return null;
   const window = l.contextWindow ?? DEFAULT_WINDOW;
   const notes = await notesText(l.workdir, window);
   const names = await symbolIndex(l.workdir, window);
-  if (!l.recentFiles?.size && !notes && !names.length && !l.acceptance) return null;
+  if (!l.recentFiles?.size && !notes && !names.length && !l.acceptance && !l.trail?.length) return null;
   const perFile = Math.min(REINJECT_FILE_MAX, Math.floor(window * REINJECT_FILE_SHARE));
   let left = Math.min(REINJECT_TOTAL_MAX, Math.floor(window * REINJECT_TOTAL_SHARE));
   const root = await realpath(l.workdir).catch(() => l.workdir!);
@@ -311,7 +314,7 @@ milestone?: number;
     } else parts.push(`- ${rel} (${info.size.toLocaleString("en-US")} bytes; read the part you need)`);
     files.push(rel);
   }
-  if (!files.length && !notes && !names.length && !l.acceptance) return null;
+  if (!files.length && !notes && !names.length && !l.acceptance && !l.trail?.length) return null;
   const open = (l.plan ?? []).map((i) => `- [${i.status}] ${i.content}`);
   return {
     files,
@@ -322,7 +325,10 @@ milestone?: number;
       ...(notes ? ["", `Your notes (${NOTES_FILE}, your memory of the names and decisions your files agree on):`, notes] : []),
       ...(names.length ? ["", "What your code files define right now (call these by exactly these names; a name not listed here, check with grep before you use it):", ...names] : []),
       ...(parts.length ? ["", "So you don't have to read them again, these are the files you worked on most recently, as they are on disk now:", "", ...parts] : []),
+      ...(l.trail?.length ? ["", "Where you were (your last steps, oldest first):", ...l.trail] : []),
       ...(open.length ? ["", "Your plan:", ...open] : []),
+      "",
+      "The full record of this task is still stored, word for word. For an exact command output, path, number or error from the steps that were condensed, search it with task_recall (words that appear in it; give seq to read one entry whole) instead of guessing it or doing the work again.",
       "",
       "Carry on from where you were.",
     ].join("\n"),
@@ -1454,7 +1460,7 @@ export class WorkRunner {
       case "compacted": {
         // What the agent goes on from, for people to read (like Claude Code's "continued from" summary).
         await this.record(taskId, "context", { compacted: true, summary: clip(e.summary, MAX_TOOL_TEXT), steps: e.steps, tokens: e.tokens });
-        const back = l.plain ? null : await reinjection(l);
+        const back = l.plain ? null : await reinjection({ ...l, trail: await recentTrail(this.ctx.db, taskId).catch(() => []) });
         if (back && l.runtime?.alive) await this.sendTo(l, back.text);
         if (back) await this.record(taskId, "context", { reinjected: back.files, notes: back.notes });
         return;

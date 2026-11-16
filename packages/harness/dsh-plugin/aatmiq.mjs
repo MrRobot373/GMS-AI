@@ -20,6 +20,7 @@ import { createRequire } from "node:module";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { browserTools } from "./browser.mjs";
+import { recallTools } from "./recall.mjs";
 import { calculatorTools } from "./calculators.mjs";
 import { documentTools } from "./documents.mjs";
 import { editHint, repairEdit } from "./editfix.mjs";
@@ -188,6 +189,9 @@ export function apply(ctx, config) {
 
   // 6. The organization's documents in Aatmiq.
   if (config.documents !== false && defineTool) for (const t of documentTools(defineTool, call)) ctx.tools.register(t);
+
+  // 6a. The task's own record, word for word (older steps are condensed; nothing is lost).
+  if (defineTool) for (const t of recallTools(defineTool, call)) ctx.tools.register(t);
 
   // 6b. Tested calculators, when this person may use them.
   if (config.calculators && defineTool) for (const t of calculatorTools(defineTool, call)) ctx.tools.register(t);

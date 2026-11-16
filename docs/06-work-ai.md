@@ -308,6 +308,20 @@ package installs and deletions, and the Aatmiq panel writing and testing code.
 - **Schedules** are checked every 30 seconds. A due schedule is claimed by moving its next run
   forward in one conditional update, so it runs once even with several API instances.
 
+### Searching the record after condensing
+
+Condensing keeps a long job inside the model's window, but a summary loses the exact line: a command's output, a path,
+a number, an error, a sentence the person said. The whole record is still stored (`work_event`; tool output up to
+20,000 characters), so the agent can search it instead of guessing: `task_recall` takes words that must all appear
+(`"Traceback camera"`), optionally `kind` (`user`, `assistant`, `tool_call`, `tool_result`), `since_minutes` /
+`before_minutes`, and returns the newest matches oldest first, verbatim, each with its number, time (and how long ago)
+and what it was (`tool result (bash), exit code 1`); `seq` reads one entry whole, in parts when long. It reaches only the
+task's own record, and its own searches are not among the matches. After every condensing the agent is also told where it
+was: the last eight steps, one line each (`#41 bash: python3 make.py`), with the pointer to this tool. Super AI has the
+same tool (Claude Code condenses by itself, so it is told in its brief). Kortix and lossless-memory both landed here
+independently: don't summarize away the exact lines, keep them searchable by time and words
+(`apps/api/src/services/work-recall.ts`).
+
 ## The agent's tools
 
 Every task gets these (tested one by one and in chains in `apps/api/src/tools.test.ts`):
@@ -321,6 +335,7 @@ Every task gets these (tested one by one and in chains in `apps/api/src/tools.te
 | `web_search`, `web_fetch` | Private web search through Aatmiq's SearXNG; read a public page or PDF ([Reading web pages](#reading-web-pages)). |
 | `browser_open`, `browser_click`, `browser_type`, `browser_select`, `browser_back`, `browser_read`, `browser_screenshot` | A real browser for pages that need JavaScript, clicks or forms ([Browser](#browser)). |
 | `documents_search`, `documents_read`, `documents_save` | The organization's documents in Aatmiq ([Documents](#documents)). |
+| `task_recall` | Search this task's own full record, word for word (what it ran and printed, what was said), by words and time; or read one entry whole. For an exact line from steps that were condensed ([Searching the record](#searching-the-record-after-condensing)). |
 | `skill` | Load a skill (organization, personal or library) and follow it. |
 | `subagent`, `subagent_fork`, `list_agents`, `send_message`, `interrupt_agent` | Helpers for parts of a job, in the foreground or background; the task ends when the agent and every working helper are done. |
 | `job_list`, `job_output`, `job_kill` | Background commands and helpers. |
