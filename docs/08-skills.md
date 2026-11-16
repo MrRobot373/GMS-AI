@@ -1,6 +1,6 @@
 # Skill library
 
-Aatmiq ships 72 built-in skills that Work AI and the Aatmiq panel (Code) can use. A skill is a
+Aatmiq ships 73 built-in skills that Work AI and the Aatmiq panel (Code) can use. A skill is a
 folder with a `SKILL.md`: a one-line description the agent sees in every task ("Use when…"), and
 detailed instructions it loads only when a task matches — a workflow, checklists, templates,
 pitfalls and a "Done when" bar. Some skills also ship tested helper scripts the agent runs from the
@@ -62,7 +62,7 @@ in `coveredBy`. Maturity stays `draft` until the cases have been run in a real t
 
 ## The skills
 
-### Software development (25)
+### Software development (26)
 
 | Skill | Use it for | Helpers |
 |---|---|---|
@@ -90,6 +90,7 @@ in `coveredBy`. Maturity stays `draft` until the cases have been run in a real t
 | `system-design` — System design | designing the architecture of a system or major feature: requirements, components, data, scaling, trade-offs, diagrams. | – |
 | `technical-documentation` — Technical documentation | writing technical docs: READMEs, how-to guides, architecture overviews, ADRs, runbooks, docstrings, changelogs. | – |
 | `ui-ux-design` — UI/UX design | designing or improving a UI or user flow: layout, visual style, design tokens, component states, wireframes, design reviews. | – |
+| `ui-polish` — UI polish | a web page or app screen looks generic or AI-made (purple gradients, glows, emoji icons) and needs a design pass: audit, direction, nine fixes in order. Adapted from unslop (CC BY 4.0). | – |
 | `web-scraping` — Web scraping and data extraction | extracting data from web pages into CSV/JSON/Excel: polite fetching, parsing HTML tables and lists, pagination, cleanup. | – |
 
 ### Data (6)

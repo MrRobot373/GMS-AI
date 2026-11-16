@@ -37,6 +37,7 @@ Components that need more than a notice:
 | LibreOffice kit (document conversion in the agent runtime) | `@deepseek-ai/libreoffice-kit(-wasm)` | MPL-2.0 | Unmodified; the MPL text is in the notices; source: <https://github.com/deepseek-ai/dsh-libreoffice-kit> |
 | JSZip | API | MIT or GPL-3.0-or-later | Used under MIT |
 | caniuse-lite (browser data in the web app's build) | web | CC-BY-4.0 | Attribution in the notices |
+| `ui-polish` skill (adapted from unslop by Damir Sokolovsky, <https://github.com/heydamir/unslop>) | skill library (`packages/skills/library/ui-polish/`) | CC-BY-4.0 | Credit kept in the skill, its `NOTICE.md` and the three reference files; changes are stated there |
 
 ## Inside the API image
 
