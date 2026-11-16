@@ -262,3 +262,34 @@ export interface Citation {
 }
 
 export type SourceLabel = "confirmed" | "assumption" | "tbd";
+
+/* ───────────── Project brain (docs/21-project-brain.md) ───────────── */
+
+export type BrainMode = "auto" | "review" | "off";
+export type BrainKind = "fact" | "decision" | "requirement" | "question" | "person" | "term";
+export interface BrainEntryView {
+  id: string;
+  pageId: string;
+  kind: BrainKind;
+  text: string;
+  status: "active" | "pending" | "replaced" | "rejected";
+  conflict: boolean;
+  /** The words of the entry this one replaces or contradicts. */
+  replaces: string | null;
+  sourceKind: "chat" | "task" | "document" | "person";
+  sourceId: string | null;
+  sourceLabel: string;
+  quote: string;
+  author: string | null;
+  createdAt: string;
+}
+export interface BrainView {
+  mode: BrainMode;
+  canEdit: boolean;
+  /** Sources that are ready but not read yet. */
+  unread: number;
+  pages: { id: string; title: string; summary: string; updatedAt: string; entries: BrainEntryView[] }[];
+  history: BrainEntryView[];
+  counts: { active: number; pending: number };
+  log: { id: string; action: string; detail: string; createdAt: string }[];
+}

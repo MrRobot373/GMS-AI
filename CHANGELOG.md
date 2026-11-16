@@ -9,6 +9,16 @@ without one.
 
 ## Unreleased
 
+- **Project brain: one shared memory per project.** Two people asking the same AI about the same project got different
+  answers because each chat held different context. Now a project keeps what it has established (requirements, design
+  values, decisions and why, test results, open questions) as short entries with where each came from and the exact words
+  in the source that say it, and every chat and Work AI task in the project starts from the same entries. It learns from
+  documents added to the project and from what people say in project chats; an AI's task results always wait for a person.
+  Every entry's quote is checked against its source, instructions and repeats are dropped, a stated change replaces an entry
+  (kept as history) and a contradiction waits for a person. People can add, correct, accept and delete entries on a new
+  **Project brain** section of the project page, set it to learn automatically, ask first, or off, and export it as an
+  Obsidian vault. Tested with a scripted model; needs a pilot on a real project. See
+  [docs/21-project-brain.md](docs/21-project-brain.md). Migration 0029.
 - **`task_recall`: after condensing, the agent searches its own record instead of guessing.** A summary loses the exact
   line (a command's output, a path, a number, an error). The whole task record is still stored, so a new tool searches it
   word for word by words and time (newest matches, oldest first, with when each happened), or reads one entry whole. After

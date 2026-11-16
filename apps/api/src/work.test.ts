@@ -48,6 +48,11 @@ function sse(res: import("node:http").ServerResponse, chunks: unknown[]) {
 
 function fakeModel(body: { messages: { role: string; content: unknown }[]; tools?: { function: { name: string } }[] }, res: import("node:http").ServerResponse) {
   modelRequests.push(body.messages);
+  // The project brain reading a finished task (services/brain-learn.ts): nothing worth keeping.
+  if (textOf(body.messages[0]?.content).startsWith("You keep the shared brain")) {
+    const quiet = [{ choices: [{ index: 0, delta: { content: '{"entries":[]}' } }] }, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, { choices: [], usage: { prompt_tokens: 10, completion_tokens: 5 } }];
+    return sse(res, quiet);
+  }
   lastTools = (body.tools ?? []).map((t) => t.function.name);
   const last = body.messages.at(-1)!;
   const usage = { choices: [], usage: { prompt_tokens: 100, completion_tokens: 20 } };
@@ -1126,7 +1131,8 @@ d("Work AI", () => {
     expect(out).toContain("# Project: Launch");
     expect(out).toMatch(/\| Dates\.md \| Note \| Assumption \|/);
     expect(out).toContain("The budget is 42 lakh.");
-    const system = JSON.stringify(modelRequests.at(-1)?.find((m) => m.role === "system"));
+    // The agent's own request (the brain's reading of the finished task comes after it).
+    const system = JSON.stringify(modelRequests.filter((m) => !textOf(m[0]?.content).startsWith("You keep the shared brain")).at(-1)?.find((m) => m.role === "system"));
     expect(system).toContain('belongs to the project \\"Launch\\"');
     expect(system).toContain("Answer like a ship captain.");
     expect((await call("GET", `/api/work/tasks?workspaceId=${workspaceId}`)).json[0]).toMatchObject({ id: t.json.id, projectName: "Launch", sharedToProject: false });

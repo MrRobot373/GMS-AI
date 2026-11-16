@@ -35,6 +35,7 @@ import { Art } from "@/components/art/art";
 import { useCanUse, useSession } from "@/components/app/session";
 import { StatusIcon } from "@/components/work/parts";
 import { ChatView } from "@/components/chat/chat-view";
+import { BrainSection } from "@/components/projects/brain";
 import { ACCEPT, FileIcon, useDocuments } from "@/components/documents/use-documents";
 import {
   ProjectIcon,
@@ -224,6 +225,8 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
               </div>
             )}
           </section>
+
+          <BrainSection project={p} />
 
           {canWork && (
             <section className="mt-8">

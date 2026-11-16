@@ -1,6 +1,6 @@
 # Organization brain: a shared memory of the organization and its projects
 
-A proposal, not yet built. It describes how GEM AI could remember what an organization knows
+A proposal. **A project-sized version is built: see [21-project-brain.md](21-project-brain.md)** (explicit and learned entries with sources, used in project chats and Work AI tasks, Obsidian export). Organization-wide memory, person-level memory and outside connectors are still proposals. It describes how GEM AI could remember what an organization knows
 (people, decisions, customers, standards, lessons learned, project history) and give the right part
 of it to Chat, Work AI, Code, Knowledge and Learning, without anyone pasting the same context again.
 It compares three ways to get there: TencentDB Agent Memory, an Obsidian-style vault, and building

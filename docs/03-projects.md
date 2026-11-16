@@ -9,6 +9,7 @@ A project keeps the chats, files and instructions for one piece of work together
 | **Instructions** | Added to every chat in the project. They **replace** each person's personal custom instructions inside the project. |
 | **Sources** | Uploaded files, pasted text (stored as Markdown) and saved answers. Library documents can be linked too. Every chat in the project can use them **without attaching**. |
 | **Project memory** | When answering, the assistant also searches earlier chats in the same project: the user's own and those shared to the project. It uses Postgres full-text search, so no extra model is needed. Recalled passages are cited like documents ("Earlier chat in this project"). |
+| **Project brain** | What the project has established (requirements, decisions, design values, results), kept as short entries with their sources and given to every chat and Work AI task in the project, so everyone works from the same facts. See [21-project-brain.md](21-project-brain.md). |
 | **Chats** | Chats started in a project live there, not in Recents. Existing chats can be moved in or out. |
 
 ## Sharing

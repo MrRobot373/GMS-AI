@@ -454,4 +454,9 @@ export const HI: Record<string, string> = {
   "Super AI doesn't run in container mode yet.": "Super AI अभी कंटेनर मोड में नहीं चलता।",
   "Super AI needs a model with a context window of at least {min} tokens, and {name} has {have}. Raise the model's context length (in Admin → Models, and on the model server), or choose another model.": "Super AI को कम से कम {min} टोकन की कॉन्टेक्स्ट विंडो वाला मॉडल चाहिए, और {name} में {have} है। मॉडल की कॉन्टेक्स्ट लंबाई बढ़ाएँ (Admin → Models में, और मॉडल सर्वर पर), या कोई दूसरा मॉडल चुनें।",
   "The model's reply kept hitting its output limit, so the work was cut off. Ask for it in smaller parts, or choose a model with a larger context window.": "मॉडल का जवाब बार-बार उसकी आउटपुट सीमा तक पहुँच गया, इसलिए काम बीच में कट गया। इसे छोटे हिस्सों में माँगें, या बड़ी कॉन्टेक्स्ट विंडो वाला मॉडल चुनें।",
+  "Nothing to change.": "बदलने के लिए कुछ नहीं है।",
+  "Entry not found": "प्रविष्टि नहीं मिली",
+  "There is no waiting entry with that id.": "इस आईडी की कोई प्रतीक्षारत प्रविष्टि नहीं है।",
+  "Page not found": "पेज नहीं मिला",
+  "The brain is off for this project.": "इस प्रोजेक्ट के लिए ब्रेन बंद है।",
 };
