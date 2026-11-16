@@ -138,3 +138,17 @@ describe("Work AI's tools for Super AI", () => {
     expect(briefFor({ ...base, browser: false } as never)).toContain("No browser is available");
   });
 });
+
+describe("the rules both engines share", () => {
+  it("are in Super AI's brief: own documents first, re-check what changes, gaps instead of inventions, the design skill", async () => {
+    const { briefFor } = await import("./claude/engine");
+    const { workRules } = await import("./rules");
+    const base = { workdir: "/w", productName: "Aatmiq", model: { key: "m", name: "M", contextWindow: 65_536 }, connectors: [], webSearch: false };
+    const brief = briefFor({ ...base, skillsDir: "/skills" } as never);
+    for (const rule of workRules({ skillsDir: "/skills" })) expect(brief).toContain(rule);
+    expect(brief).toContain("ui-polish");
+    // A reviewer never searches the person's documents, and with no skills there is no design skill to load.
+    expect(workRules({ skillsDir: null, review: true }).join(" ")).not.toMatch(/documents_search|ui-polish/);
+    expect(briefFor({ ...base, skillsDir: null } as never)).not.toContain("ui-polish");
+  });
+});

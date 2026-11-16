@@ -3,6 +3,7 @@
  * models come from Aatmiq's gateway, approvals and web search go through Aatmiq, and anything
  * that could reach a third-party cloud or change the runtime itself is switched off.
  */
+import { workRules } from "../rules";
 import { stringify } from "yaml";
 import type { TaskSpec } from "../types";
 import { harnessFile } from "../files";
@@ -128,6 +129,7 @@ export function buildPatch(spec: TaskSpec): string {
           "Cite a page only if you fetched it and it says what you cite it for. When a page couldn't be read or doesn't give the figure, say so plainly instead of writing an estimate as if it were the published value (no \"~91.9 %\").",
           "Put work you only need along the way (debugging and checking scripts, temporary data) in a scratch/ folder, so the working folder holds what the person asked for; files they asked for go where they asked.",
           "Save to the person's Documents in Aatmiq (documents_save) only when they ask for that; otherwise the results stay in the working folder.",
+          ...workRules(spec),
           "Check a deliverable once. When that check passes, stop: do not rewrite the file or rerun the same command to confirm it again.",
           spec.calculators
             ? "For an engineering or scientific number, use calculators_search and then calculators_run. Those results come from tested formulas. Do not replace them with your own arithmetic or a script, unless no calculator covers the question. If a calculator refuses the inputs, say why and do not invent a number."

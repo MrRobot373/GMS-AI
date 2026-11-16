@@ -638,6 +638,10 @@ describe("context window", () => {
     expect(persona).toContain("Check it against what was asked, requirement by requirement");
     expect(persona).toContain("Open that file (downloads are in your working folder under downloads/) and read it");
     expect(persona).toContain("Don't leave files in the working folder that only signal you're done");
+    // Rules shared with Super AI (src/rules.ts): own documents first, re-check what changes, gaps instead of inventions.
+    expect(persona).toContain("look in their documents (documents_search) and your working folder before the web");
+    expect(persona).toContain("A remembered fact is not a current one");
+    expect(persona).toContain("Don't invent what you weren't given");
     expect(persona).toContain("check the other file really defines it under that name");
     expect(persona).toContain("node --check");
     const withBrowser = parse(buildPatch({ ...(await spec()), browser: true })) as any[];
