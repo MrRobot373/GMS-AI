@@ -1,0 +1,1 @@
+Make deck.pptx: exactly six slides presenting a 30-day onboarding plan for new hires. A title slide first, speaker notes on every slide, and one native chart (for example the share of time on training, shadowing and real work in each week).

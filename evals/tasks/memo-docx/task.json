@@ -1,0 +1,14 @@
+{
+  "id": "memo-docx",
+  "category": "office",
+  "title": "A one-to-two page memo with a table and page numbers",
+  "tags": ["office", "files"],
+  "timeoutSec": 900,
+  "requires": ["office"],
+  "criteria": {
+    "length_ok": "memo.docx renders to one or two pages.",
+    "page_numbers": "The footer has a page-number field.",
+    "has_table": "The memo contains a table comparing Now and Proposed.",
+    "no_other_failures": "The audit finds nothing else wrong with the file."
+  }
+}

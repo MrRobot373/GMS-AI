@@ -1,0 +1,13 @@
+{
+  "id": "xlsx-budget",
+  "category": "office",
+  "title": "A budget workbook with real formulas, no errors and a chart",
+  "tags": ["office", "files"],
+  "timeoutSec": 900,
+  "requires": ["office"],
+  "criteria": {
+    "no_errors": "The workbook has no formula errors and none of the audit's other FAIL findings (numbers stored as text, percent cells above 100%, charts with no data).",
+    "enough_formulas": "The totals and the Net row are formulas (at least 12 of them), not typed numbers.",
+    "has_chart": "The workbook has a chart."
+  }
+}

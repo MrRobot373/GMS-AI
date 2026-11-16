@@ -1,0 +1,1 @@
+Write memo.docx: a memo to the team about moving to a four-day work week. It should be one to two pages, with a title, a short introduction, a table comparing Now and Proposed (working hours, meeting days, on-call cover), and a closing ask. Put page numbers in the footer.

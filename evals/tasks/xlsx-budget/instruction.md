@@ -1,0 +1,1 @@
+Create budget.xlsx for a small team. A sheet called Plan with the months Jan to Jun in columns, and rows for three income sources and four expense categories (use plausible numbers). Add Total income, Total expenses and Net rows that use formulas, and one chart of Net by month. Tell me when it's done.

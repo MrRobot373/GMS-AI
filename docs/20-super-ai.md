@@ -190,6 +190,10 @@ questions to put to Anthropic are in the answer to "Instead of dsh I can use cla
 
 ## How to compare the two
 
+For repeatable scores rather than one-off briefs, use the eval set (`evals/`, `node scripts/eval-run.mjs --engine both`):
+small tasks with a pass or fail per criterion, including "doesn't claim what it didn't do". The briefs below are for the
+big comparisons (an office pack, a game) that need a person to look.
+
 `scripts/engine-compare.mjs` runs one brief on Work AI and then on Super AI with the same model, approves what the
 task asks for, saves each run's timeline and files, and writes a side-by-side `summary.md` (Node 22, nothing to
 install). The briefs used so far are in `scripts/briefs/` (a small primes task, the expense tracker, the Northwind

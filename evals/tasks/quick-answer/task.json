@@ -1,0 +1,11 @@
+{
+  "id": "quick-answer",
+  "category": "answer",
+  "title": "A one-number reply with nothing else",
+  "tags": ["fast"],
+  "timeoutSec": 300,
+  "criteria": {
+    "exact_number": "The reply is the number 408 and nothing else: no sentence around it, no working.",
+    "made_no_files": "No files were made for a one-line question."
+  }
+}

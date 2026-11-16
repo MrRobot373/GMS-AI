@@ -9,6 +9,16 @@ without one.
 
 ## Unreleased
 
+- **An eval set: the behaviors our agents must keep, scored per criterion.** `evals/` has 14 tasks (a one-number reply,
+  CSV totals, a script that must be run before it is trusted, no invented owners or dates, "I can't send email" instead of a
+  false "sent", a page that works when opened straight from the folder, an Excel budget, a Word memo, a six-slide deck…),
+  each with an instruction, a grader, a reference solution and known-bad samples. `node scripts/eval-run.mjs` runs them on
+  Work AI and Super AI with the same model and prints a table of which criterion failed. A grader that can't run (no
+  browser, no judge model, a provider outage) reports an error and stays out of the score, never a 0; one judge model is
+  pinned per run; `pnpm eval:selftest` checks the graders themselves (the folder-page grader fails the "JavaScript modules"
+  page that the expense tracker and the game shipped). Format borrowed from Kortix's evals (their code stays theirs: Elastic
+  License 2.0). See [evals/README.md](evals/README.md).
+
 - **Super AI: Work AI on the Claude Code engine, to compare.** A second, plain engine beside Work AI: Anthropic's
   Agent SDK runs the Claude Code loop on the same models, quotas and approvals (through a new
   Anthropic-format endpoint on the gateway that translates to our model servers). It has its own tab and task

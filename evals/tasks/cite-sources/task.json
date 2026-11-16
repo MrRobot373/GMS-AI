@@ -1,0 +1,13 @@
+{
+  "id": "cite-sources",
+  "category": "research",
+  "title": "A web answer that names the page it read",
+  "tags": ["web"],
+  "timeoutSec": 400,
+  "requires": ["web"],
+  "criteria": {
+    "read_a_page": "The agent fetched at least one web page (web_fetch) rather than answering from memory or a search snippet.",
+    "gives_version": "The reply gives a Python version number.",
+    "cites_python_org": "The reply names a python.org address as where it read it."
+  }
+}

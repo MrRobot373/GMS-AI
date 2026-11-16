@@ -1,0 +1,1 @@
+[{"kind":"tool_call","data":{"name":"web_fetch","args":{"url":"https://www.python.org/downloads/"}}}]

@@ -1,0 +1,14 @@
+{
+  "id": "deck-six-slides",
+  "category": "office",
+  "title": "Exactly six slides, notes on every slide, one native chart",
+  "tags": ["office", "files"],
+  "timeoutSec": 900,
+  "requires": ["office"],
+  "criteria": {
+    "six_slides": "deck.pptx has exactly six slides.",
+    "notes_on_all": "Every slide has speaker notes.",
+    "native_chart": "The deck has at least one native (editable) chart, not a picture of one.",
+    "no_other_failures": "The audit finds nothing else wrong with the file."
+  }
+}

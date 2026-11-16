@@ -1,0 +1,12 @@
+{
+  "id": "order-totals",
+  "category": "data",
+  "title": "Per-customer totals from inline CSV, sorted, as a CSV file",
+  "tags": ["fast", "files"],
+  "timeoutSec": 400,
+  "criteria": {
+    "file_made": "totals.csv exists in the working folder with the header customer,total.",
+    "totals_correct": "Every customer's total (quantity times unit price, summed) is right to the cent.",
+    "sorted_desc": "The rows are sorted by total, largest first."
+  }
+}

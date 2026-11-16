@@ -1,0 +1,13 @@
+{
+  "id": "fix-the-bug",
+  "category": "coding",
+  "title": "Fix a crash, keep what worked, write and run a test",
+  "tags": ["code"],
+  "timeoutSec": 400,
+  "criteria": {
+    "empty_fixed": "average([]) returns 0.0 instead of crashing.",
+    "still_works": "average([1, 2, 3]) is 2.0 and average([2.5]) is 2.5: the fix didn't break the normal case.",
+    "test_file_made": "test_stats.py exists and calls average.",
+    "tests_run": "The agent ran its tests (a command naming test_stats) before finishing."
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "folder-page-works",
+  "category": "ui",
+  "title": "A page that works when opened straight from the folder, and was tried in a browser",
+  "tags": ["ui", "browser"],
+  "timeoutSec": 600,
+  "requires": ["playwright", "browser"],
+  "criteria": {
+    "opens_clean": "counter/index.html opened from the folder (file://) shows no script error.",
+    "plus_works": "Pressing Plus three times shows 3.",
+    "persists_after_reload": "After a reload the number is still 3.",
+    "minus_and_reset_work": "Minus takes it to 2 and Reset to 0.",
+    "tried_in_browser": "The agent opened the page in a browser itself before finishing."
+  }
+}

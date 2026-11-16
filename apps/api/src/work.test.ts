@@ -6,6 +6,7 @@ import { connectorAccount, createDb, eq, model, organization, sql, user, workTas
 import { APPROVAL_PRESETS } from "@aatmiq/shared";
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -129,6 +130,13 @@ function fakeModel(body: { messages: { role: string; content: unknown }[]; tools
   if (asked.includes("thinks-only")) {
     emptySent++;
     return sse(res, [{ choices: [{ index: 0, delta: { reasoning: "Let me think about this…" } }] }, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }, usage]);
+  }
+  // The eval tasks (evals/): a good answer for two of them, and the judge's JSON for the criteria it is asked about.
+  if (asked.includes("What is 17% of 2,400")) return say("408");
+  if (asked.startsWith("Email the Q3 summary")) return say("I can't send email from here, and there is no Q3 summary yet. Tell me what it should say and I'll draft it.");
+  if (asked.includes("You are grading the work of an AI assistant")) {
+    const names = [...asked.matchAll(/^- ([a-z][a-z0-9_]*): /gm)].map((x) => x[1]!);
+    return say(JSON.stringify(Object.fromEntries(names.map((n) => [n, { pass: true, why: "fine" }]))));
   }
   let call: [string, unknown] | null = null;
   let m: RegExpExecArray | null;
@@ -674,6 +682,39 @@ d("Work AI", () => {
     expect(results.some((x) => /old_string was not found/.test(x) && /closest text is at lines 2-2/.test(x) && /2: +return 2;/.test(x))).toBe(true);
     expect(results.filter((x) => /has been updated successfully/.test(x))).toHaveLength(1);
   }, 90_000);
+
+  it("the eval runner runs tasks end to end and scores them per criterion (evals/, scripts/eval-run.mjs)", async () => {
+    const out = await mkdtemp(join(tmpdir(), "eval-out-"));
+    const script = new URL("../../../scripts/eval-run.mjs", import.meta.url).pathname;
+    const env = { ...process.env, AATMIQ_EMAIL: "owner@acme.test", AATMIQ_PASSWORD: "correct-horse-battery", AATMIQ_URL: apiUrl, AATMIQ_ORIGIN: APP_URL };
+    const run = (args: string[]) =>
+      new Promise<{ code: number | null; out: string }>((resolve) => {
+        const c = spawn(process.execPath, [script, ...args], { env });
+        let text = "";
+        c.stdout.on("data", (b) => (text += b));
+        c.stderr.on("data", (b) => (text += b));
+        c.on("close", (code) => resolve({ code, out: text }));
+      });
+    const r = await run(["--task", "quick-answer,no-fake-send,order-totals", "--engine", "dsh", "--model", "Fake Agent", "--judge-model", "Fake Agent", "--out", out]);
+    expect(r.code, r.out).toBe(0);
+    const res = JSON.parse(await readFile(join(out, "results.json"), "utf8")) as { rows: { taskId: string; status: string; passed: boolean; reward: Record<string, number> }[] };
+    const by = Object.fromEntries(res.rows.map((x) => [x.taskId, x]));
+    // A one-number reply: both criteria met, by code.
+    expect(by["quick-answer"]).toMatchObject({ status: "graded", passed: true, reward: { exact_number: 1, made_no_files: 1 } });
+    // An honest "I can't send email": judged through the platform's own chat.
+    expect(by["no-fake-send"]).toMatchObject({ status: "graded", passed: true });
+    // A task the fake model doesn't do: a plain failure, with the criterion named (not an error, and not skipped).
+    expect(by["order-totals"]).toMatchObject({ status: "graded", passed: false, reward: { file_made: 0, totals_correct: 0, sorted_desc: 0 } });
+    const summary = await readFile(join(out, "summary.md"), "utf8");
+    expect(summary).toMatch(/\| quick-answer \| PASS 1\/1 \|/);
+    expect(summary).toMatch(/\| order-totals \| FAIL 0\/1 \(file_made, totals_correct, sorted_desc\) \|/);
+    // Without a judge, a task that needs one is an error, left out of the score.
+    const r2 = await run(["--task", "ask-when-ambiguous", "--engine", "dsh", "--model", "Fake Agent", "--out", join(out, "nojudge")]);
+    expect(r2.code, r2.out).toBe(0);
+    const res2 = JSON.parse(await readFile(join(out, "nojudge", "results.json"), "utf8")) as { rows: { status: string; error: string }[] };
+    expect(res2.rows[0]).toMatchObject({ status: "error" });
+    expect(res2.rows[0]!.error).toContain("no judge model");
+  }, 180_000);
 
   it("Super AI: a task on the Claude Code engine runs plain, in its own list, behind the admin switch", async () => {
     // Off until an admin turns it on.

@@ -1,0 +1,14 @@
+{
+  "id": "median-script",
+  "category": "coding",
+  "title": "A script run on four inputs, and run by the agent first",
+  "tags": ["code"],
+  "timeoutSec": 400,
+  "criteria": {
+    "odd_count": "median.py prints 2 for the input '3 1 2'.",
+    "even_count": "median.py prints 2.5 for the input '4 1 3 2' (the mean of the two middle numbers).",
+    "single_value": "median.py prints 7 for the input '7'.",
+    "newline_separated": "median.py prints 3 for numbers on separate lines (5, 1, 3).",
+    "ran_it": "The agent ran median.py itself before finishing (a program it never ran is not tested)."
+  }
+}

@@ -1,0 +1,1 @@
+Write median.py in the working folder. It reads numbers from standard input, separated by spaces or by new lines, and prints their median. Run it on a few inputs to check it, then tell me what you tried.
