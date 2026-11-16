@@ -24,6 +24,7 @@ import { audit, parse, requireUser, requireWorkspaceCap, type AppContext } from 
 import { randomToken } from "../crypto";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, processDocument } from "../services/documents";
+import { inBackground, learnFromDocument } from "../services/brain-learn";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { getProjectAccess, isWorkspaceAdmin, projectVisibleTo, requireProjectEdit } from "../services/projects";
 import { MAX_UPLOAD_BYTES } from "./documents";
@@ -275,6 +276,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     if (replaces) await db.update(document).set({ supersededById: doc!.id }).where(eq(document.id, replaces));
     await audit(ctx, { actor: u, action: "project.source_added", workspaceId: p.workspaceId, targetType: "document", targetId: doc!.id, meta: { projectId: p.id, name } });
     await ctx.jobs.document(doc!.id);
+    if (p.brainMode !== "off") inBackground("learning from a source", () => learnFromDocument(ctx, p.id, doc!.id, u.id));
     return doc;
   });
 
@@ -294,6 +296,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     await addSource(p.id, doc!.id, u.id);
     await audit(ctx, { actor: u, action: body.kind === "answer" ? "project.answer_saved" : "project.note_added", workspaceId: p.workspaceId, targetType: "document", targetId: doc!.id, meta: { projectId: p.id } });
     await ctx.jobs.document(doc!.id);
+    if (p.brainMode !== "off") inBackground("learning from a source", () => learnFromDocument(ctx, p.id, doc!.id, u.id));
     return doc;
   });
 
@@ -309,6 +312,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!doc) throw notFound("Document not found");
     await addSource(p.id, doc.id, u.id);
     await audit(ctx, { actor: u, action: "project.source_linked", workspaceId: p.workspaceId, targetType: "document", targetId: doc.id, meta: { projectId: p.id } });
+    if (p.brainMode !== "off") inBackground("learning from a source", () => learnFromDocument(ctx, p.id, doc.id, u.id));
     return { ok: true };
   });
 

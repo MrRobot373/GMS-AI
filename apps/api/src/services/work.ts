@@ -72,6 +72,7 @@ import { msg } from "../i18n";
 import { availableModels, resolveModel } from "./models";
 import { PROJECT_FOLDER, projectFor, projectInstructions, writeProjectFiles } from "./project-work";
 import { recentTrail } from "./work-recall";
+import { inBackground, learnFromTask } from "./brain-learn";
 
 export type TaskStatus = (typeof workTask.$inferSelect)["status"];
 export interface WorkStreamEvent {
@@ -955,9 +956,9 @@ export class WorkRunner {
       const proj = task.projectId && !code ? await projectFor(db, task.userId, task.projectId) : null;
       if (proj) {
         const dir = join(workdir, PROJECT_FOLDER);
-        const { copied } = await writeProjectFiles(db, this.ctx.storage, proj, dir);
+        const { copied, brain } = await writeProjectFiles(db, this.ctx.storage, proj, dir);
         await this.chownTree(dir, runUid);
-        instructions = projectInstructions(proj, copied);
+        instructions = projectInstructions(proj, copied, brain);
         l.connectorIds = proj.connectorIds ?? null;
       }
       // Container mode: Work AI tasks get their own container; the container is their sandbox.
@@ -1401,6 +1402,8 @@ export class WorkRunner {
     l.finalVerification = null;
     await this.setStatus(l.taskId, error ? "failed" : "completed", { result: l.lastAnswer ? clip(l.lastAnswer, 4000) : null, error, ...(v ? { verification: v } : {}) });
     if (v) await this.record(l.taskId, "verification", v as unknown as Record<string, unknown>);
+    // A task in a project: what it found may belong in the project's brain (held for a person to accept).
+    if (!error) inBackground("learning from a task", () => learnFromTask(this.ctx, l.taskId));
     await this.notifyDone(l, error, v);
     this.armIdle(l);
     await this.pump();

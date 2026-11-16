@@ -7,6 +7,8 @@ import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, buildContext, recallProjectChats, retrieve } from "../services/documents";
 import { chatToDocx, chatToMarkdown, fileNameFor, type ExportMessage } from "../services/export";
 import { getProjectAccess } from "../services/projects";
+import { brainContext } from "../services/brain";
+import { inBackground, learnFromChat } from "../services/brain-learn";
 import { chooseModel, isSmallTalk } from "../services/router";
 import { quotaFor } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
@@ -379,6 +381,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       instructions,
     ].join("\n");
 
+    // The project brain: what the project holds true so far, the same for everyone in it.
+    const brain = proj ? await brainContext(db, { id: proj.id, name: proj.name, brainMode: proj.brainMode }, content).catch(() => null) : null;
     const [retrieval, recollections] = await Promise.all([
       retrieve(db, box, {
         workspaceId: c.workspaceId,
@@ -422,7 +426,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     }
 
     const messages: ChatMessage[] = [
-      { role: "system", content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + calcSystem },
+      { role: "system", content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem },
       ...history
         .reverse()
         .filter((h) => !h.error && h.role !== "system")
@@ -600,6 +604,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       if (error) send("error", { message: tr(locale, error), messageId: assistant!.id, ...changed });
       else send("done", { messageId: assistant!.id, usage, quota: (await quotaFor(db, c.workspaceId, u.id, m)).status, ...changed });
       res.end();
+    }
+    // What the person wrote may belong in the project's brain (a statement, in a project chat that is kept).
+    if (proj && !error && !abort.signal.aborted && !regenerateOf && proj.brainMode !== "off") {
+      inBackground("learning from a chat", () => learnFromChat(ctx, { projectId: proj.id, chatId: c.id, workspaceId: c.workspaceId, userId: u.id, userName: u.name, text: content }));
     }
   });
 }

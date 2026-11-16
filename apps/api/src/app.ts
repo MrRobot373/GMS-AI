@@ -23,6 +23,7 @@ import { licenseRoutes } from "./routes/license";
 import { ssoRoutes } from "./routes/sso";
 import { meRoutes } from "./routes/me";
 import { projectRoutes } from "./routes/projects";
+import { brainRoutes } from "./routes/brain";
 import { requestRoutes } from "./routes/requests";
 import { workRoutes } from "./routes/work";
 import { workConfigRoutes } from "./routes/work-config";
@@ -217,6 +218,7 @@ export async function buildApp(
   await chatRoutes(app, ctx);
   await documentRoutes(app, ctx);
   await projectRoutes(app, ctx);
+  await brainRoutes(app, ctx);
   await requestRoutes(app, ctx);
   await adminOrgRoutes(app, ctx);
   await groupRoutes(app, ctx);

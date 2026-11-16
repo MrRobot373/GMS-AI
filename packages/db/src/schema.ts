@@ -703,6 +703,11 @@ export const project = pgTable(
     visibility: projectVisibilityEnum("visibility").notNull().default("private"),
     /** Connectors Work AI tasks in the project may use (ids); null: all the organization's. */
     connectorIds: text("connector_ids").array(),
+    /**
+     * The project brain (docs/21-project-brain.md): "auto" learns from the project's work and adds what it finds,
+     * "review" holds everything for a person with edit access to accept, "off" neither learns nor is used.
+     */
+    brainMode: text("brain_mode").$type<"auto" | "review" | "off">().notNull().default("auto"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -738,6 +743,88 @@ export const projectSource = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.documentId] }), index("psource_doc_idx").on(t.documentId)],
+);
+
+/* ───────────── Project brain (docs/21-project-brain.md) ───────────── */
+
+/** A page of a project's brain: a topic ("Requirements", "Decisions", "Power stage") holding entries. */
+export const brainPage = pgTable(
+  "brain_page",
+  {
+    id: id(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    /** The title in lower case with single spaces: one page per name in a project. */
+    slug: text("slug").notNull(),
+    /** A few lines people write about the page (never rewritten by the model). */
+    summary: text("summary").notNull().default(""),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("brain_page_project_slug_idx").on(t.projectId, t.slug)],
+);
+
+export type BrainEntryStatus = "active" | "pending" | "replaced" | "rejected";
+export type BrainEntryKind = "fact" | "decision" | "requirement" | "question" | "person" | "term";
+export type BrainSourceKind = "chat" | "task" | "document" | "person";
+
+/**
+ * One statement the project holds true (or is asked to): its text, where it came from, and its state.
+ * "active" entries are what everyone's chats and tasks in the project are given; "pending" ones wait for a
+ * person (review mode, or a contradiction with an active entry); "replaced" and "rejected" are history.
+ */
+export const brainEntry = pgTable(
+  "brain_entry",
+  {
+    id: id(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => brainPage.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<BrainEntryKind>().notNull().default("fact"),
+    text: text("text").notNull(),
+    status: text("status").$type<BrainEntryStatus>().notNull().default("active"),
+    /** The entry this one replaced (status active) or contradicts (status pending, `conflict` true). */
+    replacesId: text("replaces_id"),
+    conflict: boolean("conflict").notNull().default(false),
+    sourceKind: text("source_kind").$type<BrainSourceKind>().notNull(),
+    /** The chat, task or document it came from (null for something a person typed in). */
+    sourceId: text("source_id"),
+    /** How the source reads to people: "Asha's chat", "Spec rev C.pdf (Confirmed)". */
+    sourceLabel: text("source_label").notNull().default(""),
+    /** The words in the source that say it (checked to be there before the entry is kept). */
+    quote: text("quote").notNull().default(""),
+    /** Whose work it came from, or who wrote it. */
+    authorId: text("author_id").references(() => user.id, { onDelete: "set null" }),
+    /** Who accepted, rejected or replaced it by hand. */
+    decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("brain_entry_project_idx").on(t.projectId, t.status), index("brain_entry_page_idx").on(t.pageId)],
+);
+
+/** What happened to the brain, written by the app (never by the model): one line per change. */
+export const brainLog = pgTable(
+  "brain_log",
+  {
+    id: id(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    entryId: text("entry_id"),
+    /** added | pending | conflict | replaced | accepted | rejected | edited | deleted | learned | skipped */
+    action: text("action").notNull(),
+    detail: text("detail").notNull().default(""),
+    /** The person who did it; null when the brain learned it from work. */
+    actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("brain_log_project_idx").on(t.projectId, t.createdAt)],
 );
 
 /** Outgoing mail server as stored (the password is encrypted with the app secret). */
