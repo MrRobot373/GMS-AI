@@ -2,6 +2,21 @@
 
 A project keeps the chats, files and instructions for one piece of work together, in the spirit of ChatGPT Projects, but built for a private, multi-user workspace and for low resource use.
 
+## Chat AI and Work AI
+
+Two ways to use AI in a project, told apart by the size of the job:
+
+| | Chat AI | Work AI |
+|---|---|---|
+| For | Asking, discussing and deciding | Handing over a job and getting finished files back |
+| Who drives | You, turn by turn | The agent, from your brief |
+| Time | Seconds to minutes | Minutes to hours, in the background |
+| Output | An answer, a calculation | Reports, Excel/Word/PowerPoint, code, test results |
+| Project brain | Reads it and learns from what people say | Reads it; what it finds waits for a person to accept |
+
+The sidebar, the chat home and the Work AI home say this in one line each. Rule of thumb for people: *if you want an
+answer, chat; if you want something delivered, use Work AI.*
+
 ## What a project has
 
 | Part | Behaviour |

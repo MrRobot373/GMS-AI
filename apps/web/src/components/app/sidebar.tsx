@@ -86,6 +86,7 @@ function NavItem({
   soon,
   shortcut,
   action,
+  hint,
 }: {
   href: string;
   icon: ReactNode;
@@ -95,11 +96,14 @@ function NavItem({
   shortcut?: ReactNode;
   /** Sits on the row, outside the link, so a click does not navigate. */
   action?: ReactNode;
+  /** What the section is for, shown on hover. */
+  hint?: string;
 }) {
   const t = useT();
   const link = (
     <Link
       href={href}
+      title={hint}
       className={cn(
         "group flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
         action && "pr-8",
@@ -304,8 +308,8 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             {t("New chat")}
           </NavItem>
           {can("chat") && (
-            <NavItem href="/app/chat" icon={<MessageSquare />} active={pathname.startsWith("/app/chat/")}>
-              {t("Chat")}
+            <NavItem href="/app/chat" icon={<MessageSquare />} active={pathname.startsWith("/app/chat/")} hint={t("Ask, discuss and decide, with your project's facts.")}>
+              {t("Chat AI")}
             </NavItem>
           )}
           {can("chat") && (
@@ -340,7 +344,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             <GroupLabel>{t("Do")}</GroupLabel>
             <div className="space-y-px">
               {can("work") && (
-                <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
+                <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work")} hint={t("Hand over a job; get finished files back.")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
                   {t("Work AI")}
                 </NavItem>
               )}

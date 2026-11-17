@@ -9,6 +9,9 @@ without one.
 
 ## Unreleased
 
+- **Chat AI and Work AI say what each is for.** The sidebar calls chat **Chat AI** and both entries explain themselves on
+  hover; the chat home adds "for asking, discussing and deciding; for a job that ends in finished files, use Work AI"
+  (with a link), and the Work AI home opens with "Hand over a job and get finished files back".
 - **Aatmiq Code is hidden by default.** Coding tasks go to Work AI, so the IDE section no longer shows in the sidebar,
   the landing page, or the admin switches for workspaces, models and the license, and its API refuses as if no license
   included it. Nothing is deleted: set `CODE_ENABLED=true` on the server to bring it back. Someone with an old link to

@@ -98,7 +98,7 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
             <p className="mx-auto mt-2 max-w-md text-[13px] text-fg-subtle">
               {superAi
                 ? t("Super AI runs your task on the Claude Code engine, with its own prompts and tools, so you can compare it with Work AI. It works in a private folder and asks you before anything risky.")
-                : t("Give {productName} a goal. It plans, runs tools in a private folder and asks you before anything risky.", { productName: me.org.productName })}
+                : t("Hand over a job and get finished files back. {productName} plans, runs tools in a private folder and asks you before anything risky.", { productName: me.org.productName })}
             </p>
           </motion.div>
           {projectId && project.data && (

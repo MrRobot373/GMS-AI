@@ -41,7 +41,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { latestLeaf, pathTo, siblingsOf } from "@/lib/branches";
 import { toast } from "sonner";
 import { TopBar, TopBarButton } from "@/components/app/frame";
-import { useSession } from "@/components/app/session";
+import { useCanUse, useSession } from "@/components/app/session";
 import { useChats } from "@/components/app/sidebar";
 import { Button } from "@/components/ui/button";
 import { AppLogo } from "@/components/org-logo";
@@ -501,6 +501,7 @@ export function ChatView({
 
   const isHome = !initialId && messages.length === 0;
   const firstName = me.user.name.split(" ")[0];
+  const canWork = useCanUse("work");
   const noModels = models.data && models.data.length === 0;
   const title = isHome
     ? "New chat"
@@ -641,6 +642,18 @@ export function ChatView({
                 {greeting(t)}, {firstName}
               </h1>
               <p className="mt-2 text-[13px] text-fg-subtle">{t("I'm {productName}, where should we start today?", { productName: me.org.productName })}</p>
+              {/* What Chat AI is for, and where bigger jobs go (docs/03-projects.md, "Chat AI and Work AI"). */}
+              <p className="mx-auto mt-1 max-w-md text-[12.5px] text-fg-subtle" data-testid="chat-purpose">
+                {canWork
+                  ? t("Chat AI is for asking, discussing and deciding. For a job that ends in finished files, use {workAi}.", {
+                      workAi: (
+                        <Link href="/app/work" className="text-fg-muted underline underline-offset-2 hover:text-fg">
+                          {t("Work AI")}
+                        </Link>
+                      ),
+                    })
+                  : t("Chat AI is for asking, discussing and deciding.")}
+              </p>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.45 }} className="mt-8">
               {notices}

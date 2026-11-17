@@ -723,7 +723,6 @@ export const HI: Record<string, string> = {
   "Review documents": "दस्तावेज़ों की समीक्षा",
   "Read the attached documents and list the decisions, open questions and deadlines in a table.": "जोड़े गए दस्तावेज़ पढ़ें और फ़ैसले, खुले सवाल और समय-सीमाएँ एक तालिका में लिखें।",
   "What should I work on, {firstName}?": "{firstName}, मैं किस पर काम करूँ?",
-  "Give {productName} a goal. It plans, runs tools in a private folder and asks you before anything risky.": "{productName} को एक लक्ष्य दें। यह योजना बनाता है, एक निजी फ़ोल्डर में टूल चलाता है और जोखिम वाले किसी भी काम से पहले आपसे पूछता है।",
   "In {project}: its instructions, files and connectors": "{project} में: इसके निर्देश, फ़ाइलें और कनेक्टर",
   "Not in this project": "इस प्रोजेक्ट में नहीं",
   "No model is enabled for Work AI in this workspace yet. Ask your admin to enable one under Admin → Models.": "इस वर्कस्पेस में Work AI के लिए अभी कोई मॉडल चालू नहीं है। अपने एडमिन से एडमिन → मॉडल में कोई मॉडल चालू करने को कहें।",
@@ -2294,4 +2293,10 @@ export const HI: Record<string, string> = {
   "Code isn't available here": "Code यहाँ उपलब्ध नहीं है",
   "For coding tasks, use Work AI: it writes, runs and tests code in its own folder.": "कोडिंग के काम के लिए Work AI इस्तेमाल करें: यह अपने फ़ोल्डर में कोड लिखता, चलाता और टेस्ट करता है।",
   "Open Work AI": "Work AI खोलें",
+  "Chat AI is for asking, discussing and deciding. For a job that ends in finished files, use {workAi}.": "Chat AI पूछने, चर्चा करने और फ़ैसले के लिए है। जिस काम का नतीजा तैयार फ़ाइलें हों, उसके लिए {workAi} इस्तेमाल करें।",
+  "Chat AI is for asking, discussing and deciding.": "Chat AI पूछने, चर्चा करने और फ़ैसले के लिए है।",
+  "Hand over a job and get finished files back. {productName} plans, runs tools in a private folder and asks you before anything risky.": "काम सौंपें और तैयार फ़ाइलें वापस पाएँ। {productName} योजना बनाता है, निजी फ़ोल्डर में टूल चलाता है और किसी भी जोखिम भरे कदम से पहले आपसे पूछता है।",
+  "Chat AI": "Chat AI",
+  "Ask, discuss and decide, with your project's facts.": "अपने प्रोजेक्ट के तथ्यों के साथ पूछें, चर्चा करें और फ़ैसला करें।",
+  "Hand over a job; get finished files back.": "काम सौंपें; तैयार फ़ाइलें वापस पाएँ।",
 };
