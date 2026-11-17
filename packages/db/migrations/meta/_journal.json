@@ -239,6 +239,13 @@
       "when": 1794928164308,
       "tag": "0033_group_chats",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794928870966,
+      "tag": "0034_brain_embeddings",
+      "breakpoints": true
     }
   ]
 }

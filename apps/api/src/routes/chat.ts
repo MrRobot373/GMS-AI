@@ -494,7 +494,15 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     ].join("\n");
 
     // The project brain: what the project holds true so far, the same for everyone in it.
-    const brain = proj ? await brainContext(db, { id: proj.id, name: proj.name, brainMode: proj.brainMode }, content).catch(() => null) : null;
+    const brain = proj
+      ? await brainContext(db, { id: proj.id, name: proj.name, brainMode: proj.brainMode }, content, 6000, {
+          box,
+          workspaceId: c.workspaceId,
+          onTokens: async (tokens, modelId) => {
+            await db.insert(usageEvent).values({ workspaceId: c.workspaceId, projectId: proj.id, userId: u.id, modelId, section: "knowledge", inputTokens: tokens, outputTokens: 0 });
+          },
+        }).catch(() => null)
+      : null;
     const [retrieval, recollections] = await Promise.all([
       retrieve(db, box, {
         workspaceId: c.workspaceId,

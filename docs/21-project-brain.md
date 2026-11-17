@@ -31,8 +31,12 @@ Risks and issues, Open questions, People, Glossary, Schedule, and any new topic 
 "Output filter"). Pages mention each other as `[[links]]` in the export.
 
 Tables: `brain_page`, `brain_entry` (status active / pending / replaced / rejected), `brain_log` (what changed, written
-by the app), and `project.brain_mode`. Entries are plain text searched with Postgres full-text search; no extra model or
-index is needed to read the brain.
+by the app), and `project.brain_mode`. Entries are plain text. A chat finds the entries that bear on a message
+two ways at once: by their words (Postgres full-text search) and, when the workspace has an embedding model (the one
+documents use), by meaning, so "How cold can it get?" finds "Ambient temperature range is -40 C to +85 C". Entries are
+embedded the first time a chat needs them (`brain_entry.embedding`, up to 256 at a time); a corrected entry, or a new
+embedding model, is embedded again. The two rankings are interleaved; without an embedding model, or when its server
+fails, words alone are used. The embedding tokens count as the project's usage (section `knowledge`).
 
 ## How it learns
 

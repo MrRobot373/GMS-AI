@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **The project brain is found by meaning too.** With the workspace's embedding model, a chat now finds brain entries by
+  what they mean as well as by their words ("How cold can it get?" finds the ambient temperature range). Entries are
+  embedded when first needed and again after a correction; without an embedding model it works as before. Migration
+  `0034`.
 - **Group chats in projects.** A chat shared to a project is now a group chat: project members can write in it, each
   message shows who wrote it, and open pages pick up new messages. Each person uses their own models, budget and
   connected apps. The author can make it read-only for members again. Migration `0033` (existing messages are

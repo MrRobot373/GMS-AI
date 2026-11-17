@@ -834,6 +834,9 @@ export const brainEntry = pgTable(
     authorId: text("author_id").references(() => user.id, { onDelete: "set null" }),
     /** Who accepted, rejected or replaced it by hand. */
     decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+    /** The entry's meaning, for search by meaning (docs/21-project-brain.md); filled in when first needed. */
+    embedding: vector("embedding"),
+    embeddingModelId: text("embedding_model_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

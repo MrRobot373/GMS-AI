@@ -18,18 +18,27 @@ import {
   brainPage,
   desc,
   eq,
+  getTableColumns,
   inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
   sql,
   type BrainEntryKind,
   type BrainEntryStatus,
   type BrainSourceKind,
   type DB,
 } from "@aatmiq/db";
-import { toTsQuery } from "./documents";
+import { embed } from "@aatmiq/model-gateway";
+import type { SecretBox } from "../crypto";
+import { embeddingModelFor, forEmbedding, toTsQuery } from "./documents";
 
 export type BrainMode = "auto" | "review" | "off";
 export type Page = typeof brainPage.$inferSelect;
-export type Entry = typeof brainEntry.$inferSelect;
+/** An entry as the brain is read (its embedding, used only for search by meaning, is left out). */
+export type Entry = Omit<typeof brainEntry.$inferSelect, "embedding" | "embeddingModelId">;
+const { embedding: _embedding, embeddingModelId: _embeddingModelId, ...ENTRY_COLS } = getTableColumns(brainEntry);
 
 export const ENTRY_KINDS: BrainEntryKind[] = ["fact", "decision", "requirement", "question", "person", "term"];
 /** Pages the model is steered to, so ten people's work lands in the same places. A topic gets its own page. */
@@ -161,7 +170,7 @@ export interface Brain {
 export async function loadBrain(db: DB, projectId: string, statuses: BrainEntryStatus[] = ["active", "pending"]): Promise<Brain> {
   const [pages, entries] = await Promise.all([
     db.select().from(brainPage).where(eq(brainPage.projectId, projectId)).orderBy(asc(brainPage.createdAt)),
-    db.select().from(brainEntry).where(and(eq(brainEntry.projectId, projectId), inArray(brainEntry.status, statuses))).orderBy(asc(brainEntry.createdAt)),
+    db.select(ENTRY_COLS).from(brainEntry).where(and(eq(brainEntry.projectId, projectId), inArray(brainEntry.status, statuses))).orderBy(asc(brainEntry.createdAt)),
   ]);
   return { pages, entries };
 }
@@ -227,12 +236,82 @@ export async function searchBrain(db: DB, projectId: string, query: string, k = 
   return rows.map((r) => r.id);
 }
 
+type EmbeddingModel = NonNullable<Awaited<ReturnType<typeof embeddingModelFor>>>;
+const EMBED_BATCH = 32;
+const EMBED_AT_ONCE = 256;
+
+/** Embed the project's active entries that have no embedding from this model yet. Returns the tokens used. */
+export async function embedBrainEntries(db: DB, emb: EmbeddingModel, projectId: string): Promise<number> {
+  const todo = await db
+    .select({ id: brainEntry.id, text: brainEntry.text })
+    .from(brainEntry)
+    .where(
+      and(
+        eq(brainEntry.projectId, projectId),
+        eq(brainEntry.status, "active"),
+        or(isNull(brainEntry.embedding), isNull(brainEntry.embeddingModelId), ne(brainEntry.embeddingModelId, emb.id)),
+      ),
+    )
+    .limit(EMBED_AT_ONCE);
+  let tokens = 0;
+  for (let i = 0; i < todo.length; i += EMBED_BATCH) {
+    const part = todo.slice(i, i + EMBED_BATCH);
+    const r = await embed(emb.cfg, emb.key, part.map((e) => forEmbedding(emb.documentPrefix, "project brain", e.text)));
+    tokens += r.inputTokens;
+    await Promise.all(part.map((e, j) => db.update(brainEntry).set({ embedding: r.vectors[j]!, embeddingModelId: emb.id }).where(eq(brainEntry.id, e.id))));
+  }
+  return tokens;
+}
+
+/**
+ * Entries closest in meaning to the query (the workspace's embedding model; entries are embedded when first needed).
+ * Empty without an embedding model or when the embedding server fails: keyword search still stands.
+ */
+export async function searchBrainByMeaning(db: DB, box: SecretBox, o: { workspaceId: string; projectId: string; query: string; k?: number }): Promise<{ ids: string[]; tokens: number; modelId: string | null }> {
+  const emb = await embeddingModelFor(db, box, o.workspaceId);
+  if (!emb || !o.query.trim()) return { ids: [], tokens: 0, modelId: null };
+  try {
+    let tokens = await embedBrainEntries(db, emb, o.projectId);
+    const q = await embed(emb.cfg, emb.key, [emb.queryPrefix + o.query.slice(0, 2000)]);
+    tokens += q.inputTokens;
+    const vec = `[${q.vectors[0]!.join(",")}]`;
+    const rows = await db
+      .select({ id: brainEntry.id })
+      .from(brainEntry)
+      .where(and(eq(brainEntry.projectId, o.projectId), eq(brainEntry.status, "active"), eq(brainEntry.embeddingModelId, emb.id), isNotNull(brainEntry.embedding)))
+      .orderBy(sql`${brainEntry.embedding} <=> ${vec}::vector`)
+      .limit(o.k ?? 20);
+    return { ids: rows.map((x) => x.id), tokens, modelId: emb.id };
+  } catch {
+    return { ids: [], tokens: 0, modelId: emb.id };
+  }
+}
+
+/** Two rankings as one: first of each, then second of each…, each id once. */
+function interleave(a: string[], b: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) for (const x of [a[i], b[i]]) if (x && !out.includes(x)) out.push(x);
+  return out;
+}
+
 /** What a chat in the project is told (null when the brain is off or empty). */
-export async function brainContext(db: DB, p: { id: string; name: string; brainMode: BrainMode }, query: string, maxChars = 6000): Promise<string | null> {
+export async function brainContext(
+  db: DB,
+  p: { id: string; name: string; brainMode: BrainMode },
+  query: string,
+  maxChars = 6000,
+  /** With the workspace's embedding model: entries are also found by meaning, not only by their words. */
+  meaning?: { box: SecretBox; workspaceId: string; onTokens?: (tokens: number, modelId: string | null) => Promise<void> },
+): Promise<string | null> {
   if (p.brainMode === "off") return null;
   const b = await loadBrain(db, p.id, ["active"]);
   if (!b.entries.length && !b.pages.some((x) => x.summary.trim())) return null;
-  const prefer = new Set(await searchBrain(db, p.id, query));
+  const [words, close] = await Promise.all([
+    searchBrain(db, p.id, query),
+    meaning ? searchBrainByMeaning(db, meaning.box, { workspaceId: meaning.workspaceId, projectId: p.id, query }) : Promise.resolve({ ids: [], tokens: 0, modelId: null }),
+  ]);
+  if (close.tokens > 0) await meaning?.onTokens?.(close.tokens, close.modelId).catch(() => undefined);
+  const prefer = new Set(interleave(close.ids, words));
   return [
     `## The project brain for "${p.name}"`,
     "What this project holds true so far, built up from its documents, chats and tasks. Everyone on the project is given the same entries, so treat them as the project's current facts and answer from them before anything else.",
@@ -393,7 +472,14 @@ export async function editEntry(db: DB, projectId: string, entryId: string, a: {
   const text = a.text?.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
   const [saved] = await db
     .update(brainEntry)
-    .set({ ...(text ? { text } : {}), ...(page ? { pageId: page.id } : {}), ...(a.kind ? { kind: a.kind } : {}), decidedBy: a.userId, updatedAt: new Date() })
+    .set({
+      // New words need a new embedding (filled in when next searched).
+      ...(text ? { text, ...(text !== e.text ? { embedding: null, embeddingModelId: null } : {}) } : {}),
+      ...(page ? { pageId: page.id } : {}),
+      ...(a.kind ? { kind: a.kind } : {}),
+      decidedBy: a.userId,
+      updatedAt: new Date(),
+    })
     .where(eq(brainEntry.id, e.id))
     .returning();
   await log(db, projectId, "edited", text && text !== e.text ? `"${e.text}" became "${text}"` : `moved or relabelled: ${e.text}`, { entryId: e.id, actorId: a.userId });
