@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Group chats in projects.** A chat shared to a project is now a group chat: project members can write in it, each
+  message shows who wrote it, and open pages pick up new messages. Each person uses their own models, budget and
+  connected apps. The author can make it read-only for members again. Migration `0033` (existing messages are
+  attributed to their chat's owner).
 - **Deep research in chat.** A Deep research button makes the next message a research job: many searches from several
   angles, primary sources read in full, then a structured report with every fact cited (up to 30 tool rounds). It keeps
   going if the page is closed, and the chat shows it's still running until the report arrives. Needs web search.

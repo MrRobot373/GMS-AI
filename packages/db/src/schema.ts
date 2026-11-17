@@ -433,8 +433,10 @@ export const chat = pgTable(
     pinned: boolean("pinned").notNull().default(false),
     /** Chats inside a project inherit its instructions, sources and project-only memory. */
     projectId: text("project_id").references((): AnyPgColumn => project.id, { onDelete: "cascade" }),
-    /** Visible (read-only) to other project members when true. Private to its owner otherwise. */
+    /** Visible to other project members when true. Private to its owner otherwise. */
     sharedToProject: boolean("shared_to_project").notNull().default(false),
+    /** A shared chat is a group chat: project members can write in it too. False: they can only read it. */
+    sharedCanReply: boolean("shared_can_reply").notNull().default(true),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     /** Temporary chats never appear in lists, search or memory, and are deleted after a day. */
     temporary: boolean("temporary").notNull().default(false),
@@ -459,6 +461,8 @@ export const message = pgTable(
       .references(() => chat.id, { onDelete: "cascade" }),
     /** Previous message in this branch (null for the first). Siblings share a parent. */
     parentId: text("parent_id").references((): AnyPgColumn => message.id, { onDelete: "cascade" }),
+    /** Who wrote a person's message: in a group chat (shared to a project) not always the chat's owner. */
+    authorId: text("author_id").references(() => user.id, { onDelete: "set null" }),
     role: messageRoleEnum("role").notNull(),
     content: text("content").notNull(),
     modelId: text("model_id").references(() => model.id, { onDelete: "set null" }),

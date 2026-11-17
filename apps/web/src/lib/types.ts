@@ -114,6 +114,10 @@ export interface ChatDetail {
   leafMessageId: string | null;
   /** A deep research is still running in this chat: its answer arrives when it's done. */
   researching?: boolean;
+  /** The viewer started this chat (only they rename, move, share or delete it). */
+  isOwner?: boolean;
+  /** Shared to the project as a group chat: its members can write in it. */
+  sharedCanReply?: boolean;
   messages: ChatMessageRow[];
   documents: { id: string; name: string }[];
   readOnly: boolean;
@@ -185,6 +189,9 @@ export interface SearchResults {
 
 export interface ChatMessageRow {
   id: string;
+  /** Who wrote a person's message (a group chat has several people). */
+  authorId?: string | null;
+  authorName?: string | null;
   parentId?: string | null;
   role: "user" | "assistant" | "system";
   content: string;

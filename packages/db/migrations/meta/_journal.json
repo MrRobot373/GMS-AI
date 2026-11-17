@@ -232,6 +232,13 @@
       "when": 1794919380067,
       "tag": "0032_message_steps_files",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794928164308,
+      "tag": "0033_group_chats",
+      "breakpoints": true
     }
   ]
 }

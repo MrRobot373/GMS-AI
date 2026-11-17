@@ -545,16 +545,29 @@ d("Projects", () => {
     expect(r.body).not.toContain("9999");
   });
 
-  it("shares a chat to the project read-only", async () => {
+  it("shares a chat to the project as a group chat its members write in, or read-only", async () => {
     expect((await call(member, "PATCH", `/api/chats/${firstChat}`, { sharedToProject: true })).status).toBe(200);
     const p = await call(other, "GET", `/api/projects/${projectId}`);
     // Xavi sees the shared chat plus his own, never Mira's unshared ones.
     expect(p.json.chats.map((c: { userName: string }) => c.userName).sort()).toEqual(["Mira", "Xavi"]);
     expect(p.json.chats.map((c: { id: string }) => c.id)).toContain(firstChat);
-    const c = await call(other, "GET", `/api/chats/${firstChat}`);
-    expect(c.json).toMatchObject({ readOnly: true, authorName: "Mira" });
-    expect((await call(other, "POST", `/api/chats/${firstChat}/messages`, { content: "hi" })).status).toBe(404);
+    let c = await call(other, "GET", `/api/chats/${firstChat}`);
+    expect(c.json).toMatchObject({ readOnly: false, isOwner: false, authorName: "Mira", sharedCanReply: true });
+    // Xavi writes in it: his message carries his name; the chat stays Mira's.
+    expect((await call(other, "POST", `/api/chats/${firstChat}/messages`, { content: "Xavi here: adding the quokka budget." })).status).toBe(200);
+    c = await call(member, "GET", `/api/chats/${firstChat}`);
+    const mine = c.json.messages.filter((m: { role: string }) => m.role === "user");
+    expect(mine.at(-1)).toMatchObject({ content: "Xavi here: adding the quokka budget.", authorName: "Xavi" });
+    expect(mine[0].authorName).toBe("Mira");
+    expect(c.json.isOwner).toBe(true);
+    // Only its owner renames, moves, unshares or deletes it.
     expect((await call(other, "PATCH", `/api/chats/${firstChat}`, { title: "mine now" })).status).toBe(404);
+    expect((await call(other, "DELETE", `/api/chats/${firstChat}`)).status).toBe(404);
+    // Read-only for members: they can open it but not write.
+    expect((await call(member, "PATCH", `/api/chats/${firstChat}`, { sharedCanReply: false })).status).toBe(200);
+    expect((await call(other, "GET", `/api/chats/${firstChat}`)).json).toMatchObject({ readOnly: true });
+    expect((await call(other, "POST", `/api/chats/${firstChat}/messages`, { content: "hi" })).status).toBe(404);
+    expect((await call(member, "PATCH", `/api/chats/${firstChat}`, { sharedCanReply: true })).status).toBe(200);
   });
 
   it("remembers the project's Work AI tasks too: your own and shared ones", async () => {

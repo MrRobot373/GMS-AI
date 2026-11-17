@@ -30,14 +30,24 @@ async function loadOwnChat(db: DB, u: SessionUser, chatId: string) {
   return c;
 }
 
-/** The author's own chat, or (read-only) a chat shared to a project the user can open. */
+/**
+ * The author's own chat, or a chat shared to a project the user can open: a group chat its members can write in, or
+ * read-only when its author chose so.
+ */
 async function loadReadableChat(ctx: AppContext, u: SessionUser, chatId: string) {
   const [c] = await ctx.db.select().from(chat).where(eq(chat.id, chatId));
   if (!c) throw notFound("Chat not found");
-  if (c.userId === u.id) return { chat: c, readOnly: false };
+  if (c.userId === u.id) return { chat: c, readOnly: false, owner: true };
   if (!c.projectId || !c.sharedToProject) throw notFound("Chat not found");
   await getProjectAccess(ctx, u, c.projectId);
-  return { chat: c, readOnly: true };
+  return { chat: c, readOnly: !c.sharedCanReply, owner: false };
+}
+
+/** A chat the user may write in: their own, or a group chat in a project they're in. */
+async function loadWritableChat(ctx: AppContext, u: SessionUser, chatId: string) {
+  const r = await loadReadableChat(ctx, u, chatId);
+  if (r.readOnly) throw notFound("Chat not found");
+  return r;
 }
 
 const FILE_TYPES: Record<string, string> = {
@@ -169,12 +179,15 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get<{ Params: { id: string } }>("/api/chats/:id", async (req) => {
     const u = await requireUser(ctx, req);
-    const { chat: c, readOnly } = await loadReadableChat(ctx, u, req.params.id);
+    const { chat: c, readOnly, owner } = await loadReadableChat(ctx, u, req.params.id);
     const messages = await db
       .select()
       .from(message)
       .where(eq(message.chatId, c.id))
       .orderBy(asc(message.createdAt));
+    // In a group chat, who wrote each message.
+    const authorIds = [...new Set(messages.map((m) => m.authorId).filter((x): x is string => !!x))];
+    const authorNames = new Map(authorIds.length ? (await db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, authorIds))).map((a) => [a.id, a.name]) : []);
     const documents = await db
       .select({ id: document.id, name: document.name, status: document.status })
       .from(chatDocument)
@@ -183,7 +196,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       .orderBy(asc(chatDocument.createdAt));
     const access = c.projectId ? await getProjectAccess(ctx, u, c.projectId).catch(() => null) : null;
     const proj = access && { id: access.project.id, name: access.project.name, color: access.project.color, canEdit: access.canEdit };
-    const [author] = readOnly ? await db.select({ name: user.name }).from(user).where(eq(user.id, c.userId)) : [];
+    // Someone else's chat (shared to a project): who started it.
+    const [author] = !owner ? await db.select({ name: user.name }).from(user).where(eq(user.id, c.userId)) : [];
     const locale = localeOf(req);
     return {
       ...c,
@@ -191,11 +205,14 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       researching: isResearching(c.id),
       messages: messages.map((m) => ({
         ...m,
+        authorName: m.authorId ? (authorNames.get(m.authorId) ?? null) : null,
         ...(m.error ? { error: tr(locale, m.error) } : {}),
         ...(m.web?.note ? { web: { ...m.web, note: tr(locale, m.web.note) } } : {}),
       })),
       documents,
       readOnly,
+      // Only the chat's owner renames, moves, shares or deletes it; members of a group chat write in it.
+      isOwner: owner,
       project: proj ?? null,
       authorName: author?.name ?? null,
     };
@@ -275,14 +292,14 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
   /** Connected apps' actions waiting for the person in this chat. */
   app.get<{ Params: { id: string } }>("/api/chats/:id/approvals", async (req) => {
     const u = await requireUser(ctx, req);
-    const c = await loadOwnChat(db, u, req.params.id);
+    const { chat: c } = await loadWritableChat(ctx, u, req.params.id);
     return { approvals: waitingApprovals(c.id, u.id) };
   });
 
   /** The person's answer to a connected app's action waiting in their chat. */
   app.post<{ Params: { id: string; approvalId: string } }>("/api/chats/:id/approvals/:approvalId", async (req) => {
     const u = await requireUser(ctx, req);
-    const c = await loadOwnChat(db, u, req.params.id);
+    const { chat: c } = await loadWritableChat(ctx, u, req.params.id);
     const { approve } = parse(z.object({ approve: z.boolean() }), req.body);
     if (!decideApproval(req.params.approvalId, c.id, u.id, approve)) throw notFound("Nothing is waiting for your approval here.");
     return { ok: true };
@@ -347,7 +364,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
    */
   app.post<{ Params: { id: string } }>("/api/chats/:id/messages", async (req, reply) => {
     const u = await requireUser(ctx, req);
-    const c = await loadOwnChat(db, u, req.params.id);
+    // The chat's owner, or a project member writing in a group chat (with their own models, budget and apps).
+    const { chat: c, owner: isOwner } = await loadWritableChat(ctx, u, req.params.id);
     const membership = await requireChatSection(ctx, u, c.workspaceId);
     const body = parse(sendMessageSchema, req.body);
 
@@ -453,7 +471,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       : (
           await db
             .insert(message)
-            .values({ chatId: c.id, parentId, role: "user", content, attachments: attachments.length ? attachments : null })
+            .values({ chatId: c.id, parentId, role: "user", authorId: u.id, content, attachments: attachments.length ? attachments : null })
             .returning({ id: message.id })
         )[0]!.id;
 
@@ -521,7 +539,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     }
 
     // Tools the model calls on its own: the web (where allowed), the person's documents, the calculators.
-    const toolSet: ChatToolSet = { web: !!searchDeps, documents: true, calculators: calcOn, python: gem.chatSandbox && !ctx.chatSandbox.unavailable() };
+    const toolSet: ChatToolSet = { web: !!searchDeps, documents: true, calculators: calcOn, python: isOwner && gem.chatSandbox && !ctx.chatSandbox.unavailable() };
     // The person's connected apps (Gmail, Drive…), as the project allows; a connector that fails is left out.
     const conn = gem.chatConnectors && !isSmallTalk(content)
       ? await chatConnectorTools(db, ctx.connectors, { userId: u.id, only: proj?.connectorIds ?? null, fetch: ctx.fetch }).catch(() => null)

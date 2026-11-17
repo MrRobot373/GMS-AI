@@ -48,7 +48,12 @@ answer, chat; if you want something delivered, use Work AI.*
 
   A team-only project (say, a Firmware bootloader) stays in the Firmware workspace with Firmware people; a cross-team
   project such as ADAS lives in the workspace of the team that runs it and adds people from the other teams.
-- **Chats are private to their author.** The author can choose **Share to project**, which lets everyone with access read that chat (read-only) and lets project memory use it. Moving a chat out of the project stops sharing it.
+- **Chats are private to their author.** The author can choose **Share to project**, which makes it a **group chat**:
+  everyone with access to the project can read it and write in it, and project memory uses it. Each message shows who
+  wrote it, and the page looks for new messages every few seconds. Each person's messages use their own models, budget
+  and connected apps; Python runs only for the chat's author (so nobody's code runs with the author's files). Only the
+  author renames, moves, unshares or deletes it, and **Group chat / Read-only** in its header lets members only read it.
+  Moving a chat out of the project stops sharing it.
 - Linking a private library document to a project makes it readable by the project's people. It stays in the owner's library.
 
 ## Also in Phase A

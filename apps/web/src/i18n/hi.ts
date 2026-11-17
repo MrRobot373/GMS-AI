@@ -2373,4 +2373,10 @@ export const HI: Record<string, string> = {
   "Turn off deep research": "गहन शोध बंद करें",
   "Deep research: a report from many sources (a few minutes)": "गहन शोध: कई स्रोतों से बनी रिपोर्ट (कुछ मिनट)",
   "Deep research": "गहन शोध",
+  "Project members can now only read this chat": "अब प्रोजेक्ट के सदस्य यह चैट सिर्फ़ पढ़ सकते हैं",
+  "Project members can now write in this chat": "अब प्रोजेक्ट के सदस्य इस चैट में लिख सकते हैं",
+  "Project members can write here too. Click to make it read-only for them.": "प्रोजेक्ट के सदस्य भी यहाँ लिख सकते हैं। उनके लिए सिर्फ़-पढ़ने लायक बनाने के लिए क्लिक करें।",
+  "Project members can only read this. Click to let them write here too.": "प्रोजेक्ट के सदस्य इसे सिर्फ़ पढ़ सकते हैं। उन्हें भी यहाँ लिखने देने के लिए क्लिक करें।",
+  "Group chat": "ग्रुप चैट",
+  "Read-only": "सिर्फ़ पढ़ने के लिए",
 };

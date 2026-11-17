@@ -154,6 +154,8 @@ export const chatUpdateSchema = z.object({
   projectId: z.string().nullable().optional(),
   archived: z.boolean().optional(),
   sharedToProject: z.boolean().optional(),
+  /** A shared chat: project members can write in it (a group chat), or only read it. */
+  sharedCanReply: z.boolean().optional(),
   /** Show another branch: the last message of that branch. */
   leafMessageId: z.string().optional(),
   /** Keep a temporary chat (it can't be made temporary again). */

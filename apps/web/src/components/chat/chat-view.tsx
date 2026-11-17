@@ -32,6 +32,7 @@ import {
   SquarePen,
   TriangleAlert,
   Telescope,
+  Users,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
@@ -72,6 +73,9 @@ interface UiMessage {
   error?: string | null;
   model?: string;
   attachments?: { id: string; name: string }[] | null;
+  /** Who wrote a person's message (shown in a group chat when it isn't you). */
+  authorId?: string | null;
+  authorName?: string | null;
   citations?: Citation[] | null;
   /** How Auto picked the model for this answer. */
   routing?: Routing | null;
@@ -136,6 +140,8 @@ export function ChatView({
   const [input, setInput] = useState("");
   const [modelId, setModelId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const streamingRef = useRef(false);
+  streamingRef.current = streaming;
   const [quotaBlocked, setQuotaBlocked] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -174,12 +180,17 @@ export function ChatView({
     queryFn: () => get<ChatDetail>(`/api/chats/${initialId}`),
     enabled: !!initialId,
     staleTime: Infinity,
-    // A deep research started earlier is still running: look again until its report is in.
-    refetchInterval: (q) => (q.state.data?.researching ? 5000 : false),
+    // A deep research started earlier is still running: look again until its report is in. A group chat: others write
+    // in it too, so look for their messages every few seconds (not while an answer streams here).
+    refetchInterval: (q) => (q.state.data?.researching ? 5000 : q.state.data?.sharedToProject && !streamingRef.current ? 8000 : false),
   });
   const chats = useChats(workspaceId);
   const project = existing.data ? existing.data.project : newChatProject;
   const readOnly = !!existing.data?.readOnly;
+  // A member writing in someone else's group chat: they can write, but the chat's settings are its owner's.
+  const isOwner = existing.data?.isOwner ?? !readOnly;
+  const [canReply, setCanReply] = useState(true);
+  useEffect(() => setCanReply(existing.data?.sharedCanReply ?? true), [existing.data?.sharedCanReply]);
   const [moving, setMoving] = useState(false);
   const [liveTitle, setLiveTitle] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
@@ -203,6 +214,8 @@ export function ChatView({
           content: m.content,
           error: m.error,
           model: m.modelId ?? undefined,
+          authorId: m.authorId ?? null,
+          authorName: m.authorName ?? null,
           attachments: m.attachments,
           citations: m.citations,
           routing: m.routing,
@@ -348,7 +361,7 @@ export function ChatView({
       const stamp = Date.now();
       const tempUser: UiMessage | null = opts.regenerateOf
         ? null
-        : { id: `u-${stamp}`, parentId, role: "user", content, attachments: newAttachments };
+        : { id: `u-${stamp}`, parentId, role: "user", content, attachments: newAttachments, authorId: me.user.id, authorName: me.user.name };
       const docAttachments = newAttachments.filter((a) => !a.id.startsWith("folder:"));
       if (docAttachments.length)
         setChatDocs((l) => [...l, ...docAttachments.filter((a) => !l.some((x) => x.id === a.id))]);
@@ -499,6 +512,16 @@ export function ChatView({
       toast.error((e as Error).message);
     }
   };
+  const toggleReply = async () => {
+    if (!chatId) return;
+    try {
+      await patch(`/api/chats/${chatId}`, { sharedCanReply: !canReply });
+      setCanReply(!canReply);
+      toast(canReply ? t("Project members can now only read this chat") : t("Project members can now write in this chat"));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
   const archive = async () => {
     if (!chatId) return;
     try {
@@ -638,15 +661,22 @@ export function ChatView({
                 </TopBarButton>
               </Tooltip>
             )}
-            {!isHome && isTemporary && !readOnly && (
+            {!isHome && isTemporary && isOwner && (
               <TopBarButton onClick={keepChat} data-testid="keep-chat">
                 <Ghost /> {t("Keep chat")}
               </TopBarButton>
             )}
-            {project && !isHome && !readOnly && chatId && !isTemporary && (
+            {project && !isHome && isOwner && chatId && !isTemporary && (
               <TopBarButton onClick={toggleShare} data-testid="share-to-project" className={cn(shared && "text-fg")}>
                 <Share2 /> {shared ? t("Shared to project") : t("Share to project")}
               </TopBarButton>
+            )}
+            {project && !isHome && isOwner && chatId && shared && (
+              <Tooltip content={canReply ? t("Project members can write here too. Click to make it read-only for them.") : t("Project members can only read this. Click to let them write here too.")}>
+                <TopBarButton onClick={toggleReply} data-testid="share-can-reply">
+                  <Users /> {canReply ? t("Group chat") : t("Read-only")}
+                </TopBarButton>
+              </Tooltip>
             )}
             <Tooltip content={t("Conversations stay on your organization's servers")}>
               <span className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-subtle">
@@ -658,7 +688,7 @@ export function ChatView({
                 <SquarePen /> {t("New")}
               </TopBarButton>
             )}
-            {!isHome && !readOnly && chatId && (
+            {!isHome && isOwner && chatId && (
               <Menu>
                 <MenuTrigger asChild>
                   <TopBarButton aria-label={t("Chat options")}>
@@ -924,6 +954,7 @@ function MessageBlock({
   chatId?: string | null;
 }) {
   const t = useT();
+  const viewerId = useSession().me.user.id;
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
@@ -959,6 +990,11 @@ function MessageBlock({
     }
     return (
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }} className="group/user mb-6">
+        {m.authorName && m.authorId !== viewerId && (
+          <div className="mb-1 text-[12px] text-fg-subtle" data-testid="message-author">
+            {m.authorName}
+          </div>
+        )}
         <div className="rounded-xl border border-border bg-surface-2 px-4 py-3 text-[14px] leading-relaxed whitespace-pre-wrap text-fg">
           {m.attachments && m.attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5 whitespace-normal">
