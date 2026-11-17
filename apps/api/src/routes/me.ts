@@ -54,6 +54,9 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
     void db.update(user).set({ lastActiveAt: new Date() }).where(eq(user.id, u.id)).catch(() => {});
     const lic = await ctx.license.info();
     const admin = isOrgAdmin(u.orgRole);
+    // Code is hidden on this server unless CODE_ENABLED=true: leave it out everywhere the page looks.
+    const codeEnabled = ctx.cfg.codeEnabled !== false;
+    const shown = <S extends string>(sections: S[]) => (codeEnabled ? sections : sections.filter((s) => s !== "code"));
     return {
       user: { ...u, ...profile, twoFactorSetupRequired: u.twoFactorSetupRequired ?? false, twoFactorDue: u.twoFactorDue ?? null },
       emailEnabled: await ctx.mail.configured(),
@@ -69,7 +72,8 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
         defaultLocale: org?.defaultLocale ?? "en",
         illustrations: org?.illustrations ?? true,
       },
-      workspaces,
+      workspaces: workspaces.map((w) => ({ ...w, sections: shown(w.sections) })),
+      codeEnabled,
       // GEM AI modules switched on for the organization (each person's own are in workspaces[].sections),
       // and whether chat offers "Search the web" (allowed in chat and a provider set up).
       gem: await getGemSettings(db).then(async (g) => ({
@@ -82,7 +86,7 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
         state: lic.status.state,
         canUse: lic.status.canUse,
         tier: lic.claims?.tier ?? null,
-        sections: lic.status.state === "development" ? ["chat", "work", "code"] : (lic.claims?.sections ?? []),
+        sections: shown(lic.status.state === "development" ? ["chat", "work", "code"] : (lic.claims?.sections ?? [])),
         features: lic.status.state === "development" ? null : (lic.claims?.features ?? []),
         // Admins see every notice; others only when they can't use the product.
         message: (admin || !lic.status.canUse) && lic.status.message ? tr(localeOf(req), lic.status.message) : null,

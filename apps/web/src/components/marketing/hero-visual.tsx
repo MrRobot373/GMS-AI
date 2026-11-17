@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, AtSign, Code2, FileText, Lightbulb, Lock, MessageSquare, Mic, PenLine, Plus, Search, Sparkles, SquarePen, Workflow } from "lucide-react";
+import { ArrowUp, AtSign, FileText, Lightbulb, Lock, MessageSquare, Mic, PenLine, Plus, Search, Sparkles, SquarePen, Workflow } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/ui/logo";
@@ -39,7 +39,6 @@ export function HeroVisual() {
                 { i: SquarePen, l: "New chat", a: true },
                 { i: MessageSquare, l: "Chat" },
                 { i: Workflow, l: "Work AI" },
-                { i: Code2, l: "Code" },
               ].map(({ i: I, l, a }) => (
                 <div key={l} className={`flex h-7 items-center gap-2 rounded-md px-2 ${a ? "bg-surface-2 text-fg" : "text-fg-muted"}`}>
                   <I className="size-3.5 text-fg-subtle" /> {l}

@@ -223,7 +223,9 @@ if (ONLY.has("work")) {
   }
 }
 
-if (ONLY.has("code")) {
+// Code is hidden unless the server sets CODE_ENABLED=true; then there is nothing to check.
+if (ONLY.has("code") && me?.codeEnabled === false) console.log("code: skipped (hidden on this server, CODE_ENABLED isn't true)");
+else if (ONLY.has("code")) {
   const w = await call("POST", "/api/code/workspaces", { workspaceId: ws, name: "smoke-code" });
   if (w.json?.id) created.code.push(w.json.id);
   const o = w.status === 200 ? await call("POST", `/api/code/workspaces/${w.json.id}/open`, {}) : w;

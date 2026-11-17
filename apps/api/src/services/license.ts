@@ -97,6 +97,8 @@ export class LicenseService {
   }
 
   async hasSection(section: LicensedSection) {
+    // Code is hidden on this server (CODE_ENABLED isn't "true"): as if no license included it.
+    if (section === "code" && this.cfg.codeEnabled === false) return false;
     const { claims, status } = await this.info();
     return licenseHasSection(claims, section, status.state);
   }

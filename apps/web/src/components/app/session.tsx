@@ -33,6 +33,12 @@ export function useCanUse(section: "chat" | "work" | "code"): boolean {
   return (me.license?.sections.includes(section) ?? true) && ((workspace?.sections ?? ["chat"]).includes(section) || me.isAdmin);
 }
 
+/** The sections admins can switch on and off: Code only where this server shows it. */
+export function useSections<S extends string>(all: readonly S[]): S[] {
+  const { me } = useSession();
+  return me.codeEnabled === false ? all.filter((s) => s !== "code") : [...all];
+}
+
 /** A GEM AI module: switched on for the organization, and among the person's sections here (admins always). */
 export function useCanUseModule(module: "learning" | "calculators" | "knowledge"): boolean {
   const { me, workspace } = useSession();

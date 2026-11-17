@@ -24,6 +24,8 @@ export interface Me {
   isWorkspaceAdmin: boolean;
   org: { name: string; productName: string; accentColor: string; promptLogging: boolean; logoUrl: string | null; defaultLocale: "en" | "hi"; illustrations: boolean };
   workspaces: { id: string; name: string; icon: string | null; role: WorkspaceRole; sections: MemberSection[] }[];
+  /** Aatmiq Code is shown on this server (CODE_ENABLED=true). Hidden otherwise: no menu, no admin switches. */
+  codeEnabled?: boolean;
   /** GEM AI modules the organization has switched on; webSearch: chat offers "Search the web". */
   gem?: { modules: { learning: boolean; calculators: boolean; knowledge: boolean }; betaCalculators: boolean; webSearch?: boolean };
   unreadNotifications: number;

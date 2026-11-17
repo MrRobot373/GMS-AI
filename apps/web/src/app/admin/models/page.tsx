@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Section, Table, Td } from "@/components/admin/table";
 import { PageHeader } from "@/components/app/page-header";
+import { useSections } from "@/components/app/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Badge, Card, EmptyState, Switch, Tooltip } from "@/components/ui/misc";
@@ -50,6 +51,7 @@ const TYPE_LABEL: Record<Provider["type"], string> = { ollama: "Ollama", openai_
 const SECTION_LABELS: Record<string, string> = { chat: msg("Chat"), work: msg("Work AI"), code: msg("Code") };
 
 export default function ModelsPage() {
+  const modelSections = useSections(["chat", "work", "code"] as const);
   const t = useT();
   const qc = useQueryClient();
   const providers = useQuery({ queryKey: ["admin-providers"], queryFn: () => get<Provider[]>("/api/admin/providers") });
@@ -198,7 +200,7 @@ export default function ModelsPage() {
                     </div>
                   ) : (
                   <div className="flex gap-1">
-                    {(["chat", "work", "code"] as const).map((s) => {
+                    {modelSections.map((s) => {
                       const on = m.sections.includes(s);
                       return (
                         <button

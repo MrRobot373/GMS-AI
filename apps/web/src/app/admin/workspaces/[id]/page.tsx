@@ -8,7 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Section, Table, Td } from "@/components/admin/table";
-import { useSession } from "@/components/app/session";
+import { useSections, useSession } from "@/components/app/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Avatar, Badge, Card, Meter, Switch } from "@/components/ui/misc";
@@ -96,6 +96,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
   const t = useT();
   const qc = useQueryClient();
   const { me } = useSession();
+  const memberSections = useSections(["chat", "work", "code", "learning", "calculators", "knowledge"] as const);
   const members = useQuery({ queryKey: ["ws-members", ws.id], queryFn: () => get<Member[]>(`/api/admin/workspaces/${ws.id}/members`) });
   const [addOpen, setAddOpen] = useState(false);
   const [quotaFor, setQuotaFor] = useState<Member | null>(null);
@@ -147,7 +148,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
               <Td>{m.role === "admin" ? <Badge tone="accent">{t("Workspace admin")}</Badge> : <Badge>{t("Member")}</Badge>}</Td>
               <Td>
                 <div className="flex flex-wrap gap-1">
-                  {(["chat", "work", "code", "learning", "calculators", "knowledge"] as const).map((s) => {
+                  {memberSections.map((s) => {
                     const on = m.sections.includes(s);
                     return (
                       <button
@@ -221,6 +222,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
 function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: boolean; onOpenChange: (o: boolean) => void; ws: WorkspaceRow; existing: string[]; onAdded: () => void }) {
   const t = useT();
   const { me } = useSession();
+  const memberSections = useSections(["chat", "work", "code", "learning", "calculators", "knowledge"] as const);
   const users = useQuery({
     queryKey: ["admin-users"],
     queryFn: () => get<{ id: string; name: string; email: string; status: string }[]>("/api/admin/users"),
@@ -230,7 +232,7 @@ function AddMemberDialog({ open, onOpenChange, ws, existing, onAdded }: { open: 
   const [role, setRole] = useState<"member" | "admin">("member");
   const candidates = (users.data ?? []).filter((u) => u.status === "active" && !existing.includes(u.id));
   const add = useMutation({
-    mutationFn: () => post(`/api/admin/workspaces/${ws.id}/members`, { userId, role, sections: ["chat", "work", "code", "learning", "calculators", "knowledge"] }),
+    mutationFn: () => post(`/api/admin/workspaces/${ws.id}/members`, { userId, role, sections: memberSections }),
     onSuccess: () => {
       onAdded();
       onOpenChange(false);

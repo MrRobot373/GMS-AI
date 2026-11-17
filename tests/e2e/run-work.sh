@@ -38,10 +38,10 @@ if [ -n "${API_IMAGE:-}" ]; then
   # The API from its Docker image (host network: it reaches Postgres and the fake model on localhost).
   start "exec docker run --rm --name aatmiq-e2e-api --network host -e DATABASE_URL='$PG/aatmiq_work_e2e' \
     -e APP_SECRET=e2e-app-secret-e2e-app-secret-e2e-app -e APP_URL=http://localhost:3300 -e PORT=4000 \
-    -e ALLOW_MOCK_PROVIDER=true -e LICENSE_SERVER_URL= -e WORK_SANDBOX=${WORK_SANDBOX:-on} '$API_IMAGE'" "$LOG/api.log"
+    -e ALLOW_MOCK_PROVIDER=true -e CODE_ENABLED=${CODE_ENABLED:-true} -e LICENSE_SERVER_URL= -e WORK_SANDBOX=${WORK_SANDBOX:-on} '$API_IMAGE'" "$LOG/api.log"
 else
   start "cd '$ROOT/apps/api' && DATABASE_URL='$PG/aatmiq_work_e2e' APP_SECRET=e2e-app-secret-e2e-app-secret-e2e-app APP_URL=http://localhost:3300 PORT=4000 \
-    ALLOW_MOCK_PROVIDER=true STORAGE_DIR='$STORE' WORK_DIR='$WORK' CODE_DIR='$CODE' LICENSE_SERVER_URL= IDE_URL='${IDE_URL:-}' BROWSER_PATH='${BROWSER_PATH:-}' exec npx tsx src/server.ts" "$LOG/api.log"
+    ALLOW_MOCK_PROVIDER=true CODE_ENABLED=${CODE_ENABLED:-true} STORAGE_DIR='$STORE' WORK_DIR='$WORK' CODE_DIR='$CODE' LICENSE_SERVER_URL= IDE_URL='${IDE_URL:-}' BROWSER_PATH='${BROWSER_PATH:-}' exec npx tsx src/server.ts" "$LOG/api.log"
 fi
 start "cd '$ROOT/apps/web' && API_URL=http://localhost:4000 IDE_URL='${IDE_URL:-}' exec npx next start -p 3300" "$LOG/web.log"
 wait_for http://localhost:11500/v1/models

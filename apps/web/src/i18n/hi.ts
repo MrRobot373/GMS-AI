@@ -2291,4 +2291,7 @@ export const HI: Record<string, string> = {
   "Kind": "प्रकार",
   "Statement": "कथन",
   "e.g. Input voltage range is 36 V to 75 V.": "जैसे: इनपुट वोल्टेज रेंज 36 V से 75 V है।",
+  "Code isn't available here": "Code यहाँ उपलब्ध नहीं है",
+  "For coding tasks, use Work AI: it writes, runs and tests code in its own folder.": "कोडिंग के काम के लिए Work AI इस्तेमाल करें: यह अपने फ़ोल्डर में कोड लिखता, चलाता और टेस्ट करता है।",
+  "Open Work AI": "Work AI खोलें",
 };

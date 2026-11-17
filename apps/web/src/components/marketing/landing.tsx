@@ -3,7 +3,6 @@ import {
   BarChart3,
   Building2,
   Check,
-  Code2,
   Cpu,
   FileText,
   Gauge,
@@ -118,14 +117,14 @@ export function Landing() {
       {/* Three sections */}
       <Section id="product" className="py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <Eyebrow>One platform, three ways to work</Eyebrow>
+          <Eyebrow>One platform, two ways to work</Eyebrow>
           <h2 className="font-serif text-[36px] leading-tight tracking-[-0.02em] sm:text-[44px]">Everything your team uses AI for, in one place.</h2>
           <p className="mt-4 text-fg-muted">
             Replace separate subscriptions for chat, agents and coding tools with one private workspace, one login and one
             admin panel.
           </p>
         </div>
-        <div className="mt-14 grid gap-4 md:grid-cols-3">
+        <div className="mt-14 grid gap-4 md:grid-cols-2">
           <Pillar
             art="landing-chat"
             icon={<MessageSquare />}
@@ -139,13 +138,6 @@ export function Landing() {
             name="Work AI"
             tagline="Hand off a task. Get it done."
             points={["Agents that plan and act on your behalf", "Connect Slack, Gmail, Drive, GitHub, GitLab", "Private web search and reusable skills", "Approvals before anything risky"]}
-          />
-          <Pillar
-            art="landing-code"
-            icon={<Code2 />}
-            name="Code"
-            tagline="A full IDE, with an agent inside."
-            points={["Built on VS Code: editor, terminal, git, debug", "Desktop app and in the browser", "AI panel that edits files directly", "Works fine with AI switched off"]}
           />
         </div>
       </Section>

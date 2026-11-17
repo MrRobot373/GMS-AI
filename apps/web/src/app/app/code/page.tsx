@@ -19,6 +19,34 @@ import { timeAgo } from "@/lib/format";
 import { msg, useT } from "@/i18n";
 
 export default function CodePage() {
+  const { me } = useSession();
+  return me.codeEnabled === false ? <CodeHidden /> : <CodeHome />;
+}
+
+/** Code is hidden on this server (CODE_ENABLED isn't "true"): someone with an old link sees this, not the IDE. */
+function CodeHidden() {
+  const t = useT();
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <TopBar icon={<Code2 />} title={t("Code")} />
+      <div className="mx-auto w-full max-w-xl px-4 py-16">
+        <EmptyState
+          className="rounded-xl border border-dashed border-border"
+          icon={<Code2 className="size-5" />}
+          title={t("Code isn't available here")}
+          description={t("For coding tasks, use Work AI: it writes, runs and tests code in its own folder.")}
+          action={
+            <Button asChild variant="primary" size="sm">
+              <Link href="/app/work">{t("Open Work AI")}</Link>
+            </Button>
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function CodeHome() {
   const t = useT();
   const { workspaceId } = useSession();
   const qc = useQueryClient();

@@ -40,6 +40,11 @@ export interface Config {
   /** Minutes between health checks that alert admins (Admin → Health); 0 or unset: none. */
   healthIntervalMinutes?: number;
   /** Aatmiq Code homes (one per person). */
+  /**
+   * Aatmiq Code (the IDE section) is hidden unless CODE_ENABLED=true: no menu, no admin switches, its API refuses.
+   * The code stays so it can be turned back on. false hides it; left out (tests that build a Config) it shows.
+   */
+  codeEnabled?: boolean;
   codeDir?: string;
   /**
    * Serve the IDE from its own address (https://ide.acme.com), apart from APP_URL, so extensions
@@ -108,6 +113,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     egressPort: Number(env.EGRESS_PORT ?? (env.WORK_ISOLATION === "container" ? 3128 : 0)),
     trustProxyHops: Math.max(0, Math.min(5, Number(env.TRUST_PROXY_HOPS ?? 1) || 0)),
     healthIntervalMinutes: Math.max(0, Number(env.HEALTH_CHECK_MINUTES ?? 5) || 0),
+    codeEnabled: env.CODE_ENABLED === "true",
     codeDir: env.CODE_DIR ?? ".data/code",
     codeIdleMinutes: Number(env.CODE_IDLE_MINUTES ?? 30),
     ideUrl: loadIdeUrl(env.IDE_URL, env.APP_URL ?? "http://localhost:3000"),

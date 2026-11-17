@@ -8,7 +8,7 @@ import { LICENSE_STATE } from "@/components/admin/license";
 import { Section } from "@/components/admin/table";
 import { PageHeader } from "@/components/app/page-header";
 import { Art } from "@/components/art/art";
-import { useSession } from "@/components/app/session";
+import { useSections, useSession } from "@/components/app/session";
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
 import { Badge, Card, Meter } from "@/components/ui/misc";
@@ -60,6 +60,7 @@ const fmt = (d: string, t: Translate) => t.date(d, { day: "numeric", month: "lon
 export default function LicensePage() {
   const t = useT();
   const { me } = useSession();
+  const licenseSections = useSections(["chat", "work", "code"]);
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["admin-license"], queryFn: () => get<LicenseSummary>("/api/admin/license") });
   const [entering, setEntering] = useState(false);
@@ -158,7 +159,7 @@ export default function LicensePage() {
                 <div className="p-4">
                   <div className="text-[12px] text-fg-subtle">{t("Sections")}</div>
                   <div className="mt-2 space-y-1.5">
-                    {["chat", "work", "code"].map((s) => (
+                    {licenseSections.map((s) => (
                       <div key={s} className={l.sections.includes(s) ? "flex items-center gap-2 text-[13px] text-fg" : "flex items-center gap-2 text-[13px] text-fg-subtle line-through"}>
                         <Check className={l.sections.includes(s) ? "size-3.5 text-success" : "size-3.5 opacity-0"} /> {t(SECTION_LABEL[s])}
                       </div>

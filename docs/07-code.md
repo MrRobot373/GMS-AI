@@ -1,5 +1,9 @@
 # Aatmiq Code
 
+> **Hidden by default.** Coding tasks go to Work AI. Code shows only when the server sets
+> `CODE_ENABLED=true` (in `.env`); otherwise the sidebar, landing page and admin switches leave it out and its
+> API refuses. The code is kept so it can be switched back on.
+
 Aatmiq Code is the IDE section of Aatmiq: the full VS Code–style editor (Code-OSS), running on the
 organization's own servers and opened inside the Aatmiq window. People get terminals, Git,
 debugging and extensions from Open VSX. The **Aatmiq panel** on the right is a coding agent that

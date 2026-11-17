@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Aatmiq Code is hidden by default.** Coding tasks go to Work AI, so the IDE section no longer shows in the sidebar,
+  the landing page, or the admin switches for workspaces, models and the license, and its API refuses as if no license
+  included it. Nothing is deleted: set `CODE_ENABLED=true` on the server to bring it back. Someone with an old link to
+  Code sees a short page pointing to Work AI. The test suites run with Code switched on so it keeps working.
 - **Project brain: one shared memory per project.** Two people asking the same AI about the same project got different
   answers because each chat held different context. Now a project keeps what it has established (requirements, design
   values, decisions and why, test results, open questions) as short entries with where each came from and the exact words
