@@ -42,6 +42,8 @@ export interface GemSettings {
   lessonCheck: boolean;
   /** Chat AI may run Python in each chat's private folder (files, charts, Excel, Word, PowerPoint, PDF). */
   chatSandbox: boolean;
+  /** Chat AI may use the person's connected apps (Admin → Work AI → Connectors), asking before anything that changes. */
+  chatConnectors: boolean;
 }
 
 export const DEFAULT_GEM_SETTINGS: GemSettings = {
@@ -55,6 +57,7 @@ export const DEFAULT_GEM_SETTINGS: GemSettings = {
   chatWebSearch: true,
   lessonCheck: true,
   chatSandbox: true,
+  chatConnectors: true,
 };
 
 const webUrl = z.url({ protocol: /^https?$/, error: "Use an http:// or https:// address" });
@@ -75,6 +78,7 @@ export const gemSettingsSchema = z.object({
   chatWebSearch: z.boolean().optional(),
   lessonCheck: z.boolean().optional(),
   chatSandbox: z.boolean().optional(),
+  chatConnectors: z.boolean().optional(),
 });
 
 /** Admin → Settings → Web search → Test: what's given is tried, the rest comes from what's saved. */

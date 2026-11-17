@@ -10,6 +10,7 @@
  *            credentials (the person's own OAuth token, or the shared headers), so the agent
  *            runtime never holds them.
  */
+import { forgetConnectorTools } from "../services/chat-connectors";
 import { and, asc, connector, connectorAccount, eq, sql } from "@aatmiq/db";
 import { APPROVAL_PRESETS, catalogEntry, CONNECTOR_CATALOG, connectorSchema, connectorUpdateSchema } from "@aatmiq/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -134,6 +135,7 @@ export async function connectorRoutes(app: FastifyInstance, ctx: AppContext) {
       .returning();
     if (resetOAuth) await db.delete(connectorAccount).where(eq(connectorAccount.connectorId, old.id));
     await audit(ctx, { actor: u, action: "work.connector.updated", targetType: "connector", targetId: old.id, meta: { ...b, headersChanged: headers !== undefined, oauthClientChanged: oauthClientId !== undefined } });
+    forgetConnectorTools();
     return adminView(c!, (await accountCounts()).get(old.id) ?? 0);
   });
 
@@ -232,6 +234,7 @@ export async function connectorRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!req.query.code) return back(st.returnTo, { connector_error: `${c.displayName} didn't finish signing in.` });
     try {
       await connectors.finishSignIn(c, u.id, req.query.code, st.verifier);
+      forgetConnectorTools(u.id);
     } catch (e) {
       req.log.warn({ err: e }, "connector sign-in failed");
       return back(st.returnTo, { connector_error: e instanceof ConnectorError ? e.message : `${c.displayName} didn't connect.` });
@@ -245,6 +248,7 @@ export async function connectorRoutes(app: FastifyInstance, ctx: AppContext) {
     const [c] = await db.select().from(connector).where(eq(connector.id, req.params.id));
     if (!c) throw notFound("Connector not found");
     await connectors.disconnect(c, u.id);
+    forgetConnectorTools(u.id);
     await audit(ctx, { actor: u, action: "work.connector.disconnected", targetType: "connector", targetId: c.id, meta: { name: c.name } });
     return { ok: true };
   });

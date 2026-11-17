@@ -2360,4 +2360,12 @@ export const HI: Record<string, string> = {
   "Python isn't available": "Python उपलब्ध नहीं है",
   "Ran Python": "Python चलाया",
   "Download {name}": "{name} डाउनलोड करें",
+  "Let Chat AI use connected apps": "Chat AI को जुड़े हुए ऐप इस्तेमाल करने दें",
+  "The connectors in Admin → Work AI (Gmail, Drive, Calendar…), with each person's own sign-in. Anything a connector's ask-first list covers waits for the person to approve it in the chat.": "एडमिन → Work AI के कनेक्टर (Gmail, Drive, Calendar…), हर व्यक्ति के अपने साइन-इन के साथ। जो कुछ कनेक्टर की पहले-पूछें सूची में है, वह चैट में व्यक्ति की मंज़ूरी का इंतज़ार करता है।",
+  "Using": "इस्तेमाल कर रहा है",
+  "Not approved": "मंज़ूरी नहीं मिली",
+  "Not approved in time": "समय पर मंज़ूरी नहीं मिली",
+  "Didn't work": "काम नहीं किया",
+  "Used": "इस्तेमाल किया",
+  "{app} wants to: {action}": "{app} यह करना चाहता है: {action}",
 };

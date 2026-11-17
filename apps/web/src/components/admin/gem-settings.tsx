@@ -30,6 +30,7 @@ interface Gem {
   chatWebSearch: boolean;
   lessonCheck: boolean;
   chatSandbox: boolean;
+  chatConnectors: boolean;
   /** Why Python in chat can't run on this server; null when it can. */
   chatSandboxProblem: string | null;
   web: {
@@ -253,6 +254,12 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
             : t("In each chat's private folder, confined like Work AI's commands: calculations, file and ZIP analysis, charts, and Excel, Word, PowerPoint and PDF files to download."),
           g.chatSandbox,
           (v) => save({ chatSandbox: v }),
+        )}
+        {switchRow(
+          t("Let Chat AI use connected apps"),
+          t("The connectors in Admin → Work AI (Gmail, Drive, Calendar…), with each person's own sign-in. Anything a connector's ask-first list covers waits for the person to approve it in the chat."),
+          g.chatConnectors,
+          (v) => save({ chatConnectors: v }),
         )}
         {switchRow(
           t("Check lessons before they're saved"),

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { existsSync } from "node:fs";
 import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
 import { GatewayError, streamChat, type ChatMessage } from "@aatmiq/model-gateway";
@@ -14,10 +15,11 @@ import { chooseModel, isSmallTalk } from "../services/router";
 import { quotaFor, quotaMessage } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
 import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
+import { awaitApproval, callConnectorTool, chatConnectorTools, decideApproval, waitingApprovals } from "../services/chat-connectors";
 import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS, runChatTool, type ChatToolSet } from "../services/chat-tools";
 import { getGemSettings, webSearchDeps } from "../services/gem";
 import { MAX_UPLOAD_BYTES } from "./documents";
-import { chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
+import { asData, chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
 import { webSearchReady, type WebSearchDeps } from "../services/web-search";
 
 const MAX_HISTORY = 40;
@@ -261,6 +263,22 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     return { ok: true };
   });
 
+  /** Connected apps' actions waiting for the person in this chat. */
+  app.get<{ Params: { id: string } }>("/api/chats/:id/approvals", async (req) => {
+    const u = await requireUser(ctx, req);
+    const c = await loadOwnChat(db, u, req.params.id);
+    return { approvals: waitingApprovals(c.id, u.id) };
+  });
+
+  /** The person's answer to a connected app's action waiting in their chat. */
+  app.post<{ Params: { id: string; approvalId: string } }>("/api/chats/:id/approvals/:approvalId", async (req) => {
+    const u = await requireUser(ctx, req);
+    const c = await loadOwnChat(db, u, req.params.id);
+    const { approve } = parse(z.object({ approve: z.boolean() }), req.body);
+    if (!decideApproval(req.params.approvalId, c.id, u.id, approve)) throw notFound("Nothing is waiting for your approval here.");
+    return { ok: true };
+  });
+
   /* ───────────── The chat's folder (Python in chat) ───────────── */
 
   /** Files in the chat's folder: what Python made, and what the person attached there. */
@@ -491,6 +509,11 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
 
     // Tools the model calls on its own: the web (where allowed), the person's documents, the calculators.
     const toolSet: ChatToolSet = { web: !!searchDeps, documents: true, calculators: calcOn, python: gem.chatSandbox && !ctx.chatSandbox.unavailable() };
+    // The person's connected apps (Gmail, Drive…), as the project allows; a connector that fails is left out.
+    const conn = gem.chatConnectors && !isSmallTalk(content)
+      ? await chatConnectorTools(db, ctx.connectors, { userId: u.id, only: proj?.connectorIds ?? null, fetch: ctx.fetch }).catch(() => null)
+      : null;
+    const connNames = [...new Set([...(conn?.byName.values() ?? [])].map((e) => e.connector.displayName))];
     // Python sees the person's files in inputs/: say which are there.
     const inputs = toolSet.python && (chatDocIds.length > 0 || existsSync(ctx.chatSandbox.dir(c.id)))
       ? await ctx.chatSandbox
@@ -501,7 +524,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const messages: ChatMessage[] = [
       {
         role: "system",
-        content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem + chatToolsPrompt({ ...toolSet, calculators: false }) + (inputs.length ? `\nFiles the person gave this chat, for run_python: ${inputs.slice(0, 40).join(", ")}.` : ""),
+        content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem + chatToolsPrompt({ ...toolSet, calculators: false }) + (inputs.length ? `\nFiles the person gave this chat, for run_python: ${inputs.slice(0, 40).join(", ")}.` : "") +
+          (connNames.length
+            ? `\nThe person's connected apps: ${connNames.join(", ")}. Use their tools (named <app>__<tool>) when the question is about their mail, files, calendar or other data there. A tool that changes something (sends, creates, deletes) is shown to the person to approve when you call it: call it directly, don't ask in your reply first.`
+            : ""),
       },
       ...history
         .reverse()
@@ -588,8 +614,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       usage = { inputTokens: usage.inputTokens + u.inputTokens, outputTokens: usage.outputTokens + u.outputTokens, estimated: usage.estimated && u.estimated };
     };
     // A provider that rejects the tools field is asked again without them.
-    let allowTools = toolSet.web || toolSet.documents || toolSet.calculators;
-    const tools = chatTools(toolSet);
+    const tools = [...chatTools(toolSet), ...(conn?.tools ?? [])];
+    let allowTools = tools.length > 0;
     const pending: ChatMessage[] = [];
     let thought = false;
     for (let round = 0; round <= MAX_TOOL_ROUNDS && !error && !abort.signal.aborted; round++) {
@@ -645,6 +671,30 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
           if (parsed && typeof parsed === "object") args = parsed;
         } catch {
           args = {};
+        }
+        const app = conn?.byName.get(call.name);
+        if (app) {
+          // A connected app: read-only tools run at once, the rest wait for the person's OK in the chat.
+          const label = `${app.connector.displayName}: ${app.tool.annotations?.title ?? app.tool.title ?? app.tool.name}`;
+          send("step", { tool: "connector", detail: label, running: true });
+          let decided: "approved" | "declined" | "expired" = "approved";
+          if (app.approve) {
+            const about = { connector: app.connector.displayName, tool: app.tool.annotations?.title ?? app.tool.title ?? app.tool.name, description: (app.tool.description ?? "").slice(0, 300), args };
+            const { id: approvalId, decision } = awaitApproval(c.id, u.id, abort.signal, about);
+            send("approval", { id: approvalId, ...about });
+            decided = await decision;
+            send("approval_done", { id: approvalId, decision: decided });
+          }
+          let result: { text: string; ok: boolean };
+          if (decided === "declined") result = { text: "The person declined this. Don't do it; say so and offer another way if there is one.", ok: false };
+          else if (decided === "expired") result = { text: "The person didn't approve this in time, so it wasn't done. Tell them they can ask again.", ok: false };
+          else result = await callConnectorTool(ctx.connectors, app, u.id, args, { fetch: ctx.fetch });
+          const step = { tool: "connector", detail: label, outcome: decided !== "approved" ? decided : result.ok ? "ok" : "failed" };
+          send("step", { ...step, running: false });
+          steps.push(step);
+          await audit(ctx, { actor: u, action: "chat.connector_used", workspaceId: c.workspaceId, targetType: "connector", targetId: app.connector.id, meta: { chatId: c.id, tool: app.tool.name, decision: decided, ok: result.ok } });
+          pending.push({ role: "tool", tool_call_id: callId, content: asData(result.text) });
+          continue;
         }
         send("step", { tool: call.name, detail: typeof args.query === "string" ? args.query : typeof args.url === "string" ? domainOf(args.url) : "", running: true });
         const before = citations.length;

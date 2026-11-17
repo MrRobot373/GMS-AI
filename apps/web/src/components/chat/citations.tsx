@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Calculator, Download, FileText, FolderSearch, Globe, MessageSquare, Terminal, TriangleAlert, Workflow, Wrench } from "lucide-react";
+import { ArrowUpRight, Calculator, Download, FileText, FolderSearch, Globe, MessageSquare, Plug, Terminal, TriangleAlert, Workflow, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FileIcon } from "@/components/documents/use-documents";
@@ -187,6 +187,19 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
                   ? t("Python isn't available")
                   : t("Ran Python"),
         };
+      case "connector":
+        return {
+          icon: Plug,
+          label: x.running
+            ? t("Using")
+            : x.outcome === "declined"
+              ? t("Not approved")
+              : x.outcome === "expired"
+                ? t("Not approved in time")
+                : x.outcome === "failed"
+                  ? t("Didn't work")
+                  : t("Used"),
+        };
       case "calculators_search":
         return { icon: Calculator, label: x.running ? t("Finding a calculator") : t("Looked for a calculator") };
       case "calculators_run":
@@ -212,6 +225,68 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
         );
       })}
     </ol>
+  );
+}
+
+/** A connected app's action waiting for the person in the chat. */
+export interface PendingApproval {
+  id: string;
+  connector: string;
+  tool: string;
+  description: string;
+  args: Record<string, unknown>;
+}
+
+/** What the action will send, as plain lines (long values shortened). */
+function argLines(args: Record<string, unknown>): [string, string][] {
+  return Object.entries(args)
+    .slice(0, 12)
+    .map(([k, v]) => {
+      const s = typeof v === "string" ? v : JSON.stringify(v);
+      return [k, s.length > 400 ? `${s.slice(0, 400)}…` : s];
+    });
+}
+
+/** Approve or decline a connected app's action (sending an email, creating an event…) before it runs. */
+export function ApprovalCard({ chatId, approval }: { chatId: string; approval: PendingApproval }) {
+  const t = useT();
+  const [busy, setBusy] = useState<"approve" | "decline" | null>(null);
+  const decide = async (approve: boolean) => {
+    setBusy(approve ? "approve" : "decline");
+    const r = await fetch(`/api/chats/${chatId}/approvals/${approval.id}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ approve }),
+    }).catch(() => null);
+    if (!r?.ok) setBusy(null);
+  };
+  return (
+    <div className="mb-3 rounded-xl border border-warning/40 bg-surface p-3" data-testid="chat-approval">
+      <div className="flex items-center gap-2 text-[13px] text-fg">
+        <Plug className="size-3.5 text-warning" />
+        {t("{app} wants to: {action}", { app: approval.connector, action: approval.tool })}
+      </div>
+      {approval.description && <p className="mt-1 text-[12px] text-fg-subtle">{approval.description}</p>}
+      {argLines(approval.args).length > 0 && (
+        <dl className="mt-2 space-y-1 rounded-lg bg-surface-2 p-2 text-[12px]">
+          {argLines(approval.args).map(([k, v]) => (
+            <div key={k} className="flex gap-2">
+              <dt className="w-24 shrink-0 text-fg-subtle">{k}</dt>
+              <dd className="min-w-0 whitespace-pre-wrap break-words text-fg">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="mt-2 flex gap-2">
+        <Button size="sm" variant="primary" loading={busy === "approve"} disabled={!!busy} onClick={() => decide(true)} data-testid="chat-approve">
+          {t("Approve")}
+        </Button>
+        <Button size="sm" variant="outline" loading={busy === "decline"} disabled={!!busy} onClick={() => decide(false)}>
+          {t("Decline")}
+        </Button>
+      </div>
+    </div>
   );
 }
 

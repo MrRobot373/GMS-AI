@@ -29,6 +29,7 @@ export async function getGemSettings(db: DB): Promise<GemSettings> {
     chatWebSearch: g.chatWebSearch ?? DEFAULT_GEM_SETTINGS.chatWebSearch,
     lessonCheck: g.lessonCheck ?? DEFAULT_GEM_SETTINGS.lessonCheck,
     chatSandbox: g.chatSandbox ?? DEFAULT_GEM_SETTINGS.chatSandbox,
+    chatConnectors: g.chatConnectors ?? DEFAULT_GEM_SETTINGS.chatConnectors,
   };
 }
 

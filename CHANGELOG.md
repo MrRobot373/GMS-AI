@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Connected apps in chat.** Chat AI can now use the connectors set up for Work AI (Gmail, Drive, Calendar, GitHub…)
+  with each person's own sign-in. Reading tools run at once; anything the connector's ask-first list covers (by default
+  everything that changes something) shows an Approve / Decline card in the chat before it runs. A project's connector
+  choice applies to its chats; each use is audited; admins can turn it off (Admin → Settings → GEM AI).
 - **Python in chat.** Chat AI can now run Python in each chat's own folder to calculate, analyse files (CSV, Excel, PDF,
   ZIP), draw charts and make Excel, Word, PowerPoint, PDF and image files to download, shown under the answer. Any file
   can be attached for it. Programs are confined like Work AI's commands (Landlock: writes only in the chat's folder; the

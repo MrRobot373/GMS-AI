@@ -110,3 +110,18 @@ organization's own OAuth app), so do it once per service you turn on:
 The same flow runs end to end in the automated tests against a fake OAuth MCP server
 (`apps/api/src/work.test.ts`, `tests/e2e/work.mjs`): discovery, registration, PKCE, token
 exchange, refresh, proxying with the person's token, and disconnect with revocation.
+
+## In chat
+
+Chat AI can use the same connectors (`services/chat-connectors.ts`), with each person's own sign-in:
+
+- The connectors a person can use (open and shared-token ones, OAuth ones they've connected; in a project, the ones it
+  allows) are listed with the server (cached 10 minutes; one that fails is skipped for 2 minutes) and their tools are
+  offered to the model as `<connector>__<tool>`, at most 48 per message.
+- **Approvals:** a tool the connector's ask-first list covers (the same globs Work AI uses; by default everything but
+  reading) or that the server marks destructive shows an **Approve / Decline** card in the chat before it runs. The answer
+  waits up to 5 minutes; declined or unanswered, it isn't done and the model is told so. Only the chat's own person can
+  answer (`POST /api/chats/:id/approvals/:approvalId`; `GET /api/chats/:id/approvals` lists what's waiting).
+- Each use is audited (`chat.connector_used`, with the tool and the decision) and shown as a step under the answer.
+- **Admin → Settings → GEM AI → Let Chat AI use connected apps** turns it off for everyone.
+

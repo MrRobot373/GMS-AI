@@ -79,6 +79,7 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
       chatWebSearch: body.chatWebSearch ?? cur.chatWebSearch,
       lessonCheck: body.lessonCheck ?? cur.lessonCheck,
       chatSandbox: body.chatSandbox ?? cur.chatSandbox,
+      chatConnectors: body.chatConnectors ?? cur.chatConnectors,
     };
     await db.update(organization).set({ gemSettings: next }).where(eq(organization.id, org.id));
     await audit(ctx, {
@@ -97,6 +98,7 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
         chatWebSearch: next.chatWebSearch,
         lessonCheck: next.lessonCheck,
         chatSandbox: next.chatSandbox,
+        chatConnectors: next.chatConnectors,
       },
     });
     return { ok: true };

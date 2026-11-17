@@ -466,4 +466,5 @@ export const HI: Record<string, string> = {
   "You've used your share of the {project} project's tokens for this period.": "आपने इस अवधि के लिए {project} प्रोजेक्ट के टोकन में से अपना हिस्सा इस्तेमाल कर लिया है।",
   "Python in chat is turned off for your organization.": "आपके संगठन के लिए चैट में Python बंद है।",
   "This chat's folder is full.": "इस चैट का फ़ोल्डर भर गया है।",
+  "Nothing is waiting for your approval here.": "यहाँ आपकी मंज़ूरी के लिए कुछ भी इंतज़ार में नहीं है।",
 };

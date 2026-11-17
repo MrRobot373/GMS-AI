@@ -55,7 +55,7 @@ import { chatTitle, greeting, routingReason, timeAgo, TIER_NAMES } from "@/lib/f
 import type { ChatCalculation } from "./calculation-card";
 import type { Routing } from "@aatmiq/shared";
 import type { AvailableModel, ChatDetail, Citation, DocumentRow, MessageWeb, QuotaStatus } from "@/lib/types";
-import { ChatFiles, SourcesRow, ToolSteps, useSourceDialog, WebSearchLine, type ToolStep } from "./citations";
+import { ApprovalCard, ChatFiles, SourcesRow, ToolSteps, useSourceDialog, WebSearchLine, type PendingApproval, type ToolStep } from "./citations";
 import { CalculationCard } from "./calculation-card";
 import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import { Markdown } from "./markdown";
@@ -82,6 +82,8 @@ interface UiMessage {
   steps?: ToolStep[];
   /** Files Python made in the chat's folder for this answer. */
   files?: { path: string; size: number }[];
+  /** A connected app's action waiting for the person's OK (docs/09-connectors.md, "In chat"). */
+  approval?: PendingApproval | null;
 }
 
 const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
@@ -415,6 +417,10 @@ export function ChatView({
               const cites = [...(m.citations ?? []), ...((ev.data.citations ?? []) as Citation[])];
               return { ...m, citations: cites.length ? cites : null };
             });
+          } else if (ev.event === "approval") {
+            patchAsst((m) => ({ ...m, approval: ev.data as PendingApproval }));
+          } else if (ev.event === "approval_done") {
+            patchAsst((m) => ({ ...m, approval: null }));
           } else if (ev.event === "files") {
             patchAsst((m) => ({ ...m, files: ev.data.files ?? m.files }));
           } else if (ev.event === "retract") {
@@ -1000,6 +1006,7 @@ function MessageBlock({
       <div className="pl-6">
         {m.web && <WebSearchLine web={m.web} citations={m.citations} streaming={m.streaming} />}
         {!!m.steps?.length && <ToolSteps steps={m.steps} />}
+        {m.approval && m.streaming && chatId && <ApprovalCard chatId={chatId} approval={m.approval} />}
         {!!m.files?.length && chatId && <ChatFiles chatId={chatId} files={m.files} />}
         {m.calculation && <CalculationCard c={m.calculation} />}
         {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} plainLinks={!!m.web || !!m.steps?.some((x) => x.tool === "web_search" || x.tool === "read_page")} /> : null}

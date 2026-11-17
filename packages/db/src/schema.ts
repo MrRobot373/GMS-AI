@@ -1469,6 +1469,8 @@ export interface GemSettingsStored {
   lessonCheck?: boolean;
   /** Chat AI may run Python in each chat's private folder. */
   chatSandbox?: boolean;
+  /** Chat AI may use the person's connected apps. */
+  chatConnectors?: boolean;
 }
 
 export interface CourseOutline {
