@@ -29,7 +29,7 @@ import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { MAX_UPLOAD_BYTES } from "./documents";
 import { safePath } from "./work";
 import { resolveModel } from "../services/models";
-import { quotaFor } from "../services/quota";
+import { quotaFor, quotaMessage } from "../services/quota";
 import { getWorkSettings, withoutJunk } from "../services/work";
 import { BrowserError } from "../services/browser";
 import { dispatchCalculatorTool, saveChatCalculation } from "../services/calc-tool";
@@ -121,7 +121,12 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       return llmError(reply, status, message);
     };
     if (!(await ctx.license.hasSection("work"))) return refuse(403, "Work AI isn't included in your organization's license.");
-    const [task] = await db.select({ modelId: workTask.modelId, codeWorkspaceId: workTask.codeWorkspaceId, routing: workTask.routing }).from(workTask).where(eq(workTask.id, t.taskId));
+    const [task] = await db
+      .select({ modelId: workTask.modelId, codeWorkspaceId: workTask.codeWorkspaceId, routing: workTask.routing, projectId: workTask.projectId, parentId: workTask.parentId })
+      .from(workTask)
+      .where(eq(workTask.id, t.taskId));
+    // The project the task works in (a helper task works in its parent's): its own budget applies and its usage is counted.
+    const projectId = task?.projectId ?? (task?.parentId ? ((await db.select({ p: workTask.projectId }).from(workTask).where(eq(workTask.id, task.parentId)))[0]?.p ?? null) : null);
     let resolved: Awaited<ReturnType<typeof resolveModel>>;
     try {
       resolved = await resolveModel(db, box, t.workspaceId, task?.codeWorkspaceId ? "code" : "work", task?.modelId, t.userId);
@@ -130,9 +135,9 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     }
     const { model: m, provider } = resolved;
     // The workspace pays for its own models; a group pays for a model only it gives.
-    const { status: quota, groupId } = await quotaFor(db, t.workspaceId, t.userId, m);
+    const { status: quota, groupId } = await quotaFor(db, t.workspaceId, t.userId, m, projectId);
     if (!quota.result.allowed)
-      return refuse(402, quota.scope.kind === "group" ? `You've used your share of the ${quota.scope.name} group's tokens for this period. Ask your admin for more.` : "You've used your token allowance for this period. Ask your admin for more tokens.");
+      return refuse(402, quota.scope.kind === "project" ? quotaMessage(quota) : quota.scope.kind === "group" ? `You've used your share of the ${quota.scope.name} group's tokens for this period. Ask your admin for more.` : "You've used your token allowance for this period. Ask your admin for more tokens.");
     const body = (req.body ?? {}) as Record<string, unknown> & { messages?: unknown[]; stream?: boolean };
     const inputGuess = estimateTokens(JSON.stringify(body.messages ?? []));
     const fit = fitWindow(body, m.contextLength);
@@ -149,6 +154,7 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
         userId: t.userId,
         modelId: m.id,
         groupId,
+        projectId,
         section: "work",
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,

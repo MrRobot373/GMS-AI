@@ -371,6 +371,8 @@ export const usageEvent = pgTable(
      * untouched. No foreign key: after a group is deleted its past usage still isn't the workspace's.
      */
     groupId: text("group_id"),
+    /** The project the call was made in (a project chat or task, the project's brain). No foreign key, like groupId. */
+    projectId: text("project_id"),
     section: sectionEnum("section").notNull(),
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
@@ -383,6 +385,7 @@ export const usageEvent = pgTable(
     index("usage_ws_time_idx").on(t.workspaceId, t.createdAt),
     index("usage_user_time_idx").on(t.userId, t.createdAt),
     index("usage_group_time_idx").on(t.groupId, t.createdAt),
+    index("usage_project_time_idx").on(t.projectId, t.createdAt),
   ],
 );
 
@@ -708,6 +711,12 @@ export const project = pgTable(
      * "review" holds everything for a person with edit access to accept, "off" neither learns nor is used.
      */
     brainMode: text("brain_mode").$type<"auto" | "review" | "off">().notNull().default("auto"),
+    /**
+     * The project's own budget (docs/03-projects.md, "Project budget"), on top of the workspace's: tokens per budget period
+     * for everyone together (null: no project total), and per person (null: the total split evenly among its people).
+     */
+    tokenLimit: bigint("token_limit", { mode: "number" }),
+    memberTokenLimit: bigint("member_token_limit", { mode: "number" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -724,6 +733,8 @@ export const projectMember = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     role: projectRoleEnum("role").notNull().default("chat"),
+    /** This person's own allowance in the project's budget; null: the project's per-person amount. */
+    tokenLimit: bigint("token_limit", { mode: "number" }),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.userId] })],

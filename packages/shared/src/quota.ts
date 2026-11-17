@@ -40,7 +40,8 @@ export interface QuotaInput {
   workspaceUsed: number;
 }
 
-export type QuotaBlocker = "user" | "workspace" | "group" | null;
+/** "project": a project's own budget (its total), on top of the workspace's. */
+export type QuotaBlocker = "user" | "workspace" | "group" | "project" | null;
 
 export interface QuotaResult {
   allowed: boolean;

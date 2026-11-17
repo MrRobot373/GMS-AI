@@ -58,6 +58,24 @@ answer, chat; if you want something delivered, use Work AI.*
 - **Save to project:** any answer can be saved as a project source.
 - **Deleting a project** deletes its chats and project-only files. Linked library documents are kept.
 
+## Project budget
+
+A project can have its own token budget per budget period (Admin → Settings sets day, week or month), set by its owner
+or an admin in the project page's **Budget** section:
+
+- **For the whole project:** tokens everyone in the project may use together. Empty: no project total.
+- **For each person:** each person's share. Empty: the total split evenly among the project's people (owner and members).
+- **A person's own share** (the pencil on their row) replaces the per-person amount for them. The owner follows the
+  per-person amount.
+
+It applies **on top of** the workspace's (or group's) budget: a call in the project must fit both, and the person sees
+whichever ran out (*The ADAS project has used its tokens…* or *You've used your share of the ADAS project's tokens…*).
+Every call made in a project is recorded with it (`usage_event.project_id`): chats, Work AI tasks (helper tasks count
+for their parent's project), the project brain and Knowledge questions. The Budget section shows this period's use split
+into Chat AI and Work AI, for everyone (owners, editors and admins see each person; others see the totals and their own
+row), and **Admin → Usage → By project** lists each project's use over the chosen range. Usage from before this release
+has no project.
+
 ## Resource use
 
 Retrieval is the same as for Documents: full-text search first, plus vectors when the workspace has an embedding model (with task prefixes for models trained with them, such as EmbeddingGemma 2; changing the model re-indexes the workspace). Small source sets (≤14k characters) are passed whole. Project memory only uses full-text search.

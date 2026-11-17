@@ -5,6 +5,7 @@ import {
   desc,
   document,
   eq,
+  gte,
   inArray,
   isNull,
   message,
@@ -14,6 +15,7 @@ import {
   projectSource,
   sql,
   user,
+  usageEvent,
   userGroup,
   userGroupMember,
   workspace,
@@ -31,6 +33,8 @@ import { inBackground, learnFromDocument } from "../services/brain-learn";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { dropProjectGuestIfDone, ensureProjectGuest, getProjectAccess, isGuest, isWorkspaceAdmin, projectVisibleTo, requireNotGuest, requireProjectEdit } from "../services/projects";
 import { MAX_UPLOAD_BYTES } from "./documents";
+import { getOrgPeriod, getProjectQuotaStatus } from "../services/quota";
+import { defaultUserQuota, periodEnd, periodStart } from "@aatmiq/shared";
 
 const createSchema = z.object({
   workspaceId: z.string(),
@@ -329,6 +333,94 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     // A guest in none of the workspace's projects any more leaves the workspace too.
     const left = await dropProjectGuestIfDone(db, p.workspaceId, req.params.userId);
     await audit(ctx, { actor: u, action: "project.member_removed", workspaceId: p.workspaceId, targetType: "user", targetId: req.params.userId, meta: { projectId: p.id, guestRemoved: left } });
+    return { ok: true };
+  });
+
+  /* ───────────── Budget ───────────── */
+
+  /**
+   * The project's own budget and what its people used this period (docs/03-projects.md, "Project budget"). Everyone in the
+   * project sees the totals and their own share; owners, editors and admins see each person's.
+   */
+  app.get<{ Params: { id: string } }>("/api/projects/:id/budget", async (req) => {
+    const u = await requireUser(ctx, req);
+    const { project: p, role, admin, canEdit } = await getProjectAccess(ctx, u, req.params.id);
+    const period = await getOrgPeriod(db);
+    const now = new Date();
+    const start = periodStart(period, now);
+    const used = await db
+      .select({ userId: usageEvent.userId, section: usageEvent.section, n: sql<number>`coalesce(sum(${usageEvent.inputTokens} + ${usageEvent.outputTokens}), 0)::bigint` })
+      .from(usageEvent)
+      .where(and(eq(usageEvent.projectId, p.id), gte(usageEvent.createdAt, start)))
+      .groupBy(usageEvent.userId, usageEvent.section);
+    const bySection = (rows: typeof used) => {
+      const out = { chat: 0, work: 0, other: 0, total: 0 };
+      for (const r of rows) {
+        const n = Number(r.n);
+        if (r.section === "chat") out.chat += n;
+        else if (r.section === "work" || r.section === "code") out.work += n;
+        else out.other += n;
+        out.total += n;
+      }
+      return out;
+    };
+    const members = await db
+      .select({ userId: projectMember.userId, name: user.name, limit: projectMember.tokenLimit })
+      .from(projectMember)
+      .innerJoin(user, eq(user.id, projectMember.userId))
+      .where(eq(projectMember.projectId, p.id))
+      .orderBy(asc(user.name));
+    const [owner] = p.ownerId ? await db.select({ userId: user.id, name: user.name }).from(user).where(eq(user.id, p.ownerId)) : [];
+    const people = [...(owner && !members.some((m) => m.userId === owner.userId) ? [{ ...owner, limit: null as number | null }] : []), ...members];
+    const perPerson = p.memberTokenLimit ?? defaultUserQuota(p.tokenLimit, people.length);
+    const row = (x: (typeof people)[number]) => ({
+      userId: x.userId,
+      name: x.name,
+      override: x.limit,
+      allowance: x.limit ?? perPerson,
+      used: bySection(used.filter((r) => r.userId === x.userId)),
+    });
+    const seeAll = canEdit || admin;
+    return {
+      period,
+      periodStart: start.toISOString(),
+      resetsAt: periodEnd(period, now).toISOString(),
+      tokenLimit: p.tokenLimit,
+      memberTokenLimit: p.memberTokenLimit,
+      perPerson,
+      used: bySection(used),
+      // Owners and admins set the budget; editors see everyone's use.
+      canManage: role === "owner" || admin,
+      people: seeAll ? people.map(row) : people.filter((x) => x.userId === u.id).map(row),
+      mine: await getProjectQuotaStatus(db, p.id, u.id, now),
+    };
+  });
+
+  const tokens = z.number().int().min(0).max(1e13).nullable();
+
+  app.put<{ Params: { id: string } }>("/api/projects/:id/budget", async (req) => {
+    const u = await requireUser(ctx, req);
+    const { project: p, role, admin } = await getProjectAccess(ctx, u, req.params.id);
+    if (role !== "owner" && !admin) throw forbidden("Only the project's owner or an admin can set its budget.");
+    const b = parse(z.object({ tokenLimit: tokens.optional(), memberTokenLimit: tokens.optional() }), req.body);
+    await db.update(project).set({ ...b, updatedAt: new Date() }).where(eq(project.id, p.id));
+    await audit(ctx, { actor: u, action: "project.budget_set", workspaceId: p.workspaceId, targetType: "project", targetId: p.id, meta: { from: { tokenLimit: p.tokenLimit, memberTokenLimit: p.memberTokenLimit }, to: b } });
+    return { ok: true };
+  });
+
+  /** One person's own allowance in the project (null: the project's per-person amount). */
+  app.put<{ Params: { id: string; userId: string } }>("/api/projects/:id/budget/people/:userId", async (req) => {
+    const u = await requireUser(ctx, req);
+    const { project: p, role, admin } = await getProjectAccess(ctx, u, req.params.id);
+    if (role !== "owner" && !admin) throw forbidden("Only the project's owner or an admin can set its budget.");
+    const { tokenLimit } = parse(z.object({ tokenLimit: tokens }), req.body);
+    const [m] = await db
+      .update(projectMember)
+      .set({ tokenLimit })
+      .where(and(eq(projectMember.projectId, p.id), eq(projectMember.userId, req.params.userId)))
+      .returning({ userId: projectMember.userId });
+    if (!m) throw notFound(req.params.userId === p.ownerId ? "The owner's share follows the project's per-person amount." : "Person not found");
+    await audit(ctx, { actor: u, action: "project.budget_person_set", workspaceId: p.workspaceId, targetType: "user", targetId: m.userId, meta: { projectId: p.id, tokenLimit } });
     return { ok: true };
   });
 

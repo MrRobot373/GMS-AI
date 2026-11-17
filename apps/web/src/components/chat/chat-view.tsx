@@ -1024,6 +1024,22 @@ function QuotaBanner({ quota, onRequest }: { quota: QuotaStatus; onRequest: () =
   const t = useT();
   const resets = t.date(quota.resetsAt, { month: "short", day: "numeric" });
   const period = t(PERIOD_NOUN[quota.period]);
+  if (quota.scope?.kind === "project") {
+    const project = quota.scope.name;
+    return (
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3" data-testid="project-quota-banner">
+        <TriangleAlert className="size-4 shrink-0 text-warning" />
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] text-fg">
+            {quota.result.blockedBy === "project"
+              ? t("The {project} project has used its tokens for this {period}", { project, period })
+              : t("You've used your share of the {project} project's tokens for this {period}", { project, period })}
+          </div>
+          <div className="text-xs text-fg-subtle">{t("Resets {resets}. The project's owner can raise its budget on the project page.", { resets })}</div>
+        </div>
+      </motion.div>
+    );
+  }
   if (quota.scope?.kind === "group") {
     const group = quota.scope.name;
     return (

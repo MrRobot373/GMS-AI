@@ -24,6 +24,8 @@ interface UsageReport {
   byUser: { id: string | null; name: string; email: string | null; tokens: number; requests: number }[];
   bySection: { section: string; tokens: number }[];
   byWorkspace: { id: string | null; name: string; tokens: number }[];
+  /** Projects' use, split into Chat AI and Work AI; limit: the project's own budget per period. */
+  byProject?: { id: string | null; name: string; workspace: string | null; tokens: number; chat: number; work: number; people: number; limit: number | null }[];
 }
 
 const RANGES = [7, 30, 90] as const;
@@ -118,6 +120,40 @@ export default function UsagePage() {
           {d ? <BarList rows={d.bySection.map((s) => ({ key: s.section, label: t(SECTION_LABELS[s.section] ?? s.section), value: s.tokens }))} /> : <Skeleton className="h-40" />}
         </Card>
       </div>
+
+      {!!d?.byProject?.length && (
+        <Card className="mt-4 overflow-x-auto p-5" data-testid="usage-by-project">
+          <h2 className="mb-1 text-[15px] font-medium">{t("By project")}</h2>
+          <p className="mb-4 text-[12.5px] text-fg-subtle">{t("Tokens used in each project's chats and Work AI tasks over this range. Budget: the project's own limit per period.")}</p>
+          <table className="w-full min-w-[560px] text-[13px]">
+            <thead>
+              <tr className="text-left text-[12px] text-fg-subtle">
+                <th className="pb-2 font-normal">{t("Project")}</th>
+                <th className="pb-2 text-right font-normal">{t("Chat AI")}</th>
+                <th className="pb-2 text-right font-normal">{t("Work AI")}</th>
+                <th className="pb-2 text-right font-normal">{t("Total")}</th>
+                <th className="pb-2 text-right font-normal">{t("People")}</th>
+                <th className="pb-2 text-right font-normal">{t("Budget")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {d.byProject.map((p) => (
+                <tr key={p.id ?? p.name}>
+                  <td className="py-2">
+                    <div className="text-fg">{p.name}</div>
+                    {p.workspace && <div className="text-[12px] text-fg-subtle">{p.workspace}</div>}
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{formatTokens(p.chat)}</td>
+                  <td className="py-2 text-right tabular-nums">{formatTokens(p.work)}</td>
+                  <td className="py-2 text-right tabular-nums text-fg">{formatTokens(p.tokens)}</td>
+                  <td className="py-2 text-right tabular-nums">{p.people}</td>
+                  <td className="py-2 text-right tabular-nums text-fg-subtle">{p.limit === null ? "—" : formatTokens(p.limit)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </div>
   );
 }

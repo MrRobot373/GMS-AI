@@ -9,6 +9,12 @@ without one.
 
 ## Unreleased
 
+- **Project budgets and usage per project.** A project's owner or an admin can give the project its own token budget per
+  period: a total, a per-person amount (or an even split), and a share for any one person. It applies on top of the
+  workspace's budget, so a call in the project must fit both. Every chat, Work AI task, brain and Knowledge call made in
+  a project is now recorded with it; the project page's new **Budget** section shows this period's use split into Chat
+  AI and Work AI per person, chat shows which budget ran out, and **Admin → Usage** has a **By project** table.
+  Migration `0031` adds the columns.
 - **Projects across teams.** A project's people no longer have to be in its workspace. **Share** now searches the whole
   organization and can add a whole group at once (e.g. "ADAS core" with people from Software, Hardware and Firmware).
   People from other teams join as **guests** of the project's workspace: they reach only the projects they were added to

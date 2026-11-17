@@ -46,9 +46,23 @@ export interface PublicStatus {
   org: { name: string | null; productName: string; accentColor: string; loginMessage: string | null; logoUrl: string | null; defaultLocale: "en" | "hi"; illustrations: boolean };
 }
 
+/** A project's own budget and this period's use (GET /api/projects/:id/budget). */
+export interface ProjectBudget {
+  period: "day" | "week" | "month";
+  periodStart: string;
+  resetsAt: string;
+  tokenLimit: number | null;
+  memberTokenLimit: number | null;
+  perPerson: number | null;
+  used: { chat: number; work: number; other: number; total: number };
+  canManage: boolean;
+  people: { userId: string; name: string; override: number | null; allowance: number | null; used: { chat: number; work: number; other: number; total: number } }[];
+  mine: QuotaStatus | null;
+}
+
 export interface QuotaStatus {
   /** Whose budget: the workspace's, or a group's (for a model only that group gives). */
-  scope: { kind: "workspace" } | { kind: "group"; id: string; name: string };
+  scope: { kind: "workspace" } | { kind: "group"; id: string; name: string } | { kind: "project"; id: string; name: string };
   period: "day" | "week" | "month";
   periodStart: string;
   resetsAt: string;

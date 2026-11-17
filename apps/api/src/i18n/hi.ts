@@ -460,4 +460,8 @@ export const HI: Record<string, string> = {
   "The brain is off for this project.": "इस प्रोजेक्ट के लिए ब्रेन बंद है।",
   "Person not found": "व्यक्ति नहीं मिला",
   "You're a guest in this workspace: you can work only inside the projects you were added to.": "आप इस वर्कस्पेस में मेहमान हैं: आप सिर्फ़ उन्हीं प्रोजेक्ट में काम कर सकते हैं जिनमें आपको जोड़ा गया है।",
+  "Only the project's owner or an admin can set its budget.": "प्रोजेक्ट का बजट सिर्फ़ उसका मालिक या कोई एडमिन तय कर सकता है।",
+  "The owner's share follows the project's per-person amount.": "मालिक का हिस्सा प्रोजेक्ट की प्रति-व्यक्ति राशि के हिसाब से चलता है।",
+  "The {project} project has used its tokens for this period.": "{project} प्रोजेक्ट ने इस अवधि के अपने टोकन इस्तेमाल कर लिए हैं।",
+  "You've used your share of the {project} project's tokens for this period.": "आपने इस अवधि के लिए {project} प्रोजेक्ट के टोकन में से अपना हिस्सा इस्तेमाल कर लिया है।",
 };

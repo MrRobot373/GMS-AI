@@ -4,6 +4,8 @@ import {
   gte,
   isNull,
   organization,
+  project,
+  projectMember,
   sql,
   tokenRequest,
   usageEvent,
@@ -14,6 +16,7 @@ import {
   type DB,
 } from "@aatmiq/db";
 import type { AvailableModel } from "./models";
+import { fill, msg } from "../i18n";
 import {
   defaultUserQuota,
   evaluateQuota,
@@ -25,7 +28,7 @@ import {
 
 export interface QuotaStatus {
   /** Whose budget this is: the workspace's, or a group's (for a model only that group gives). */
-  scope: { kind: "workspace" } | { kind: "group"; id: string; name: string };
+  scope: { kind: "workspace" } | { kind: "group"; id: string; name: string } | { kind: "project"; id: string; name: string };
   period: BudgetPeriod;
   periodStart: string;
   resetsAt: string;
@@ -143,13 +146,71 @@ export async function getGroupQuotaStatus(db: DB, groupId: string, userId: strin
 }
 
 /**
+ * A person's position in a project's own budget (docs/03-projects.md, "Project budget"): the project's total for the period
+ * and their allowance in it (their own amount, else the project's per-person amount, else the total split evenly among the
+ * project's people). `workspace` holds the project's totals so the shape matches. Null when the project sets no budget.
+ */
+export async function getProjectQuotaStatus(db: DB, projectId: string, userId: string, now = new Date()): Promise<QuotaStatus | null> {
+  const [p] = await db.select({ id: project.id, name: project.name, ownerId: project.ownerId, limit: project.tokenLimit, perPerson: project.memberTokenLimit }).from(project).where(eq(project.id, projectId));
+  if (!p) return null;
+  const members = await db.select({ userId: projectMember.userId, limit: projectMember.tokenLimit }).from(projectMember).where(eq(projectMember.projectId, p.id));
+  const own = members.find((m) => m.userId === userId)?.limit ?? null;
+  if (p.limit === null && p.perPerson === null && own === null) return null;
+  const period = await getOrgPeriod(db);
+  const start = periodStart(period, now);
+  const sum = sql<number>`coalesce(sum(${usageEvent.inputTokens} + ${usageEvent.outputTokens}), 0)::bigint`;
+  const [[all], [mine]] = await Promise.all([
+    db.select({ n: sum }).from(usageEvent).where(and(eq(usageEvent.projectId, p.id), gte(usageEvent.createdAt, start))),
+    db.select({ n: sum }).from(usageEvent).where(and(eq(usageEvent.projectId, p.id), eq(usageEvent.userId, userId), gte(usageEvent.createdAt, start))),
+  ]);
+  const people = new Set(members.map((m) => m.userId).concat(p.ownerId ? [p.ownerId] : [])).size;
+  const userLimit = own ?? p.perPerson ?? defaultUserQuota(p.limit, people);
+  const input = { userLimit, userBonus: 0, userUsed: Number(mine?.n ?? 0), workspaceLimit: p.limit, workspaceBonus: 0, workspaceUsed: Number(all?.n ?? 0) };
+  const result = evaluateQuota(input);
+  return {
+    scope: { kind: "project", id: p.id, name: p.name },
+    period,
+    periodStart: start.toISOString(),
+    resetsAt: periodEnd(period, now).toISOString(),
+    user: { limit: userLimit, bonus: 0, used: input.userUsed, isOverride: own !== null },
+    workspace: { limit: p.limit, bonus: 0, used: input.workspaceUsed },
+    result: { ...result, blockedBy: result.blockedBy === "workspace" ? "project" : result.blockedBy },
+  };
+}
+
+/**
  * Who pays for a call to this model, and whether there's budget left: the workspace for its own
  * models; for a model only groups give, the granting group with the most left (unlimited first).
+ * In a project with its own budget, the call must fit that too: whichever has less room is reported.
  */
-export async function quotaFor(db: DB, workspaceId: string, userId: string, m: Pick<AvailableModel, "groups"> | null): Promise<{ status: QuotaStatus; groupId: string | null }> {
+export async function quotaFor(
+  db: DB,
+  workspaceId: string,
+  userId: string,
+  m: Pick<AvailableModel, "groups"> | null,
+  projectId?: string | null,
+): Promise<{ status: QuotaStatus; groupId: string | null }> {
+  const payer = await payerQuota(db, workspaceId, userId, m);
+  const inProject = projectId ? await getProjectQuotaStatus(db, projectId, userId) : null;
+  if (!inProject) return payer;
+  const room = (q: QuotaStatus) => (!q.result.allowed ? -1 : q.result.remaining === null ? Infinity : q.result.remaining);
+  return room(inProject) < room(payer.status) ? { status: inProject, groupId: payer.groupId } : payer;
+}
+
+async function payerQuota(db: DB, workspaceId: string, userId: string, m: Pick<AvailableModel, "groups"> | null): Promise<{ status: QuotaStatus; groupId: string | null }> {
   if (!m?.groups.length) return { status: await getQuotaStatus(db, workspaceId, userId), groupId: null };
   const all = await Promise.all(m.groups.map((g) => getGroupQuotaStatus(db, g.id, userId)));
   const rank = (q: QuotaStatus) => (!q.result.allowed ? -1 : q.result.remaining === null ? Infinity : q.result.remaining);
   const best = all.reduce((a, b) => (rank(b) > rank(a) ? b : a));
   return { status: best, groupId: best.scope.kind === "group" ? best.scope.id : null };
+}
+
+/** Why a call was refused, for the error a person sees. */
+export function quotaMessage(q: QuotaStatus): string {
+  if (q.scope.kind === "group") return `You've used your share of the ${q.scope.name} group's tokens for this period.`;
+  if (q.scope.kind === "project")
+    return q.result.blockedBy === "project"
+      ? fill(msg("The {project} project has used its tokens for this period."), { project: q.scope.name })
+      : fill(msg("You've used your share of the {project} project's tokens for this period."), { project: q.scope.name });
+  return "You've used your token allowance for this period.";
 }

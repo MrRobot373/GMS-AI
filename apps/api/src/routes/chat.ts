@@ -10,7 +10,7 @@ import { getProjectAccess, requireNotGuest } from "../services/projects";
 import { brainContext } from "../services/brain";
 import { inBackground, learnFromChat } from "../services/brain-learn";
 import { chooseModel, isSmallTalk } from "../services/router";
-import { quotaFor } from "../services/quota";
+import { quotaFor, quotaMessage } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
 import { CALCULATOR_TOOLS, calcContext, dispatchCalculatorTool, findCalculation, saveChatCalculation } from "../services/calc-tool";
 import { getGemSettings, webSearchDeps } from "../services/gem";
@@ -333,9 +333,9 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       follows: history.find((h) => h.role === "assistant")?.routing?.difficulty ?? null,
     });
     // The workspace pays for its own models; a group pays for a model only it gives.
-    const { status: quota, groupId } = await quotaFor(db, c.workspaceId, u.id, m);
+    const { status: quota, groupId } = await quotaFor(db, c.workspaceId, u.id, m, c.projectId);
     if (!quota.result.allowed) {
-      throw new HttpError(402, quota.scope.kind === "group" ? `You've used your share of the ${quota.scope.name} group's tokens for this period.` : "You've used your token allowance for this period.", "quota_exceeded", quota);
+      throw new HttpError(402, quotaMessage(quota), "quota_exceeded", quota);
     }
 
     // Attach any newly referenced documents to the chat (only ones this user may read).
@@ -403,7 +403,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
             showBeta: gem.betaCalculators,
             model: { provider, modelKey: m.modelKey },
             onUsage: async (us) => {
-              await db.insert(usageEvent).values({ workspaceId: c.workspaceId, userId: u.id, modelId: m.id, groupId, section: "chat", inputTokens: us.inputTokens, outputTokens: us.outputTokens, estimated: us.estimated });
+              await db.insert(usageEvent).values({ workspaceId: c.workspaceId, projectId: c.projectId, userId: u.id, modelId: m.id, groupId, section: "chat", inputTokens: us.inputTokens, outputTokens: us.outputTokens, estimated: us.estimated });
             },
           }).catch(() => null)
         : null;
@@ -417,6 +417,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     if (retrieval.embedTokens > 0) {
       await db.insert(usageEvent).values({
         workspaceId: c.workspaceId,
+        projectId: c.projectId,
         userId: u.id,
         modelId: retrieval.embeddingModelId,
         section: "chat",
@@ -480,7 +481,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         first: docContext.citations.length + 1,
         signal: abort.signal,
         onUsage: async (us) => {
-          await db.insert(usageEvent).values({ workspaceId: c.workspaceId, userId: u.id, modelId: qm.model.id, groupId: qm.groupId, section: "chat", inputTokens: us.inputTokens, outputTokens: us.outputTokens, estimated: us.estimated, status: "ok" });
+          await db.insert(usageEvent).values({ workspaceId: c.workspaceId, projectId: c.projectId, userId: u.id, modelId: qm.model.id, groupId: qm.groupId, section: "chat", inputTokens: us.inputTokens, outputTokens: us.outputTokens, estimated: us.estimated, status: "ok" });
         },
         onQueries: (queries) => send("searching", { queries }),
       });
@@ -588,6 +589,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     await db.update(chat).set({ leafMessageId: assistant!.id }).where(eq(chat.id, c.id));
     await db.insert(usageEvent).values({
       workspaceId: c.workspaceId,
+      projectId: c.projectId,
       userId: u.id,
       modelId: m.id,
       groupId,
@@ -602,7 +604,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!res.writableEnded && !res.destroyed) {
       const changed = text !== streamed ? { content: text } : {};
       if (error) send("error", { message: tr(locale, error), messageId: assistant!.id, ...changed });
-      else send("done", { messageId: assistant!.id, usage, quota: (await quotaFor(db, c.workspaceId, u.id, m)).status, ...changed });
+      else send("done", { messageId: assistant!.id, usage, quota: (await quotaFor(db, c.workspaceId, u.id, m, c.projectId)).status, ...changed });
       res.end();
     }
     // What the person wrote may belong in the project's brain (a statement, in a project chat that is kept).

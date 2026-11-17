@@ -134,7 +134,7 @@ async function learnNow(ctx: AppContext, o: LearnInput): Promise<LearnResult | n
     o.log?.("brain: no model to learn with", e);
     return null;
   }
-  const { status: quota, groupId } = await quotaFor(db, o.workspaceId, o.userId, chosen.model);
+  const { status: quota, groupId } = await quotaFor(db, o.workspaceId, o.userId, chosen.model, o.projectId);
   if (!quota.result.allowed) {
     o.log?.("brain: over the allowance, not learning");
     return null;
@@ -166,6 +166,7 @@ async function learnNow(ctx: AppContext, o: LearnInput): Promise<LearnResult | n
         userId: o.userId,
         modelId: chosen.model.id,
         groupId,
+        projectId: o.projectId,
         section: "knowledge",
         inputTokens: r.usage.inputTokens,
         outputTokens: r.usage.outputTokens,

@@ -13,7 +13,7 @@ import { localeOf, msg, tr } from "../i18n";
 import { requireModule } from "../services/gem";
 import { citationReadable, finishAnswer, knowledgePrompt, NOT_FOUND_REPLY, retrieveKnowledge } from "../services/knowledge";
 import { getProjectAccess, isWorkspaceAdmin, requireProjectEdit } from "../services/projects";
-import { quotaFor } from "../services/quota";
+import { quotaFor, quotaMessage } from "../services/quota";
 import { chooseModel } from "../services/router";
 
 async function projectFor(ctx: AppContext, u: SessionUser, projectId: string) {
@@ -48,7 +48,7 @@ export async function knowledgeRoutes(app: FastifyInstance, ctx: AppContext) {
 
     const retrieval = await retrieveKnowledge(db, box, { workspaceId: p.workspaceId, userId: u.id, projectId: p.id, includeGeneral, query: body.question });
     if (retrieval.embedTokens > 0) {
-      await db.insert(usageEvent).values({ workspaceId: p.workspaceId, userId: u.id, modelId: retrieval.embeddingModelId, section: "knowledge", inputTokens: retrieval.embedTokens, outputTokens: 0 });
+      await db.insert(usageEvent).values({ workspaceId: p.workspaceId, projectId: p.id, userId: u.id, modelId: retrieval.embeddingModelId, section: "knowledge", inputTokens: retrieval.embedTokens, outputTokens: 0 });
     }
 
     // Nothing relevant: say so, without asking a model to make something up.
@@ -56,9 +56,9 @@ export async function knowledgeRoutes(app: FastifyInstance, ctx: AppContext) {
     let groupId: string | null = null;
     if (retrieval.passages.length) {
       chosen = await chooseModel(db, box, { workspaceId: p.workspaceId, section: "chat", userId: u.id, requested: null, text: body.question, contextTokens: 3000, hasSources: true });
-      const q = await quotaFor(db, p.workspaceId, u.id, chosen.model);
+      const q = await quotaFor(db, p.workspaceId, u.id, chosen.model, p.id);
       groupId = q.groupId;
-      if (!q.status.result.allowed) throw new HttpError(402, "You've used your token allowance for this period.", "quota_exceeded", q.status);
+      if (!q.status.result.allowed) throw new HttpError(402, quotaMessage(q.status), "quota_exceeded", q.status);
     }
     const [row] = await db
       .insert(knowledgeQuery)
@@ -102,6 +102,7 @@ export async function knowledgeRoutes(app: FastifyInstance, ctx: AppContext) {
     }
     await db.insert(usageEvent).values({
       workspaceId: p.workspaceId,
+      projectId: p.id,
       userId: u.id,
       modelId: chosen.model.id,
       groupId,

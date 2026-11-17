@@ -19,7 +19,7 @@ import { randomToken } from "../crypto";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { PROJECT_FOLDER } from "../services/project-work";
 import { getProjectAccess, requireNotGuest, requireProjectEdit } from "../services/projects";
-import { quotaFor } from "../services/quota";
+import { quotaFor, quotaMessage } from "../services/quota";
 import { workWebSearchDeps } from "../services/gem";
 import { webSearchReady } from "../services/web-search";
 import { getWorkSettings, superAiWindowProblem, titleFrom, type WorkStreamEvent } from "../services/work";
@@ -64,15 +64,15 @@ async function loadReadableTask(ctx: AppContext, u: SessionUser, id: string) {
 }
 
 /** Budget check for the model a task will use (the workspace's, or the group's that gives it). */
-async function requireQuota(ctx: AppContext, workspaceId: string, userId: string, modelId: string | null, section: "work" | "code" = "work") {
+async function requireQuota(ctx: AppContext, workspaceId: string, userId: string, modelId: string | null, section: "work" | "code" = "work", projectId: string | null = null) {
   const { model: m } = await resolveModel(ctx.db, ctx.box, workspaceId, section, modelId, userId);
-  return checkQuota(ctx, workspaceId, userId, m);
+  return checkQuota(ctx, workspaceId, userId, m, projectId);
 }
 
-async function checkQuota(ctx: AppContext, workspaceId: string, userId: string, m: AvailableModel) {
-  const { status: quota } = await quotaFor(ctx.db, workspaceId, userId, m);
-  if (!quota.result.allowed)
-    throw new HttpError(402, quota.scope.kind === "group" ? `You've used your share of the ${quota.scope.name} group's tokens for this period.` : "You've used your token allowance for this period.", "quota_exceeded", quota);
+/** In a project with its own budget, the task must fit that too. */
+async function checkQuota(ctx: AppContext, workspaceId: string, userId: string, m: AvailableModel, projectId: string | null = null) {
+  const { status: quota } = await quotaFor(ctx.db, workspaceId, userId, m, projectId);
+  if (!quota.result.allowed) throw new HttpError(402, quotaMessage(quota), "quota_exceeded", quota);
   return m;
 }
 
@@ -198,7 +198,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       text: b.prompt,
       hasSources: Boolean(b.projectId),
     });
-    await checkQuota(ctx, b.workspaceId, u.id, m);
+    await checkQuota(ctx, b.workspaceId, u.id, m, b.projectId ?? null);
     if (b.engine === "claude") {
       const tooSmall = superAiWindowProblem(m.displayName, m.contextLength);
       if (tooSmall) throw badRequest(tooSmall);
@@ -253,7 +253,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const t = await loadOwnTask(ctx, u, req.params.id);
     await requireWorkSection(ctx, u, t.workspaceId);
     const b = parse(workMessageSchema, req.body);
-    await requireQuota(ctx, t.workspaceId, u.id, t.modelId, t.codeWorkspaceId ? "code" : "work");
+    await requireQuota(ctx, t.workspaceId, u.id, t.modelId, t.codeWorkspaceId ? "code" : "work", t.projectId);
     await work.submit(t.id, b.prompt);
     return { ok: true };
   });

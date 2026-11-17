@@ -27,7 +27,7 @@ interface Member {
   image: string | null;
   status: string;
   orgRole: string;
-  role: "admin" | "member";
+  role: "admin" | "member" | "guest";
   sections: string[];
   tokenLimit: number | null;
   used: number;

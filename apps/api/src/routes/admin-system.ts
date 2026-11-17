@@ -7,9 +7,11 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   model,
   modelProvider,
   organization,
+  project,
   sql,
   tokenRequest,
   usageEvent,
@@ -302,6 +304,26 @@ export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
       .groupBy(workspace.id, workspace.name)
       .orderBy(desc(tokens));
 
+    // Projects: the work they took, split into Chat and Work AI (docs/03-projects.md, "Project budget").
+    const byProject = await db
+      .select({
+        id: project.id,
+        name: sql<string>`coalesce(${project.name}, 'Deleted project')`,
+        workspace: workspace.name,
+        tokens,
+        chat: sql<number>`coalesce(sum(${usageEvent.inputTokens} + ${usageEvent.outputTokens}) filter (where ${usageEvent.section} = 'chat'), 0)::bigint`,
+        work: sql<number>`coalesce(sum(${usageEvent.inputTokens} + ${usageEvent.outputTokens}) filter (where ${usageEvent.section} in ('work', 'code')), 0)::bigint`,
+        people: sql<number>`count(distinct ${usageEvent.userId})::int`,
+        limit: project.tokenLimit,
+      })
+      .from(usageEvent)
+      .leftJoin(project, eq(project.id, usageEvent.projectId))
+      .leftJoin(workspace, eq(workspace.id, project.workspaceId))
+      .where(and(where, isNotNull(usageEvent.projectId)))
+      .groupBy(project.id, project.name, workspace.name, project.tokenLimit)
+      .orderBy(desc(tokens))
+      .limit(50);
+
     // Fill empty days so charts have a continuous axis.
     const map = new Map(daily.map((d) => [d.date, d]));
     const series = [];
@@ -326,6 +348,7 @@ export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
       byUser: num(byUser),
       bySection: num(bySection),
       byWorkspace: num(byWorkspace),
+      byProject: byProject.map((r) => ({ ...r, tokens: Number(r.tokens), chat: Number(r.chat), work: Number(r.work), limit: r.limit === null ? null : Number(r.limit) })),
     };
   });
 
