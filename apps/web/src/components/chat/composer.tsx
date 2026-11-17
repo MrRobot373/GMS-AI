@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, AtSign, Check, ChevronDown, Globe, Loader2, Mic, Plus, Search, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, Check, ChevronDown, Globe, Loader2, Mic, Plus, Search, Sparkles, Square, Telescope, X } from "lucide-react";
 import { Popover } from "radix-ui";
 import { ACCEPT, FileIcon } from "@/components/documents/use-documents";
 import { useSession } from "@/components/app/session";
@@ -45,6 +45,8 @@ interface Props {
   library?: DocumentRow[];
   /** "Search the web", when the organization offers it: on for every message until switched off. */
   webSearch?: { on: boolean; onToggle: () => void };
+  /** Deep research for the next message (when web search is set up). */
+  research?: { on: boolean; onToggle: () => void };
 }
 
 /** Bordered prompt box: text on top, tools and send on the bottom row. */
@@ -67,6 +69,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     onRemoveAttachment,
     library,
     webSearch,
+    research,
   },
   ref,
 ) {
@@ -169,6 +172,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           disabled={disabled}
         />
         {webSearch && <WebToggle on={webSearch.on} onToggle={webSearch.onToggle} disabled={disabled} />}
+        {research && <ResearchToggle on={research.on} onToggle={research.onToggle} disabled={disabled} />}
         <span className="mx-1.5 h-4 w-px bg-border max-sm:hidden" />
         <span className="max-sm:hidden">
           <ToolButton label={t("Skills · coming with Work AI")} disabled wide>
@@ -261,6 +265,32 @@ function WebToggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => vo
         >
           <Globe />
           {on && <span className="max-sm:hidden">{t("Web search")}</span>}
+        </button>
+      </span>
+    </Tooltip>
+  );
+}
+
+/** Deep research: many searches and pages, then a report with sources (a few minutes; it carries on if the page is closed). */
+function ResearchToggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
+  const t = useT();
+  return (
+    <Tooltip content={on ? t("Turn off deep research") : t("Deep research: a report from many sources (a few minutes)")}>
+      <span>
+        <button
+          type="button"
+          aria-label={t("Deep research")}
+          aria-pressed={on}
+          disabled={disabled}
+          onClick={onToggle}
+          data-testid="research-toggle"
+          className={cn(
+            "flex h-7 items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors disabled:pointer-events-none disabled:text-fg-subtle [&_svg]:size-4",
+            on ? "bg-accent-soft px-2 text-accent-text hover:bg-accent-soft/70" : "w-7 text-fg-muted hover:bg-surface-2 hover:text-fg",
+          )}
+        >
+          <Telescope />
+          {on && <span className="max-sm:hidden">{t("Deep research")}</span>}
         </button>
       </span>
     </Tooltip>

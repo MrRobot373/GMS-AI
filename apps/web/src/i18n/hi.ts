@@ -2368,4 +2368,9 @@ export const HI: Record<string, string> = {
   "Didn't work": "काम नहीं किया",
   "Used": "इस्तेमाल किया",
   "{app} wants to: {action}": "{app} यह करना चाहता है: {action}",
+  "Deep research is still running. The report appears here when it's done.": "गहन शोध अभी चल रहा है। पूरा होने पर रिपोर्ट यहाँ दिखेगी।",
+  "Deep research takes a few minutes. You can leave this page: the report will be here.": "गहन शोध में कुछ मिनट लगते हैं। आप यह पेज छोड़ सकते हैं: रिपोर्ट यहीं मिलेगी।",
+  "Turn off deep research": "गहन शोध बंद करें",
+  "Deep research: a report from many sources (a few minutes)": "गहन शोध: कई स्रोतों से बनी रिपोर्ट (कुछ मिनट)",
+  "Deep research": "गहन शोध",
 };

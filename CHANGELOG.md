@@ -9,6 +9,9 @@ without one.
 
 ## Unreleased
 
+- **Deep research in chat.** A Deep research button makes the next message a research job: many searches from several
+  angles, primary sources read in full, then a structured report with every fact cited (up to 30 tool rounds). It keeps
+  going if the page is closed, and the chat shows it's still running until the report arrives. Needs web search.
 - **Connected apps in chat.** Chat AI can now use the connectors set up for Work AI (Gmail, Drive, Calendar, GitHub…)
   with each person's own sign-in. Reading tools run at once; anything the connector's ask-first list covers (by default
   everything that changes something) shows an Approve / Decline card in the chat before it runs. A project's connector

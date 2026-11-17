@@ -31,6 +31,7 @@ import {
   Slack,
   SquarePen,
   TriangleAlert,
+  Telescope,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
@@ -84,6 +85,8 @@ interface UiMessage {
   files?: { path: string; size: number }[];
   /** A connected app's action waiting for the person's OK (docs/09-connectors.md, "In chat"). */
   approval?: PendingApproval | null;
+  /** A deep research answer (it carries on if the page is closed). */
+  research?: boolean;
 }
 
 const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
@@ -148,6 +151,8 @@ export function ChatView({
   // for the chat's messages until switched off (a chat that searched last time opens with it on).
   const webAvailable = !!me.gem?.webSearch;
   const [webOn, setWebOn] = useState(false);
+  // Deep research for the next message only.
+  const [researchOn, setResearchOn] = useState(false);
   const webFromChat = useRef(false);
 
   const models = useQuery({
@@ -169,6 +174,8 @@ export function ChatView({
     queryFn: () => get<ChatDetail>(`/api/chats/${initialId}`),
     enabled: !!initialId,
     staleTime: Infinity,
+    // A deep research started earlier is still running: look again until its report is in.
+    refetchInterval: (q) => (q.state.data?.researching ? 5000 : false),
   });
   const chats = useChats(workspaceId);
   const project = existing.data ? existing.data.project : newChatProject;
@@ -304,6 +311,8 @@ export function ChatView({
       const content = text.trim();
       if ((!content && !opts.regenerateOf) || streaming || !workspaceId) return;
       const webSearch = webAvailable && webOn ? true : undefined;
+      const research = webAvailable && researchOn && !opts.regenerateOf ? true : undefined;
+      if (research) setResearchOn(false);
       const sending = opts.regenerateOf ? [] : (attachments.filter((a) => a.id && a.status !== "failed") as (Attachment & { id: string })[]);
       const forFolder = opts.regenerateOf ? [] : attachments.filter((a) => a.file);
       if (!opts.regenerateOf && opts.parentId === undefined) {
@@ -350,6 +359,7 @@ export function ChatView({
         content: "",
         streaming: true,
         model: model?.id,
+        research: !!research,
       };
       setTree((all) => [...all, ...(tempUser ? [tempUser] : []), tempAsst]);
       setLeafId(tempAsst.id);
@@ -372,7 +382,7 @@ export function ChatView({
           body: JSON.stringify(
             opts.regenerateOf
               ? { regenerateOf: opts.regenerateOf, modelId: model?.id, webSearch }
-              : { content, parentId, modelId: model?.id, documentIds: sending.length ? sending.map((a) => a.id) : undefined, webSearch },
+              : { content, parentId, modelId: model?.id, documentIds: sending.length ? sending.map((a) => a.id) : undefined, webSearch, research },
           ),
           signal: ctrl.signal,
         });
@@ -465,7 +475,7 @@ export function ChatView({
         }
       }
     },
-    [attachments, chatId, leafId, model?.id, onCreated, project, qc, renameNode, streaming, temporary, webAvailable, webOn, workspaceId],
+    [attachments, chatId, leafId, model?.id, onCreated, project, qc, renameNode, researchOn, streaming, temporary, webAvailable, webOn, workspaceId],
   );
 
   /** Show another version of a message (and the newest branch under it). */
@@ -580,6 +590,7 @@ export function ChatView({
       onRemoveAttachment={(key) => setAttachments((l) => l.filter((a) => a.key !== key))}
       library={library.data}
       webSearch={webAvailable ? { on: webOn, onToggle: () => setWebOn((v) => !v) } : undefined}
+      research={webAvailable ? { on: researchOn, onToggle: () => setResearchOn((v) => !v) } : undefined}
     />
   );
 
@@ -823,6 +834,12 @@ export function ChatView({
                     );
                   })}
                 </AnimatePresence>
+                {existing.data?.researching && !streaming && (
+                  <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3 text-[13px] text-fg-muted" data-testid="research-running">
+                    <Telescope className="size-4 shrink-0 animate-pulse text-fg-subtle" />
+                    {t("Deep research is still running. The report appears here when it's done.")}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1005,6 +1022,12 @@ function MessageBlock({
       </div>
       <div className="pl-6">
         {m.web && <WebSearchLine web={m.web} citations={m.citations} streaming={m.streaming} />}
+        {m.research && m.streaming && (
+          <p className="mb-2 flex items-center gap-1.5 text-[12.5px] text-fg-subtle" data-testid="research-note">
+            <Telescope className="size-3.5 shrink-0" />
+            {t("Deep research takes a few minutes. You can leave this page: the report will be here.")}
+          </p>
+        )}
         {!!m.steps?.length && <ToolSteps steps={m.steps} />}
         {m.approval && m.streaming && chatId && <ApprovalCard chatId={chatId} approval={m.approval} />}
         {!!m.files?.length && chatId && <ChatFiles chatId={chatId} files={m.files} />}

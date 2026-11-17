@@ -9,7 +9,7 @@ import { eq, message } from "@aatmiq/db";
 import { createServer, type Server } from "node:http";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { startHarness, type Harness } from "../test/gem-harness";
-import { MAX_TOOL_ROUNDS } from "./services/chat-tools";
+import { MAX_TOOL_ROUNDS, RESEARCH_ROUNDS } from "./services/chat-tools";
 import { clearWebSearchCache } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
 
@@ -174,6 +174,25 @@ d("tools in chat", () => {
     expect(r.saved.content).toBe("Our converter switches at 250 kHz [1].");
     expect(r.saved.citations![0]).toMatchObject({ n: 1, kind: "document", name: "converter-notes.txt" });
   });
+
+  it("deep research: the research brief, more rounds, and it needs web search", async () => {
+    const chatId = (await h.call(h.alice, "POST", "/api/chats", { workspaceId: h.workspaceId, modelId })).json.id as string;
+    const before = seen.length;
+    const r = await h.call(h.alice, "POST", `/api/chats/${chatId}/messages`, { content: "LOOP: compare buck regulators", modelId, research: true });
+    expect(r.status).toBe(200);
+    const sent = seen.slice(before);
+    expect(sent[0]!.messages[0]!.content).toMatch(/DEEP RESEARCH/);
+    expect(sent).toHaveLength(RESEARCH_ROUNDS + 1);
+    expect(sent.at(-1)!.tools).toEqual([]);
+    // Done: the chat no longer says a research is running.
+    expect((await h.call(h.alice, "GET", `/api/chats/${chatId}`)).json.researching).toBe(false);
+    // Without web search there's nothing to research with.
+    expect((await h.call(h.owner, "PUT", "/api/admin/gem", { chatWebSearch: false })).status).toBe(200);
+    const off = await h.call(h.alice, "POST", `/api/chats/${chatId}/messages`, { content: "again", modelId, research: true });
+    expect(off.status).toBe(400);
+    expect(off.json.error).toMatch(/needs web search/);
+    expect((await h.call(h.owner, "PUT", "/api/admin/gem", { chatWebSearch: true })).status).toBe(200);
+  }, 60_000);
 
   it("stops after the last round and answers from what it has", async () => {
     const r = await ask("LOOP forever");

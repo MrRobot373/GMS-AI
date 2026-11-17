@@ -107,6 +107,19 @@ Chat AI calls tools on its own when a question needs them (`services/chat-tools.
   the organization allows web search in chat: turn that off in Admin → Settings → GEM AI to keep chat off the web.
 - Tool text is treated as data, and the model is told to ignore instructions in it.
 
+### Deep research
+
+The **Deep research** button (telescope, next to Search the web) turns the next message into a research job: the model
+splits the question into sub-questions, searches each from several angles, reads the primary sources in full
+(datasheets, standards, official documentation), checks disagreements, and writes a report: a short summary, a section
+per sub-question, a comparison table where options are compared, then limits and open questions, every fact cited.
+
+- Up to 30 tool rounds of 6 calls (a normal message has 10 of 4); it can also use the person's documents, Python and
+  connected apps.
+- It carries on when the page is closed. Reopening the chat shows *Deep research is still running* and checks every few
+  seconds until the report is in. One at a time per chat.
+- It needs web search in chat (a provider set up and allowed); without it the request is refused with that reason.
+
 ### Python in chat
 
 Chat AI has a `run_python` tool (`services/chat-sandbox.ts`), so it can do what ChatGPT's code tool does: calculate,

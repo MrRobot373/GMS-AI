@@ -19,6 +19,24 @@ import type { RunResult } from "./chat-sandbox";
 export const MAX_TOOL_ROUNDS = 10;
 /** Calls carried out in one round; the rest are told to wait for the next. */
 export const MAX_CALLS_PER_ROUND = 4;
+/** Deep research: more rounds and more calls at a time. */
+export const RESEARCH_ROUNDS = 30;
+export const RESEARCH_CALLS_PER_ROUND = 6;
+
+/** How a deep research answer is made (added to the system prompt). */
+export function researchPrompt(today = new Date()): string {
+  const date = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  return [
+    "",
+    `DEEP RESEARCH. The person asked for a researched report, not a quick answer (today is ${date}). Work like a careful analyst:`,
+    "1. Plan: split the question into 3 to 6 sub-questions (what must be true, what to compare, what numbers are needed).",
+    "2. Search each sub-question from more than one angle (different words, the manufacturer's or standard body's own site, independent reviews, recent news). Run several searches at a time.",
+    "3. Read the primary sources in full with read_page: datasheets, standards, official documentation, papers. Prefer them over summaries and forums. Read at least 6 to 10 pages when the topic allows.",
+    "4. Check: when sources disagree, look for a third and say which you trust and why. Note dates: say when something may be out of date.",
+    "5. Use search_documents too when the person's own documents bear on it, and run_python for any calculation or comparison table you need.",
+    "Then write the report in Markdown: a 3 to 5 line summary first; then a section per sub-question; a comparison table where options are compared; then 'Limits and open questions'. Cite every fact with its source number, like [3]. Never invent a source, a number or a part number: if you couldn't find it, say so.",
+  ].join("\n");
+}
 const PAGE_CHARS = 12_000;
 const RESULT_CHARS = 1_500;
 

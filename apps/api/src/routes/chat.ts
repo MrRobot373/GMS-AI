@@ -16,7 +16,7 @@ import { quotaFor, quotaMessage } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
 import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
 import { awaitApproval, callConnectorTool, chatConnectorTools, decideApproval, waitingApprovals } from "../services/chat-connectors";
-import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS, runChatTool, type ChatToolSet } from "../services/chat-tools";
+import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS, RESEARCH_CALLS_PER_ROUND, RESEARCH_ROUNDS, researchPrompt, runChatTool, type ChatToolSet } from "../services/chat-tools";
 import { getGemSettings, webSearchDeps } from "../services/gem";
 import { MAX_UPLOAD_BYTES } from "./documents";
 import { asData, chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
@@ -50,6 +50,13 @@ const FILE_TYPES: Record<string, string> = {
 };
 /** A file's media type, by its extension (anything unknown downloads as bytes). */
 const chatFileType = (name: string) => FILE_TYPES[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
+
+/** Chats with a deep research running (it carries on when the page is closed), and since when. */
+const researching = new Map<string, number>();
+const isResearching = (chatId: string) => {
+  const since = researching.get(chatId);
+  return since !== undefined && Date.now() - since < 60 * 60_000;
+};
 
 async function requireChatSection(ctx: AppContext, u: SessionUser, workspaceId: string) {
   const m = await requireWorkspaceCap(ctx, u, workspaceId, "workspace.use");
@@ -180,6 +187,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const locale = localeOf(req);
     return {
       ...c,
+      // A deep research is still running: its answer arrives when it's done.
+      researching: isResearching(c.id),
       messages: messages.map((m) => ({
         ...m,
         ...(m.error ? { error: tr(locale, m.error) } : {}),
@@ -392,6 +401,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     // The model may also search the web on its own (the web_search tool) wherever the organization allows web search in
     // chat; "Search the web" makes it search before answering.
     const searchDeps = gem.chatWebSearch ? await webSearchDeps(ctx).then((d) => (webSearchReady(d) ? d : null)).catch(() => null) : null;
+    // Deep research works from the web, so it needs web search; one at a time per chat.
+    const research = !!body.research;
+    if (research && !searchDeps) throw badRequest("Deep research needs web search in chat. An admin can set a provider in Admin → Settings → GEM AI.");
+    if (research && isResearching(c.id)) throw new HttpError(409, "A deep research is already running in this chat.", "research_running");
     if (body.webSearch && !isSmallTalk(content)) {
       if (!gem.chatWebSearch) webOff = msg("Web search is turned off for your organization.");
       else if (searchDeps) webDeps = searchDeps;
@@ -527,7 +540,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem + chatToolsPrompt({ ...toolSet, calculators: false }) + (inputs.length ? `\nFiles the person gave this chat, for run_python: ${inputs.slice(0, 40).join(", ")}.` : "") +
           (connNames.length
             ? `\nThe person's connected apps: ${connNames.join(", ")}. Use their tools (named <app>__<tool>) when the question is about their mail, files, calendar or other data there. A tool that changes something (sends, creates, deletes) is shown to the person to approve when you call it: call it directly, don't ask in your reply first.`
-            : ""),
+            : "") +
+          (research ? researchPrompt() : ""),
       },
       ...history
         .reverse()
@@ -553,9 +567,14 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       connection: "keep-alive",
       "x-accel-buffering": "no",
     });
-    const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    const send = (event: string, data: unknown) => {
+      if (!res.destroyed && !res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
     const abort = new AbortController();
-    res.on("close", () => abort.abort());
+    // Deep research carries on when the page is closed; anything else stops with it.
+    res.on("close", () => {
+      if (!research) abort.abort();
+    });
 
     send("start", {
       userMessageId: userMsgId,
@@ -618,11 +637,14 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     let allowTools = tools.length > 0;
     const pending: ChatMessage[] = [];
     let thought = false;
-    for (let round = 0; round <= MAX_TOOL_ROUNDS && !error && !abort.signal.aborted; round++) {
+    const maxRounds = research ? RESEARCH_ROUNDS : MAX_TOOL_ROUNDS;
+    const maxCalls = research ? RESEARCH_CALLS_PER_ROUND : MAX_CALLS_PER_ROUND;
+    if (research) researching.set(c.id, Date.now());
+    for (let round = 0; round <= maxRounds && !error && !abort.signal.aborted; round++) {
       let roundText = "";
       let calls: { id: string; name: string; arguments: string }[] = [];
       // The last round has no tools: the model answers from what it found.
-      const offer = allowTools && round < MAX_TOOL_ROUNDS ? tools : undefined;
+      const offer = allowTools && round < maxRounds ? tools : undefined;
       try {
         for await (const ev of streamChat(provider, m.modelKey, [...messages, ...pending], { signal: abort.signal, thinking, tools: offer })) {
           if (ev.type === "delta") {
@@ -661,8 +683,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       });
       for (const [i, call] of calls.entries()) {
         const callId = call.id || `call_${round}_${i}`;
-        if (i >= MAX_CALLS_PER_ROUND) {
-          pending.push({ role: "tool", tool_call_id: callId, content: `Not run: at most ${MAX_CALLS_PER_ROUND} tools at a time. Ask again if you still need it.` });
+        if (i >= maxCalls) {
+          pending.push({ role: "tool", tool_call_id: callId, content: `Not run: at most ${maxCalls} tools at a time. Ask again if you still need it.` });
           continue;
         }
         let args: Record<string, unknown> = {};
@@ -760,6 +782,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       })
       .returning({ id: message.id });
     await db.update(chat).set({ leafMessageId: assistant!.id }).where(eq(chat.id, c.id));
+    researching.delete(c.id);
     await db.insert(usageEvent).values({
       workspaceId: c.workspaceId,
       projectId: c.projectId,

@@ -171,6 +171,8 @@ export const sendMessageSchema = z
     regenerateOf: z.string().optional(),
     /** Search the web for this answer (when the organization has web search set up and allows it in chat). */
     webSearch: z.boolean().optional(),
+    /** Deep research: many searches and pages, then a report (docs/15-gem-ai.md, "Deep research"). Needs web search. */
+    research: z.boolean().optional(),
   })
   .refine((b) => b.content || b.regenerateOf, { message: "Write a message first" });
 

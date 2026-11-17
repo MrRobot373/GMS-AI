@@ -467,4 +467,6 @@ export const HI: Record<string, string> = {
   "Python in chat is turned off for your organization.": "आपके संगठन के लिए चैट में Python बंद है।",
   "This chat's folder is full.": "इस चैट का फ़ोल्डर भर गया है।",
   "Nothing is waiting for your approval here.": "यहाँ आपकी मंज़ूरी के लिए कुछ भी इंतज़ार में नहीं है।",
+  "Deep research needs web search in chat. An admin can set a provider in Admin → Settings → GEM AI.": "गहन शोध के लिए चैट में वेब खोज चाहिए। एडमिन, एडमिन → सेटिंग्स → GEM AI में प्रोवाइडर सेट कर सकते हैं।",
+  "A deep research is already running in this chat.": "इस चैट में एक गहन शोध पहले से चल रहा है।",
 };

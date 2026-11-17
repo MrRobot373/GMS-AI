@@ -112,6 +112,8 @@ export interface ChatDetail {
   /** Auto picks each answer's model. */
   auto?: boolean;
   leafMessageId: string | null;
+  /** A deep research is still running in this chat: its answer arrives when it's done. */
+  researching?: boolean;
   messages: ChatMessageRow[];
   documents: { id: string; name: string }[];
   readOnly: boolean;
