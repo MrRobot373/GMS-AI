@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Chat AI uses tools on its own.** Like ChatGPT, the model now decides when to search the web, read a page, search the
+  person's documents or run a calculator, step by step, for up to 10 rounds (was 4, calculators only). Each step shows
+  in the chat while it runs and its sources are numbered with the answer's. Where the organization allows web search in
+  chat, the model may search without the **Search the web** switch; turn web search in chat off to prevent that.
 - **Project budgets and usage per project.** A project's owner or an admin can give the project its own token budget per
   period: a total, a per-person amount (or an even split), and a share for any one person. It applies on top of the
   workspace's budget, so a call in the project must fit both. Every chat, Work AI task, brain and Knowledge call made in

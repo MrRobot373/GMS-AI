@@ -55,7 +55,7 @@ import { chatTitle, greeting, routingReason, timeAgo, TIER_NAMES } from "@/lib/f
 import type { ChatCalculation } from "./calculation-card";
 import type { Routing } from "@aatmiq/shared";
 import type { AvailableModel, ChatDetail, Citation, DocumentRow, MessageWeb, QuotaStatus } from "@/lib/types";
-import { SourcesRow, useSourceDialog, WebSearchLine } from "./citations";
+import { SourcesRow, ToolSteps, useSourceDialog, WebSearchLine, type ToolStep } from "./citations";
 import { CalculationCard } from "./calculation-card";
 import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import { Markdown } from "./markdown";
@@ -78,6 +78,8 @@ interface UiMessage {
   calculation?: ChatCalculation | null;
   /** The answer searches (or searched) the web; `searching` until the sources are in. */
   web?: (MessageWeb & { searching?: boolean }) | null;
+  /** Tools the model used for this answer, in order (shown while it's prepared; not kept after a reload). */
+  steps?: ToolStep[];
 }
 
 const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
@@ -381,6 +383,23 @@ export function ChatView({
               const cites = [...(m.citations ?? []), ...((ev.data.citations ?? []) as Citation[])];
               return { ...m, web: { queries: ev.data.queries ?? [], provider: ev.data.provider ?? null, note: ev.data.note ?? null }, citations: cites.length ? cites : null };
             });
+          } else if (ev.event === "step") {
+            const step = ev.data as ToolStep;
+            patchAsst((m) => {
+              const steps = [...(m.steps ?? [])];
+              const open = steps.findLastIndex((x) => x.running && x.tool === step.tool);
+              if (!step.running && open >= 0) steps[open] = { ...steps[open]!, ...step, detail: step.detail || steps[open]!.detail };
+              else steps.push(step);
+              return { ...m, steps };
+            });
+          } else if (ev.event === "sources") {
+            patchAsst((m) => {
+              const cites = [...(m.citations ?? []), ...((ev.data.citations ?? []) as Citation[])];
+              return { ...m, citations: cites.length ? cites : null };
+            });
+          } else if (ev.event === "retract") {
+            // Words the model wrote before calling a tool ("Let me look that up") aren't part of the answer.
+            patchAsst((m) => ({ ...m, content: m.content.slice(0, Math.max(0, m.content.length - Number(ev.data.chars ?? 0))) }));
           } else if (ev.event === "calculation") patchAsst((m) => ({ ...m, calculation: ev.data.calculation ?? m.calculation }));
           else if (ev.event === "delta") patchAsst((m) => ({ ...m, content: m.content + ev.data.text }));
           else if (ev.event === "done") {
@@ -948,7 +967,7 @@ function MessageBlock({
             </span>
           </Tooltip>
         )}
-        {m.streaming && !m.web?.searching && (
+        {m.streaming && !m.web?.searching && !m.steps?.some((x) => x.running) && (
           <span className="bg-[linear-gradient(90deg,var(--fg-subtle)_0%,var(--fg)_50%,var(--fg-subtle)_100%)] bg-[length:200%_100%] bg-clip-text text-transparent animate-shimmer">
             {m.content ? t("Writing…") : m.routing?.thinking ? t("Thinking it through…") : t("Thinking…")}
           </span>
@@ -956,8 +975,9 @@ function MessageBlock({
       </div>
       <div className="pl-6">
         {m.web && <WebSearchLine web={m.web} citations={m.citations} streaming={m.streaming} />}
+        {!!m.steps?.length && <ToolSteps steps={m.steps} />}
         {m.calculation && <CalculationCard c={m.calculation} />}
-        {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} plainLinks={!!m.web} /> : null}
+        {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} plainLinks={!!m.web || !!m.steps?.some((x) => x.tool === "web_search" || x.tool === "read_page")} /> : null}
         {m.streaming && m.content && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] animate-caret bg-fg" />}
         {!m.streaming && m.citations && m.citations.length > 0 && <SourcesRow citations={m.citations} onOpen={onCite} />}
         {m.error && (

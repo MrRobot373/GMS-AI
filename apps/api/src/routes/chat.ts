@@ -12,7 +12,8 @@ import { inBackground, learnFromChat } from "../services/brain-learn";
 import { chooseModel, isSmallTalk } from "../services/router";
 import { quotaFor, quotaMessage } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
-import { CALCULATOR_TOOLS, calcContext, dispatchCalculatorTool, findCalculation, saveChatCalculation } from "../services/calc-tool";
+import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
+import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS, runChatTool, type ChatToolSet } from "../services/chat-tools";
 import { getGemSettings, webSearchDeps } from "../services/gem";
 import { chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
 import { webSearchReady, type WebSearchDeps } from "../services/web-search";
@@ -308,13 +309,13 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const gem = await getGemSettings(db);
     let webDeps: WebSearchDeps | null = null;
     let webOff: string | null = null;
+    // The model may also search the web on its own (the web_search tool) wherever the organization allows web search in
+    // chat; "Search the web" makes it search before answering.
+    const searchDeps = gem.chatWebSearch ? await webSearchDeps(ctx).then((d) => (webSearchReady(d) ? d : null)).catch(() => null) : null;
     if (body.webSearch && !isSmallTalk(content)) {
       if (!gem.chatWebSearch) webOff = msg("Web search is turned off for your organization.");
-      else {
-        const deps = await webSearchDeps(ctx);
-        if (webSearchReady(deps)) webDeps = deps;
-        else webOff = msg("Web search isn't set up. An admin can choose a provider in Admin → Settings → GEM AI.");
-      }
+      else if (searchDeps) webDeps = searchDeps;
+      else webOff = msg("Web search isn't set up. An admin can choose a provider in Admin → Settings → GEM AI.");
     }
 
     // The model: the one chosen, or Auto's pick for this message.
@@ -426,8 +427,13 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       });
     }
 
+    // Tools the model calls on its own: the web (where allowed), the person's documents, the calculators.
+    const toolSet: ChatToolSet = { web: !!searchDeps, documents: true, calculators: calcOn };
     const messages: ChatMessage[] = [
-      { role: "system", content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem },
+      {
+        role: "system",
+        content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem + chatToolsPrompt({ ...toolSet, calculators: false }),
+      },
       ...history
         .reverse()
         .filter((h) => !h.error && h.role !== "system")
@@ -499,6 +505,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       send("search", { queries: [], provider: null, note: tr(locale, web.note!), sources: [], citations: [] });
     }
     const citations = [...docContext.citations, ...webCitations];
+    const toolQueries: string[] = [];
+    let toolCited = false;
 
     const started = Date.now();
     let text = "";
@@ -508,14 +516,17 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       usage = { inputTokens: usage.inputTokens + u.inputTokens, outputTokens: usage.outputTokens + u.outputTokens, estimated: usage.estimated && u.estimated };
     };
     // A provider that rejects the tools field is asked again without them.
-    let allowTools = calcOn;
+    let allowTools = toolSet.web || toolSet.documents || toolSet.calculators;
+    const tools = chatTools(toolSet);
     const pending: ChatMessage[] = [];
     let thought = false;
-    for (let round = 0; round < 4 && !error && !abort.signal.aborted; round++) {
+    for (let round = 0; round <= MAX_TOOL_ROUNDS && !error && !abort.signal.aborted; round++) {
       let roundText = "";
       let calls: { id: string; name: string; arguments: string }[] = [];
+      // The last round has no tools: the model answers from what it found.
+      const offer = allowTools && round < MAX_TOOL_ROUNDS ? tools : undefined;
       try {
-        for await (const ev of streamChat(provider, m.modelKey, [...messages, ...pending], { signal: abort.signal, thinking, tools: allowTools ? CALCULATOR_TOOLS : undefined })) {
+        for await (const ev of streamChat(provider, m.modelKey, [...messages, ...pending], { signal: abort.signal, thinking, tools: offer })) {
           if (ev.type === "delta") {
             roundText += ev.text;
             text += ev.text;
@@ -539,35 +550,67 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         if (!abort.signal.aborted) error = e instanceof Error ? e.message : msg("The model failed to respond.");
         break;
       }
-      if (!allowTools || calls.length === 0) break;
+      if (!offer || calls.length === 0) break;
+      // What it said before calling tools ("Let me look that up") isn't part of the answer.
+      if (roundText) {
+        text = text.slice(0, text.length - roundText.length);
+        send("retract", { chars: roundText.length });
+      }
       pending.push({
         role: "assistant",
         content: roundText,
         tool_calls: calls.map((c, i) => ({ id: c.id || `call_${round}_${i}`, type: "function" as const, function: { name: c.name, arguments: c.arguments || "{}" } })),
       });
       for (const [i, call] of calls.entries()) {
-        let args: unknown = {};
+        const callId = call.id || `call_${round}_${i}`;
+        if (i >= MAX_CALLS_PER_ROUND) {
+          pending.push({ role: "tool", tool_call_id: callId, content: `Not run: at most ${MAX_CALLS_PER_ROUND} tools at a time. Ask again if you still need it.` });
+          continue;
+        }
+        let args: Record<string, unknown> = {};
         try {
-          args = JSON.parse(call.arguments || "{}");
+          const parsed = JSON.parse(call.arguments || "{}");
+          if (parsed && typeof parsed === "object") args = parsed;
         } catch {
           args = {};
         }
-        const out = dispatchCalculatorTool(call.name, args, gem.betaCalculators);
+        send("step", { tool: call.name, detail: typeof args.query === "string" ? args.query : typeof args.url === "string" ? domainOf(args.url) : "", running: true });
+        const before = citations.length;
+        const out = await runChatTool(call.name, args, {
+          db,
+          box,
+          workspaceId: c.workspaceId,
+          userId: u.id,
+          deps: searchDeps,
+          showBeta: gem.betaCalculators,
+          nextCitation: () => citations.length + 1,
+          addCitations: (more) => void citations.push(...more),
+          queries: toolQueries,
+          onEmbedTokens: async (tokens, modelId) => {
+            await db.insert(usageEvent).values({ workspaceId: c.workspaceId, projectId: c.projectId, userId: u.id, modelId, section: "chat", inputTokens: tokens, outputTokens: 0 });
+          },
+        });
+        send("step", { ...out.step, running: false });
+        if (citations.length > before) {
+          toolCited = true;
+          send("sources", { citations: citations.slice(before) });
+        }
         if (out.calculation) {
           calculation = out.calculation;
           send("calculation", { calculation });
           await saveChatCalculation(db, u.id, c.workspaceId, out.calculation).catch(() => undefined);
         }
-        pending.push({ role: "tool", tool_call_id: call.id || `call_${round}_${i}`, content: out.text });
+        pending.push({ role: "tool", tool_call_id: callId, content: out.text });
       }
     }
+    if (toolQueries.length) web = { queries: [...(web?.queries ?? []), ...toolQueries], provider: searchDeps?.provider ?? web?.provider ?? null, note: null };
     if (abort.signal.aborted && usage.outputTokens === 0) {
       usage = { inputTokens: messages.reduce((n, x) => n + Math.ceil(x.content.length / 4), 0), outputTokens: Math.ceil(text.length / 4), estimated: true };
     }
     // With web search, a number that matches no source is taken out of what's saved (and shown),
     // and so is any image the model wrote (the page shows web answers' images as their alt text).
     const streamed = text;
-    if (web) text = dropModelImages(dropUnknownCitations(text, citations.length));
+    if (web || toolCited) text = dropModelImages(dropUnknownCitations(text, citations.length));
 
     const [assistant] = await db
       .insert(message)

@@ -85,6 +85,28 @@ The search words go to the chosen provider. With SearXNG they stay on your own s
 forwards them to the engines in its `settings.yml`; the paid providers see them, and with Ollama
 and Tavily they also send back page text.
 
+### Tools in chat
+
+Chat AI calls tools on its own when a question needs them (`services/chat-tools.ts`), like ChatGPT:
+
+| Tool | What it does | Offered when |
+|---|---|---|
+| `web_search` | Searches with the organization's provider; returns up to 6 numbered results with extracts | Web search in chat is allowed and a provider is set up |
+| `read_page` | Reads a page or online PDF (first ~12,000 characters) as a numbered source; private addresses are refused | Same |
+| `search_documents` | Searches what the person may open: their documents, workspace ones, their projects' sources | Always |
+| `calculators_search`, `calculators_run` | The tested calculators | Calculators are on for the person |
+
+- The model decides when and goes step by step (search, then read), for up to 10 rounds of at most 4 calls each; the
+  11th round has no tools, so it answers from what it found.
+- Each step shows in the chat while it runs (*Searching the web · 6 results*, *Read docs.example.org*, *Searched your
+  documents*), and its sources join the answer's numbered sources. Search queries are saved with the answer (*Searched
+  the web*), so they still show after a reload.
+- Words the model wrote before calling a tool ("Let me look that up") are taken back; citation numbers that match no
+  source are taken out, as for web search.
+- **Search the web** still makes it search before answering (below). Without it, the model may search on its own where
+  the organization allows web search in chat: turn that off in Admin → Settings → GEM AI to keep chat off the web.
+- Tool text is treated as data, and the model is told to ignore instructions in it.
+
 ### Web search in chat
 
 When a provider is set up and *Let people search the web in chat* is on, the chat box has a

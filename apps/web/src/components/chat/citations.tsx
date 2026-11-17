@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Download, FileText, Globe, MessageSquare, TriangleAlert, Workflow } from "lucide-react";
+import { ArrowUpRight, Calculator, Download, FileText, FolderSearch, Globe, MessageSquare, TriangleAlert, Workflow, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FileIcon } from "@/components/documents/use-documents";
@@ -146,6 +146,62 @@ export function SourcesRow({ citations, onOpen }: { citations: Citation[]; onOpe
  * sources as chips while the answer is written (after that they're in the sources row), or why
  * there are none.
  */
+/** A tool the model used while preparing an answer (see the "step" events of POST /api/chats/:id/messages). */
+export interface ToolStep {
+  tool: string;
+  detail: string;
+  /** A number of results, "0", "failed", "off" or "empty". */
+  outcome?: string;
+  running?: boolean;
+}
+
+/** The steps an answer took: searches, pages read, documents searched, calculators run. */
+export function ToolSteps({ steps }: { steps: ToolStep[] }) {
+  const t = useT();
+  const line = (x: ToolStep) => {
+    const n = x.outcome && /^\d+$/.test(x.outcome) ? Number(x.outcome) : null;
+    const failed = x.outcome === "failed" || x.outcome === "off" || x.outcome === "empty";
+    switch (x.tool) {
+      case "web_search":
+        return {
+          icon: Globe,
+          label: x.running ? t("Searching the web") : n !== null ? t.n(n, "Searched the web · {n} result", "Searched the web · {n} results") : failed ? t("Web search didn't work") : t("Searched the web"),
+        };
+      case "read_page":
+        return { icon: FileText, label: x.running ? t("Reading") : failed ? t("Couldn't read") : t("Read") };
+      case "search_documents":
+        return {
+          icon: FolderSearch,
+          label: x.running ? t("Searching your documents") : n !== null ? t.n(n, "Searched your documents · {n} passage", "Searched your documents · {n} passages") : t("Searched your documents"),
+        };
+      case "calculators_search":
+        return { icon: Calculator, label: x.running ? t("Finding a calculator") : t("Looked for a calculator") };
+      case "calculators_run":
+        return { icon: Calculator, label: x.running ? t("Calculating") : failed ? t("The calculation didn't work") : t("Calculated") };
+      default:
+        return { icon: Wrench, label: x.tool };
+    }
+  };
+  return (
+    <ol className="mb-3 space-y-1" data-testid="tool-steps">
+      {steps.map((x, i) => {
+        const { icon: Icon, label } = line(x);
+        return (
+          <li key={i} className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-subtle" data-tool={x.tool}>
+            <Icon className={cn("size-3.5 shrink-0", x.running && "animate-pulse")} />
+            <span className="shrink-0">{label}</span>
+            {x.detail && (
+              <span className="truncate text-fg-muted" title={x.detail}>
+                {x.detail}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function WebSearchLine({ web, citations, streaming }: { web: MessageWeb & { searching?: boolean }; citations?: Citation[] | null; streaming?: boolean }) {
   const t = useT();
   const sources = (citations ?? []).filter((c) => c.kind === "web");
