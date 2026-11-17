@@ -80,6 +80,8 @@ export async function meRoutes(app: FastifyInstance, ctx: AppContext) {
         modules: g.modules,
         betaCalculators: g.betaCalculators,
         webSearch: g.chatWebSearch && webSearchReady(await webSearchDeps(ctx)),
+        // Chat AI may run Python in the chat's folder (so any file can be attached for it).
+        chatSandbox: g.chatSandbox && !ctx.chatSandbox.unavailable(),
       })),
       unreadNotifications: unread?.n ?? 0,
       license: {

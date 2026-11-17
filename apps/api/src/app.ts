@@ -29,6 +29,7 @@ import { workRoutes } from "./routes/work";
 import { workConfigRoutes } from "./routes/work-config";
 import { startScheduler } from "./services/schedules";
 import { CodeServers } from "./services/code";
+import { ChatSandbox, sweepChatFolders } from "./services/chat-sandbox";
 import { codeRoutes } from "./routes/code";
 import { codeInternalRoutes } from "./routes/code-internal";
 import { createCodeProxy } from "./routes/code-proxy";
@@ -158,6 +159,11 @@ export async function buildApp(
   });
   ideProxy = createCodeProxy(ctx);
   ideProxy.attach(app.server);
+  ctx.chatSandbox = new ChatSandbox(ctx);
+  // Folders of chats that are gone (deleted with their project or person, temporary ones purged): hourly.
+  const sweep = setInterval(() => void sweepChatFolders(db, ctx.chatSandbox).catch((e) => app.log.warn(e, "sweeping chat folders failed")), 3_600_000);
+  sweep.unref();
+  app.addHook("onClose", async () => clearInterval(sweep));
 
   // Keyed by session when signed in, so colleagues behind one office IP don't share a bucket.
   await app.register(rateLimit, {

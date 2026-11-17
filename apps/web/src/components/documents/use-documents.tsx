@@ -19,6 +19,9 @@ export function useDocuments(workspaceId: string) {
 export const ACCEPT =
   ".pdf,.docx,.xlsx,.xlsm,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.html,.htm,.log,.js,.jsx,.ts,.tsx,.py,.java,.go,.rs,.rb,.php,.c,.h,.cpp,.cs,.kt,.swift,.sql,.sh,.css";
 
+/** Files the library reads as documents (the rest can only go to a chat's folder, for Python). */
+export const isDocumentFile = (name: string) => ACCEPT.split(",").includes(`.${name.split(".").pop()?.toLowerCase() ?? ""}`);
+
 export function FileIcon({ name, className }: { name: string; className?: string }) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const Icon = ["csv", "tsv", "xlsx", "xlsm"].includes(ext)

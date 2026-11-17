@@ -19,6 +19,8 @@ export interface Config {
   version?: string;
   /** Where Work AI task folders live. */
   workDir?: string;
+  /** Each chat's private folder for the Python it runs (CHAT_DIR). */
+  chatDir?: string;
   /** How the agent runtime reaches this API (default: this server on 127.0.0.1). */
   workControlUrl?: string | null;
   /** "on": commands can only change the task folder (bwrap/Landlock). "off" where the kernel offers neither. */
@@ -106,6 +108,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     licenseServerUrl: env.LICENSE_SERVER_URL === undefined ? "https://license.aatmiq.com" : env.LICENSE_SERVER_URL || null,
     version: env.APP_VERSION || readVersion(),
     workDir: env.WORK_DIR ?? ".data/work",
+    chatDir: env.CHAT_DIR ?? ".data/chat",
     workControlUrl: env.WORK_CONTROL_URL || null,
     workSandbox: env.WORK_SANDBOX === "off" ? "off" : "on",
     workIsolation: env.WORK_ISOLATION === "off" ? "off" : env.WORK_ISOLATION === "container" ? "container" : "auto",

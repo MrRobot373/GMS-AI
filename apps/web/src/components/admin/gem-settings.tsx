@@ -29,6 +29,9 @@ interface Gem {
   webUrl: string | null;
   chatWebSearch: boolean;
   lessonCheck: boolean;
+  chatSandbox: boolean;
+  /** Why Python in chat can't run on this server; null when it can. */
+  chatSandboxProblem: string | null;
   web: {
     provider: WebProvider | null;
     providerFrom: "settings" | "environment" | "none";
@@ -237,7 +240,20 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
         {t("Search words go to the provider you choose; with SearXNG they stay on your own server. Pages from the results are read by this server, at public addresses only. Links come only from search results, never from what a model wrote.")}
       </p>
       <div>
-        {switchRow(t("Let people search the web in chat"), t("A Search the web switch in the chat box, when a provider is set."), g.chatWebSearch, (v) => save({ chatWebSearch: v }))}
+        {switchRow(
+          t("Let people search the web in chat"),
+          t("Chat AI searches and reads pages when a question needs it, and the Search the web switch makes it search first. Needs a provider."),
+          g.chatWebSearch,
+          (v) => save({ chatWebSearch: v }),
+        )}
+        {switchRow(
+          t("Let Chat AI run Python"),
+          g.chatSandboxProblem
+            ? t("Not available on this server: {problem}", { problem: g.chatSandboxProblem })
+            : t("In each chat's private folder, confined like Work AI's commands: calculations, file and ZIP analysis, charts, and Excel, Word, PowerPoint and PDF files to download."),
+          g.chatSandbox,
+          (v) => save({ chatSandbox: v }),
+        )}
         {switchRow(
           t("Check lessons before they're saved"),
           t("Your Advanced model checks each lesson's facts, formulas and references, with web sources when search is set up, and corrections are listed with the lesson. Uses more tokens."),

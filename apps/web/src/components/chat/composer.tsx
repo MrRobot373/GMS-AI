@@ -3,6 +3,7 @@
 import { ArrowUp, AtSign, Check, ChevronDown, Globe, Loader2, Mic, Plus, Search, Sparkles, Square, X } from "lucide-react";
 import { Popover } from "radix-ui";
 import { ACCEPT, FileIcon } from "@/components/documents/use-documents";
+import { useSession } from "@/components/app/session";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Tooltip } from "@/components/ui/misc";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/overlay";
@@ -17,6 +18,8 @@ export interface Attachment {
   id?: string;
   name: string;
   status: "uploading" | "processing" | "ready" | "failed";
+  /** Not a document (a ZIP, a program, data): goes to the chat's folder for Python when the message is sent. */
+  file?: File;
 }
 
 export interface ComposerHandle {
@@ -68,6 +71,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   ref,
 ) {
   const t = useT();
+  const { me } = useSession();
+  // With Python in chat, any file can be attached: what isn't a document goes to the chat's folder.
+  const anyFile = !!me.gem?.chatSandbox;
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   useImperativeHandle(ref, () => ({ focus: () => ta.current?.focus() }));
@@ -126,7 +132,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         ref={fileRef}
         type="file"
         multiple
-        accept={ACCEPT}
+        accept={anyFile ? undefined : ACCEPT}
         className="hidden"
         data-testid="composer-upload"
         onChange={(e) => {

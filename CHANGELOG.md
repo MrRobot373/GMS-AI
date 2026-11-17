@@ -9,6 +9,12 @@ without one.
 
 ## Unreleased
 
+- **Python in chat.** Chat AI can now run Python in each chat's own folder to calculate, analyse files (CSV, Excel, PDF,
+  ZIP), draw charts and make Excel, Word, PowerPoint, PDF and image files to download, shown under the answer. Any file
+  can be attached for it. Programs are confined like Work AI's commands (Landlock: writes only in the chat's folder; the
+  person's own Unix user and the user firewall when running as root; time, memory and size limits). Admins can turn it
+  off (Admin → Settings → GEM AI). Tool steps and made files are now saved with each answer. Migration `0032`; new
+  `CHAT_DIR` setting.
 - **Chat AI uses tools on its own.** Like ChatGPT, the model now decides when to search the web, read a page, search the
   person's documents or run a calculator, step by step, for up to 10 rounds (was 4, calculators only). Each step shows
   in the chat while it runs and its sources are numbered with the answer's. Where the organization allows web search in

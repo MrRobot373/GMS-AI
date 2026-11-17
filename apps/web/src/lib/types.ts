@@ -27,7 +27,8 @@ export interface Me {
   /** Aatmiq Code is shown on this server (CODE_ENABLED=true). Hidden otherwise: no menu, no admin switches. */
   codeEnabled?: boolean;
   /** GEM AI modules the organization has switched on; webSearch: chat offers "Search the web". */
-  gem?: { modules: { learning: boolean; calculators: boolean; knowledge: boolean }; betaCalculators: boolean; webSearch?: boolean };
+  /** chatSandbox: Chat AI can run Python in the chat's folder, so any file can be attached for it. */
+  gem?: { modules: { learning: boolean; calculators: boolean; knowledge: boolean }; betaCalculators: boolean; webSearch?: boolean; chatSandbox?: boolean };
   unreadNotifications: number;
   license?: {
     state: string;
@@ -196,6 +197,9 @@ export interface ChatMessageRow {
   calculation?: import("@/components/chat/calculation-card").ChatCalculation | null;
   /** The answer searched the web (its sources are among the citations). */
   web?: MessageWeb | null;
+  /** Tools Chat AI used for this answer, and the files Python made in the chat's folder. */
+  steps?: { tool: string; detail: string; outcome?: string }[] | null;
+  files?: { path: string; size: number }[] | null;
   createdAt: string;
 }
 

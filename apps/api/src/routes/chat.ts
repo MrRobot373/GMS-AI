@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
 import { GatewayError, streamChat, type ChatMessage } from "@aatmiq/model-gateway";
 import { AUTO_MODEL_ID, chatCreateSchema, chatUpdateSchema, estimateTokens, isOrgAdmin, PRODUCT_NAME, sendMessageSchema, type Routing } from "@aatmiq/shared";
@@ -15,6 +16,7 @@ import { localeOf, msg, tr } from "../i18n";
 import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
 import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS, runChatTool, type ChatToolSet } from "../services/chat-tools";
 import { getGemSettings, webSearchDeps } from "../services/gem";
+import { MAX_UPLOAD_BYTES } from "./documents";
 import { chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
 import { webSearchReady, type WebSearchDeps } from "../services/web-search";
 
@@ -35,6 +37,17 @@ async function loadReadableChat(ctx: AppContext, u: SessionUser, chatId: string)
   await getProjectAccess(ctx, u, c.projectId);
   return { chat: c, readOnly: true };
 }
+
+const FILE_TYPES: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+  pdf: "application/pdf", csv: "text/csv", txt: "text/plain", md: "text/markdown", json: "application/json", html: "text/html", htm: "text/html",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  zip: "application/zip",
+};
+/** A file's media type, by its extension (anything unknown downloads as bytes). */
+const chatFileType = (name: string) => FILE_TYPES[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
 
 async function requireChatSection(ctx: AppContext, u: SessionUser, workspaceId: string) {
   const m = await requireWorkspaceCap(ctx, u, workspaceId, "workspace.use");
@@ -244,7 +257,56 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     const c = await loadOwnChat(db, u, req.params.id);
     await db.delete(chat).where(eq(chat.id, c.id));
+    await ctx.chatSandbox.remove(c.id);
     return { ok: true };
+  });
+
+  /* ───────────── The chat's folder (Python in chat) ───────────── */
+
+  /** Files in the chat's folder: what Python made, and what the person attached there. */
+  app.get<{ Params: { id: string } }>("/api/chats/:id/files", async (req) => {
+    const u = await requireUser(ctx, req);
+    const { chat: c } = await loadReadableChat(ctx, u, req.params.id);
+    return { files: await ctx.chatSandbox.list(c.id), available: !ctx.chatSandbox.unavailable() };
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { path?: string; download?: string } }>("/api/chats/:id/files/content", async (req, reply) => {
+    const u = await requireUser(ctx, req);
+    const { chat: c } = await loadReadableChat(ctx, u, req.params.id);
+    const rel = String(req.query.path ?? "");
+    const data = await ctx.chatSandbox.read(c.id, rel);
+    if (!data) throw notFound("File not found");
+    const name = rel.split("/").pop() || "file";
+    const type = chatFileType(name);
+    // Pictures show in the page; everything else (HTML and SVG included, which could run script) is downloaded.
+    const inline = !req.query.download && /^image\/(png|jpeg|gif|webp)$/.test(type);
+    return reply
+      .header("content-type", inline ? type : type === "text/html" || type === "image/svg+xml" ? "application/octet-stream" : type)
+      .header("x-content-type-options", "nosniff")
+      .header("content-security-policy", "default-src 'none'; sandbox")
+      .header("content-disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`)
+      .send(data);
+  });
+
+  /** A file for Python to work on that isn't a document (a ZIP, a script, data): straight into inputs/. */
+  app.post<{ Params: { id: string } }>("/api/chats/:id/files", async (req) => {
+    const u = await requireUser(ctx, req);
+    const c = await loadOwnChat(db, u, req.params.id);
+    if (!(await getGemSettings(db)).chatSandbox) throw forbidden("Python in chat is turned off for your organization.");
+    const why = ctx.chatSandbox.unavailable();
+    if (why) throw new HttpError(503, why, "sandbox_unavailable");
+    if (!req.isMultipart()) throw badRequest("Send the file as multipart/form-data");
+    let saved: string | null = null;
+    for await (const part of req.parts({ limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })) {
+      if (part.type !== "file") continue;
+      const data = await part.toBuffer();
+      if (part.file.truncated) throw new HttpError(413, "Files can be up to 25 MB.", "too_large");
+      saved = await ctx.chatSandbox.addInput(c.id, u.id, part.filename, data).catch((e) => {
+        throw new HttpError(413, e instanceof Error ? e.message : "This chat's folder is full.", "too_large");
+      });
+    }
+    if (!saved) throw badRequest("No file was uploaded");
+    return { path: saved };
   });
 
   /**
@@ -428,11 +490,18 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     }
 
     // Tools the model calls on its own: the web (where allowed), the person's documents, the calculators.
-    const toolSet: ChatToolSet = { web: !!searchDeps, documents: true, calculators: calcOn };
+    const toolSet: ChatToolSet = { web: !!searchDeps, documents: true, calculators: calcOn, python: gem.chatSandbox && !ctx.chatSandbox.unavailable() };
+    // Python sees the person's files in inputs/: say which are there.
+    const inputs = toolSet.python && (chatDocIds.length > 0 || existsSync(ctx.chatSandbox.dir(c.id)))
+      ? await ctx.chatSandbox
+          .syncInputs(c.id, u.id)
+          .then(async () => (await ctx.chatSandbox.list(c.id)).filter((f) => f.path.startsWith("inputs/")).map((f) => f.path))
+          .catch(() => [] as string[])
+      : [];
     const messages: ChatMessage[] = [
       {
         role: "system",
-        content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem + chatToolsPrompt({ ...toolSet, calculators: false }),
+        content: (docContext.system ? `${system}\n\n${docContext.system}` : system) + (brain ? `\n\n${brain}` : "") + calcSystem + chatToolsPrompt({ ...toolSet, calculators: false }) + (inputs.length ? `\nFiles the person gave this chat, for run_python: ${inputs.slice(0, 40).join(", ")}.` : ""),
       },
       ...history
         .reverse()
@@ -507,6 +576,9 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const citations = [...docContext.citations, ...webCitations];
     const toolQueries: string[] = [];
     let toolCited = false;
+    // What the tools did, and the files Python made, kept with the answer.
+    const steps: { tool: string; detail: string; outcome?: string }[] = [];
+    const madeFiles = new Map<string, { path: string; size: number }>();
 
     const started = Date.now();
     let text = "";
@@ -586,11 +658,17 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
           nextCitation: () => citations.length + 1,
           addCitations: (more) => void citations.push(...more),
           queries: toolQueries,
+          python: toolSet.python ? { run: (code) => ctx.chatSandbox.run(c.id, u.id, code, { signal: abort.signal }) } : undefined,
           onEmbedTokens: async (tokens, modelId) => {
             await db.insert(usageEvent).values({ workspaceId: c.workspaceId, projectId: c.projectId, userId: u.id, modelId, section: "chat", inputTokens: tokens, outputTokens: 0 });
           },
         });
         send("step", { ...out.step, running: false });
+        steps.push(out.step);
+        if (out.files?.length) {
+          for (const f of out.files) madeFiles.set(f.path, f);
+          send("files", { files: [...madeFiles.values()] });
+        }
         if (citations.length > before) {
           toolCited = true;
           send("sources", { citations: citations.slice(before) });
@@ -627,6 +705,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         routing,
         calculation: calculation as unknown as Record<string, unknown> | null,
         web,
+        steps: steps.length ? steps : null,
+        files: madeFiles.size ? [...madeFiles.values()] : null,
       })
       .returning({ id: message.id });
     await db.update(chat).set({ leafMessageId: assistant!.id }).where(eq(chat.id, c.id));

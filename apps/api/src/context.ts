@@ -1,3 +1,4 @@
+import type { ChatSandbox } from "./services/chat-sandbox";
 import {
   account,
   and,
@@ -48,6 +49,8 @@ export interface AppContext {
   license: LicenseService;
   work: WorkRunner;
   code: CodeServers;
+  /** Each chat's private folder for the Python Chat AI runs. */
+  chatSandbox: ChatSandbox;
   connectors: Connectors;
   mail: Mailer;
   jobs: Jobs;

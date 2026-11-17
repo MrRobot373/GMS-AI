@@ -36,7 +36,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Popover } from "radix-ui";
-import { FileIcon, useDocuments } from "@/components/documents/use-documents";
+import { FileIcon, isDocumentFile, useDocuments } from "@/components/documents/use-documents";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { latestLeaf, pathTo, siblingsOf } from "@/lib/branches";
 import { toast } from "sonner";
@@ -55,7 +55,7 @@ import { chatTitle, greeting, routingReason, timeAgo, TIER_NAMES } from "@/lib/f
 import type { ChatCalculation } from "./calculation-card";
 import type { Routing } from "@aatmiq/shared";
 import type { AvailableModel, ChatDetail, Citation, DocumentRow, MessageWeb, QuotaStatus } from "@/lib/types";
-import { SourcesRow, ToolSteps, useSourceDialog, WebSearchLine, type ToolStep } from "./citations";
+import { ChatFiles, SourcesRow, ToolSteps, useSourceDialog, WebSearchLine, type ToolStep } from "./citations";
 import { CalculationCard } from "./calculation-card";
 import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import { Markdown } from "./markdown";
@@ -78,8 +78,10 @@ interface UiMessage {
   calculation?: ChatCalculation | null;
   /** The answer searches (or searched) the web; `searching` until the sources are in. */
   web?: (MessageWeb & { searching?: boolean }) | null;
-  /** Tools the model used for this answer, in order (shown while it's prepared; not kept after a reload). */
+  /** Tools the model used for this answer, in order. */
   steps?: ToolStep[];
+  /** Files Python made in the chat's folder for this answer. */
+  files?: { path: string; size: number }[];
 }
 
 const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
@@ -197,6 +199,8 @@ export function ChatView({
           routing: m.routing,
           calculation: m.calculation ?? null,
           web: m.web ?? null,
+          steps: m.steps ?? undefined,
+          files: m.files ?? undefined,
         })),
     );
     if (!webFromChat.current) {
@@ -248,6 +252,11 @@ export function ChatView({
     async (files: File[]) => {
       for (const f of files) {
         const key = `${f.name}-${Date.now()}-${Math.random()}`;
+        // Not a document (a ZIP, a program, data): it goes to the chat's folder, for Python, when the message is sent.
+        if (me.gem?.chatSandbox && !isDocumentFile(f.name)) {
+          setAttachments((l) => [...l, { key, name: f.name, status: "ready", file: f }]);
+          continue;
+        }
         setAttachments((l) => [...l, { key, name: f.name, status: "uploading" }]);
         try {
           const doc = await uploadDocument(workspaceId, f);
@@ -259,7 +268,7 @@ export function ChatView({
         }
       }
     },
-    [qc, workspaceId],
+    [me.gem?.chatSandbox, qc, workspaceId],
   );
   const attachDocument = useCallback((d: DocumentRow) => {
     setAttachments((l) => (l.some((a) => a.id === d.id) ? l : [...l, { key: d.id, id: d.id, name: d.name, status: d.status }]));
@@ -294,6 +303,7 @@ export function ChatView({
       if ((!content && !opts.regenerateOf) || streaming || !workspaceId) return;
       const webSearch = webAvailable && webOn ? true : undefined;
       const sending = opts.regenerateOf ? [] : (attachments.filter((a) => a.id && a.status !== "failed") as (Attachment & { id: string })[]);
+      const forFolder = opts.regenerateOf ? [] : attachments.filter((a) => a.file);
       if (!opts.regenerateOf && opts.parentId === undefined) {
         setInput("");
         setAttachments([]);
@@ -308,6 +318,13 @@ export function ChatView({
           setChatId(id);
           onCreated?.(id);
         }
+        // Files for Python go to the chat's folder first, so the answer can use them.
+        for (const a of forFolder) {
+          const form = new FormData();
+          form.append("file", a.file!, a.name);
+          const r = await fetch(`/api/chats/${id}/files`, { method: "POST", credentials: "include", body: form });
+          if (!r.ok) throw new Error(`${a.name}: ${(await r.json().catch(() => ({}))).error ?? r.statusText}`);
+        }
       } catch (e) {
         toast.error((e as Error).message);
         setInput(content);
@@ -316,13 +333,14 @@ export function ChatView({
 
       const prevLeaf = leafId;
       const parentId = opts.regenerateOf ? null : opts.parentId !== undefined ? opts.parentId : leafId;
-      const newAttachments = sending.map((a) => ({ id: a.id, name: a.name }));
+      const newAttachments = [...sending.map((a) => ({ id: a.id, name: a.name })), ...forFolder.map((a) => ({ id: `folder:${a.name}`, name: a.name }))];
       const stamp = Date.now();
       const tempUser: UiMessage | null = opts.regenerateOf
         ? null
         : { id: `u-${stamp}`, parentId, role: "user", content, attachments: newAttachments };
-      if (newAttachments.length)
-        setChatDocs((l) => [...l, ...newAttachments.filter((a) => !l.some((x) => x.id === a.id))]);
+      const docAttachments = newAttachments.filter((a) => !a.id.startsWith("folder:"));
+      if (docAttachments.length)
+        setChatDocs((l) => [...l, ...docAttachments.filter((a) => !l.some((x) => x.id === a.id))]);
       const tempAsst: UiMessage = {
         id: `a-${stamp}`,
         parentId: opts.regenerateOf ?? tempUser!.id,
@@ -397,6 +415,8 @@ export function ChatView({
               const cites = [...(m.citations ?? []), ...((ev.data.citations ?? []) as Citation[])];
               return { ...m, citations: cites.length ? cites : null };
             });
+          } else if (ev.event === "files") {
+            patchAsst((m) => ({ ...m, files: ev.data.files ?? m.files }));
           } else if (ev.event === "retract") {
             // Words the model wrote before calling a tool ("Let me look that up") aren't part of the answer.
             patchAsst((m) => ({ ...m, content: m.content.slice(0, Math.max(0, m.content.length - Number(ev.data.chars ?? 0))) }));
@@ -775,6 +795,7 @@ export function ChatView({
                     <MessageBlock
                       key={m.id}
                       message={m}
+                      chatId={chatId}
                       branch={
                         sibs.length > 1
                           ? {
@@ -865,6 +886,7 @@ function MessageBlock({
   onEdit,
   onExport,
   branch,
+  chatId,
 }: {
   message: UiMessage;
   modelLabel: string;
@@ -875,6 +897,8 @@ function MessageBlock({
   onEdit?: (content: string) => void;
   onExport?: (format: "docx" | "md" | "pdf") => void;
   branch?: BranchInfo;
+  /** The chat, for the files Python made (absent until it's saved). */
+  chatId?: string | null;
 }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
@@ -976,6 +1000,7 @@ function MessageBlock({
       <div className="pl-6">
         {m.web && <WebSearchLine web={m.web} citations={m.citations} streaming={m.streaming} />}
         {!!m.steps?.length && <ToolSteps steps={m.steps} />}
+        {!!m.files?.length && chatId && <ChatFiles chatId={chatId} files={m.files} />}
         {m.calculation && <CalculationCard c={m.calculation} />}
         {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} plainLinks={!!m.web || !!m.steps?.some((x) => x.tool === "web_search" || x.tool === "read_page")} /> : null}
         {m.streaming && m.content && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] animate-caret bg-fg" />}

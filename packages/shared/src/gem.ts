@@ -40,6 +40,8 @@ export interface GemSettings {
   chatWebSearch: boolean;
   /** Lessons are researched and checked by a second model before they're saved. */
   lessonCheck: boolean;
+  /** Chat AI may run Python in each chat's private folder (files, charts, Excel, Word, PowerPoint, PDF). */
+  chatSandbox: boolean;
 }
 
 export const DEFAULT_GEM_SETTINGS: GemSettings = {
@@ -52,6 +54,7 @@ export const DEFAULT_GEM_SETTINGS: GemSettings = {
   webUrl: null,
   chatWebSearch: true,
   lessonCheck: true,
+  chatSandbox: true,
 };
 
 const webUrl = z.url({ protocol: /^https?$/, error: "Use an http:// or https:// address" });
@@ -71,6 +74,7 @@ export const gemSettingsSchema = z.object({
   webKey: z.string().trim().max(500).optional(),
   chatWebSearch: z.boolean().optional(),
   lessonCheck: z.boolean().optional(),
+  chatSandbox: z.boolean().optional(),
 });
 
 /** Admin → Settings → Web search → Test: what's given is tried, the rest comes from what's saved. */

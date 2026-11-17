@@ -25,6 +25,8 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
     const [settings, deps, yt, web] = await Promise.all([getGemSettings(db), videoDeps(ctx), ytDlpStatus(ctx.ytDlp), webSearchSetup(ctx)]);
     return {
       ...settings,
+      // Why Python in chat can't run on this server (null: it can).
+      chatSandboxProblem: ctx.chatSandbox.unavailable(),
       // The choice in use, which WEB_SEARCH_PROVIDER fills in until one is made here.
       webProvider: web.provider ?? "off",
       youtube: stored.youtubeKeyEnc ? "settings" : ctx.cfg.youtubeApiKey ? "environment" : "none",
@@ -76,6 +78,7 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
       ...(webKey ?? {}),
       chatWebSearch: body.chatWebSearch ?? cur.chatWebSearch,
       lessonCheck: body.lessonCheck ?? cur.lessonCheck,
+      chatSandbox: body.chatSandbox ?? cur.chatSandbox,
     };
     await db.update(organization).set({ gemSettings: next }).where(eq(organization.id, org.id));
     await audit(ctx, {
@@ -93,6 +96,7 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
         webKeyChanged: body.webKey !== undefined,
         chatWebSearch: next.chatWebSearch,
         lessonCheck: next.lessonCheck,
+        chatSandbox: next.chatSandbox,
       },
     });
     return { ok: true };

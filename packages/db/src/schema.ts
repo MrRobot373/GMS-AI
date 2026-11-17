@@ -475,6 +475,10 @@ export const message = pgTable(
     calculation: jsonb("calculation").$type<Record<string, unknown>>(),
     /** The person switched on web search for this answer: what was searched, and why it failed if it did. */
     web: jsonb("web").$type<MessageWeb>(),
+    /** Tools Chat AI used for this answer, in order (docs/15-gem-ai.md, "Tools in chat"). */
+    steps: jsonb("steps").$type<MessageStep[]>(),
+    /** Files this answer made in the chat's folder (Python in chat), to download. */
+    files: jsonb("files").$type<MessageFile[]>(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -608,6 +612,19 @@ export interface Citation {
 }
 
 /** Web search for one chat answer (the sources themselves are its citations). */
+export interface MessageStep {
+  tool: string;
+  detail: string;
+  /** A number of results, or "failed", "off", "empty"; for run_python the exit code. */
+  outcome?: string;
+}
+
+export interface MessageFile {
+  /** Inside the chat's folder, e.g. "report.docx" or "charts/load.png". */
+  path: string;
+  size: number;
+}
+
 export interface MessageWeb {
   /** What was searched for. */
   queries: string[];
@@ -1450,6 +1467,8 @@ export interface GemSettingsStored {
   chatWebSearch?: boolean;
   /** Lessons are researched and checked before they're saved (default on). */
   lessonCheck?: boolean;
+  /** Chat AI may run Python in each chat's private folder. */
+  chatSandbox?: boolean;
 }
 
 export interface CourseOutline {

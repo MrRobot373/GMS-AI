@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Calculator, Download, FileText, FolderSearch, Globe, MessageSquare, TriangleAlert, Workflow, Wrench } from "lucide-react";
+import { ArrowUpRight, Calculator, Download, FileText, FolderSearch, Globe, MessageSquare, Terminal, TriangleAlert, Workflow, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FileIcon } from "@/components/documents/use-documents";
@@ -174,6 +174,19 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
           icon: FolderSearch,
           label: x.running ? t("Searching your documents") : n !== null ? t.n(n, "Searched your documents · {n} passage", "Searched your documents · {n} passages") : t("Searched your documents"),
         };
+      case "run_python":
+        return {
+          icon: Terminal,
+          label: x.running
+            ? t("Running Python")
+            : x.outcome === "timeout"
+              ? t("Python ran out of time")
+              : x.outcome === "failed"
+                ? t("Python stopped with an error")
+                : x.outcome === "off"
+                  ? t("Python isn't available")
+                  : t("Ran Python"),
+        };
       case "calculators_search":
         return { icon: Calculator, label: x.running ? t("Finding a calculator") : t("Looked for a calculator") };
       case "calculators_run":
@@ -199,6 +212,39 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
         );
       })}
     </ol>
+  );
+}
+
+const formatSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+
+/** Files Python made for an answer, in the chat's folder: pictures shown, everything downloadable. */
+export function ChatFiles({ chatId, files }: { chatId: string; files: { path: string; size: number }[] }) {
+  const t = useT();
+  const href = (path: string, download = false) => `/api/chats/${chatId}/files/content?path=${encodeURIComponent(path)}${download ? "&download=1" : ""}`;
+  const images = files.filter((f) => /\.(png|jpe?g|gif|webp)$/i.test(f.path));
+  return (
+    <div className="mb-3 space-y-2" data-testid="chat-files">
+      {images.slice(0, 4).map((f) => (
+        // eslint-disable-next-line @next/next/no-img-element -- a file in the chat's folder, served by the API
+        <img key={f.path} src={href(f.path)} alt={f.path} className="max-h-80 rounded-lg border border-border bg-white" loading="lazy" />
+      ))}
+      <div className="flex flex-wrap gap-1.5">
+        {files.map((f) => (
+          <a
+            key={f.path}
+            href={href(f.path, true)}
+            download={f.path.split("/").pop()}
+            title={t("Download {name}", { name: f.path })}
+            className="inline-flex h-8 max-w-72 items-center gap-1.5 rounded-lg border border-border bg-surface px-2 text-[12.5px] text-fg transition-colors hover:border-border-strong"
+          >
+            <FileIcon name={f.path} className="size-3.5 shrink-0 text-fg-subtle" />
+            <span className="truncate">{f.path.split("/").pop()}</span>
+            <span className="shrink-0 text-[11px] text-fg-subtle">{formatSize(f.size)}</span>
+            <Download className="size-3 shrink-0 text-fg-subtle" />
+          </a>
+        ))}
+      </div>
+    </div>
   );
 }
 

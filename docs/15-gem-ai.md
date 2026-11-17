@@ -107,6 +107,27 @@ Chat AI calls tools on its own when a question needs them (`services/chat-tools.
   the organization allows web search in chat: turn that off in Admin → Settings → GEM AI to keep chat off the web.
 - Tool text is treated as data, and the model is told to ignore instructions in it.
 
+### Python in chat
+
+Chat AI has a `run_python` tool (`services/chat-sandbox.ts`), so it can do what ChatGPT's code tool does: calculate,
+analyse a CSV, Excel, PDF or ZIP, draw charts, and make Excel, Word, PowerPoint, PDF or image files to download.
+
+- **Each chat has its own folder** (`CHAT_DIR`, default `.data/chat`; `/data/chat` in the image). Documents attached to
+  the chat are copied into `inputs/`; any other file (a ZIP, a program, data) attached in the chat box goes there too
+  (up to 25 MB each, 500 MB per chat). What the program saves shows under the answer: pictures inline, every file as a
+  download. The folder is kept between messages and deleted with the chat (orphans are swept hourly).
+- **Confined like Work AI's commands.** The program runs through the same Landlock launcher Work AI's runtime uses: it can
+  read the system but write only inside the chat's folder. With the API running as root it runs as the person's own Unix
+  user (the one their Work AI tasks use), so it can't read other people's files, and the user firewall keeps it off
+  private networks. It fails closed: with `WORK_SANDBOX=on` and no Landlock, Python isn't offered. Limits: 90 seconds
+  (the whole process group is killed), 2 GB of memory, 300 MB per file, 256 processes, capped output.
+- **Libraries** come from the image: numpy, scipy, pandas, matplotlib, openpyxl, python-docx, python-pptx, reportlab,
+  pypdf, pillow.
+- **Admin → Settings → GEM AI → Let Chat AI run Python** turns it off for everyone (it's on by default where the server
+  can confine programs; the switch says why when it can't).
+- Files are served with `Content-Disposition: attachment` (pictures inline), `nosniff` and a sandboxing CSP; HTML and SVG
+  always download. Symlinks and the runner's own files are never served.
+
 ### Web search in chat
 
 When a provider is set up and *Let people search the web in chat* is on, the chat box has a

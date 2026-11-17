@@ -464,4 +464,6 @@ export const HI: Record<string, string> = {
   "The owner's share follows the project's per-person amount.": "मालिक का हिस्सा प्रोजेक्ट की प्रति-व्यक्ति राशि के हिसाब से चलता है।",
   "The {project} project has used its tokens for this period.": "{project} प्रोजेक्ट ने इस अवधि के अपने टोकन इस्तेमाल कर लिए हैं।",
   "You've used your share of the {project} project's tokens for this period.": "आपने इस अवधि के लिए {project} प्रोजेक्ट के टोकन में से अपना हिस्सा इस्तेमाल कर लिया है।",
+  "Python in chat is turned off for your organization.": "आपके संगठन के लिए चैट में Python बंद है।",
+  "This chat's folder is full.": "इस चैट का फ़ोल्डर भर गया है।",
 };
