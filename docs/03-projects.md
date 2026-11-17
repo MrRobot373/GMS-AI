@@ -35,6 +35,19 @@ answer, chat; if you want something delivered, use Work AI.*
   - **edit:** instructions, sources and people.
   - **chat:** chat in the project and read its instructions and sources.
 - Org admins and workspace admins can manage every project in their workspace.
+- **People from other teams.** A project lives in one workspace (usually a team: Software, Hardware, Firmware…), but
+  **Share → Add people or a team** searches the whole organization: any person, or a whole group (Admin → Groups, which
+  can come from your directory) at once. Someone outside the project's workspace joins it as a **guest**:
+  - they see only the projects there they were added to: not projects open to the whole workspace, not its library;
+  - they chat and run Work AI tasks inside those projects, using the workspace's models and budget, but can't start chats,
+    tasks or projects outside them, or share files with the whole workspace;
+  - their own team is unchanged; **Projects → In your other workspaces** lists the projects they're in elsewhere, and
+    opening one switches to its workspace (the sidebar marks it *guest* and shows only Projects);
+  - when they leave the last project they're in there, the guest membership ends. Admins see them as *Guest (projects
+    only)* on the workspace page and can make them full members.
+
+  A team-only project (say, a Firmware bootloader) stays in the Firmware workspace with Firmware people; a cross-team
+  project such as ADAS lives in the workspace of the team that runs it and adds people from the other teams.
 - **Chats are private to their author.** The author can choose **Share to project**, which lets everyone with access read that chat (read-only) and lets project memory use it. Moving a chat out of the project stops sharing it.
 - Linking a private library document to a project makes it readable by the project's people. It stays in the owner's library.
 

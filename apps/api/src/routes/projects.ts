@@ -14,6 +14,9 @@ import {
   projectSource,
   sql,
   user,
+  userGroup,
+  userGroupMember,
+  workspace,
   workspaceMember,
   workTask,
   connector,
@@ -26,7 +29,7 @@ import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, processDocument } from "../services/documents";
 import { inBackground, learnFromDocument } from "../services/brain-learn";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
-import { getProjectAccess, isWorkspaceAdmin, projectVisibleTo, requireProjectEdit } from "../services/projects";
+import { dropProjectGuestIfDone, ensureProjectGuest, getProjectAccess, isGuest, isWorkspaceAdmin, projectVisibleTo, requireNotGuest, requireProjectEdit } from "../services/projects";
 import { MAX_UPLOAD_BYTES } from "./documents";
 
 const createSchema = z.object({
@@ -45,7 +48,10 @@ const updateSchema = z.object({
   /** Connectors Work AI tasks in the project may use; null: all the organization's. */
   connectorIds: z.array(z.string()).max(200).nullable().optional(),
 });
-const memberSchema = z.object({ userId: z.string(), role: z.enum(["chat", "edit"]).default("chat") });
+/** One person (from any team), or every member of a group at once. */
+const memberSchema = z
+  .object({ userId: z.string().optional(), groupId: z.string().optional(), role: z.enum(["chat", "edit"]).default("chat") })
+  .refine((b) => !!b.userId !== !!b.groupId, { message: "Give a person or a group." });
 const sourceUpdateSchema = z.object({
   label: z.enum(["confirmed", "assumption", "tbd"]).nullable().optional(),
   /** Mark this source as replaced by a newer one (another source of the project), or null to make it current again. */
@@ -75,6 +81,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get<{ Querystring: { workspaceId: string } }>("/api/projects", async (req) => {
     const u = await requireUser(ctx, req);
     const admin = await isWorkspaceAdmin(ctx, u, req.query.workspaceId);
+    const guest = await isGuest(ctx, u, req.query.workspaceId);
     const rows = await db
       .select({
         id: project.id,
@@ -89,15 +96,38 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
         memberCount: sql<number>`(select count(*) from project_member m where m.project_id = "project"."id")::int`,
       })
       .from(project)
-      .where(and(eq(project.workspaceId, req.query.workspaceId), projectVisibleTo(u.id, admin)))
+      .where(and(eq(project.workspaceId, req.query.workspaceId), projectVisibleTo(u.id, admin, guest)))
       .orderBy(desc(project.updatedAt));
     return rows;
+  });
+
+  /**
+   * Projects you're in that live in your other workspaces (another team's project you were added to, or your own team's
+   * while you look at another), so the page can offer them without switching first.
+   */
+  app.get<{ Querystring: { workspaceId: string } }>("/api/projects/elsewhere", async (req) => {
+    const u = await requireUser(ctx, req);
+    return db
+      .select({ id: project.id, name: project.name, color: project.color, workspaceId: workspace.id, workspaceName: workspace.name, guest: sql<boolean>`${workspaceMember.role} = 'guest'` })
+      .from(project)
+      .innerJoin(workspace, eq(workspace.id, project.workspaceId))
+      .innerJoin(workspaceMember, and(eq(workspaceMember.workspaceId, project.workspaceId), eq(workspaceMember.userId, u.id)))
+      .where(
+        and(
+          sql`${project.workspaceId} <> ${req.query.workspaceId}`,
+          isNull(workspace.archivedAt),
+          or(eq(project.ownerId, u.id), sql`exists (select 1 from project_member pm where pm.project_id = "project"."id" and pm.user_id = ${u.id})`),
+        ),
+      )
+      .orderBy(desc(project.updatedAt))
+      .limit(50);
   });
 
   app.post("/api/projects", async (req) => {
     const u = await requireUser(ctx, req);
     const body = parse(createSchema, req.body);
     await requireWorkspaceCap(ctx, u, body.workspaceId, "workspace.use");
+    await requireNotGuest(ctx, u, body.workspaceId);
     const [p] = await db.insert(project).values({ ...body, ownerId: u.id }).returning();
     await audit(ctx, { actor: u, action: "project.created", workspaceId: body.workspaceId, targetType: "project", targetId: p!.id, meta: { name: body.name } });
     return p;
@@ -126,7 +156,17 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
         .where(eq(projectSource.projectId, p.id))
         .orderBy(asc(projectSource.createdAt)),
       db
-        .select({ userId: user.id, name: user.name, email: user.email, image: user.image, role: projectMember.role })
+        .select({
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+          role: projectMember.role,
+          // From another team: a guest of this workspace, and the teams they belong to.
+          guest: sql<boolean>`exists (select 1 from workspace_member wm where wm.workspace_id = ${p.workspaceId} and wm.user_id = "user"."id" and wm.role = 'guest')`,
+          teams: sql<string[]>`coalesce((select array_agg(w.name order by w.name) from workspace_member wm join workspace w on w.id = wm.workspace_id
+                                         where wm.user_id = "user"."id" and wm.role <> 'guest' and w.archived_at is null), '{}')`,
+        })
         .from(projectMember)
         .innerJoin(user, eq(user.id, projectMember.userId))
         .where(eq(projectMember.projectId, p.id))
@@ -206,22 +246,79 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
 
   /* ───────────── Members ───────────── */
 
+  /**
+   * People and groups that can be added to a project: anyone active in the organization, whatever their team. Someone
+   * outside the project's workspace joins it as a guest (docs/03-projects.md, "People from other teams").
+   */
+  app.get<{ Params: { id: string }; Querystring: { q?: string } }>("/api/projects/:id/candidates", async (req) => {
+    const u = await requireUser(ctx, req);
+    const { project: p } = await requireProjectEdit(ctx, u, req.params.id);
+    const like = `%${(req.query.q ?? "").trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const [people, groups] = await Promise.all([
+      db
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+          // Their role in the project's workspace: null means they'd join it as a guest.
+          workspaceRole: sql<string | null>`(select wm.role::text from workspace_member wm where wm.workspace_id = ${p.workspaceId} and wm.user_id = "user"."id")`,
+          teams: sql<string[]>`coalesce((select array_agg(w.name order by w.name) from workspace_member wm join workspace w on w.id = wm.workspace_id
+                                         where wm.user_id = "user"."id" and wm.role <> 'guest' and w.archived_at is null), '{}')`,
+        })
+        .from(user)
+        .where(and(eq(user.status, "active"), or(sql`${user.name} ilike ${like}`, sql`${user.email} ilike ${like}`)))
+        .orderBy(asc(user.name))
+        .limit(30),
+      db
+        .select({ id: userGroup.id, name: userGroup.name, members: sql<number>`(select count(*) from user_group_member gm where gm.group_id = "user_group"."id")::int` })
+        .from(userGroup)
+        .where(sql`${userGroup.name} ilike ${like}`)
+        .orderBy(asc(userGroup.name))
+        .limit(20),
+    ]);
+    return { people, groups };
+  });
+
   app.put<{ Params: { id: string } }>("/api/projects/:id/members", async (req) => {
     const u = await requireUser(ctx, req);
     const { project: p } = await requireProjectEdit(ctx, u, req.params.id);
     const body = parse(memberSchema, req.body);
-    if (body.userId === p.ownerId) throw badRequest("The owner already has full access.");
-    const [wm] = await db
-      .select({ id: workspaceMember.userId })
-      .from(workspaceMember)
-      .where(and(eq(workspaceMember.workspaceId, p.workspaceId), eq(workspaceMember.userId, body.userId)));
-    if (!wm) throw badRequest("Only members of this workspace can be added.");
-    await db
-      .insert(projectMember)
-      .values({ projectId: p.id, userId: body.userId, role: body.role })
-      .onConflictDoUpdate({ target: [projectMember.projectId, projectMember.userId], set: { role: body.role } });
-    await audit(ctx, { actor: u, action: "project.member_set", workspaceId: p.workspaceId, targetType: "user", targetId: body.userId, meta: { projectId: p.id, role: body.role } });
-    return { ok: true };
+    let ids: string[];
+    if (body.groupId) {
+      const [g] = await db.select({ id: userGroup.id, name: userGroup.name }).from(userGroup).where(eq(userGroup.id, body.groupId));
+      if (!g) throw notFound("Group not found");
+      ids = (
+        await db
+          .select({ id: userGroupMember.userId })
+          .from(userGroupMember)
+          .innerJoin(user, eq(user.id, userGroupMember.userId))
+          .where(and(eq(userGroupMember.groupId, g.id), eq(user.status, "active")))
+      ).map((r) => r.id);
+    } else {
+      const [who] = await db.select({ id: user.id, status: user.status }).from(user).where(eq(user.id, body.userId!));
+      if (!who || who.status !== "active") throw notFound("Person not found");
+      if (who.id === p.ownerId) throw badRequest("The owner already has full access.");
+      ids = [who.id];
+    }
+    ids = ids.filter((id) => id !== p.ownerId);
+    const guests: string[] = [];
+    for (const id of ids) {
+      if (await ensureProjectGuest(db, p.workspaceId, id)) guests.push(id);
+      await db
+        .insert(projectMember)
+        .values({ projectId: p.id, userId: id, role: body.role })
+        .onConflictDoUpdate({ target: [projectMember.projectId, projectMember.userId], set: { role: body.role } });
+    }
+    await audit(ctx, {
+      actor: u,
+      action: "project.member_set",
+      workspaceId: p.workspaceId,
+      targetType: body.groupId ? "group" : "user",
+      targetId: body.groupId ?? body.userId,
+      meta: { projectId: p.id, role: body.role, added: ids.length, guests },
+    });
+    return { ok: true, added: ids.length, guests: guests.length };
   });
 
   app.delete<{ Params: { id: string; userId: string } }>("/api/projects/:id/members/:userId", async (req) => {
@@ -229,7 +326,9 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     const self = req.params.userId === u.id;
     const { project: p } = self ? await getProjectAccess(ctx, u, req.params.id) : await requireProjectEdit(ctx, u, req.params.id);
     await db.delete(projectMember).where(and(eq(projectMember.projectId, p.id), eq(projectMember.userId, req.params.userId)));
-    await audit(ctx, { actor: u, action: "project.member_removed", workspaceId: p.workspaceId, targetType: "user", targetId: req.params.userId, meta: { projectId: p.id } });
+    // A guest in none of the workspace's projects any more leaves the workspace too.
+    const left = await dropProjectGuestIfDone(db, p.workspaceId, req.params.userId);
+    await audit(ctx, { actor: u, action: "project.member_removed", workspaceId: p.workspaceId, targetType: "user", targetId: req.params.userId, meta: { projectId: p.id, guestRemoved: left } });
     return { ok: true };
   });
 
@@ -359,6 +458,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     await requireWorkspaceCap(ctx, u, req.query.workspaceId, "workspace.use");
     const admin = await isWorkspaceAdmin(ctx, u, req.query.workspaceId);
+    const guest = await isGuest(ctx, u, req.query.workspaceId);
     const q = (req.query.q ?? "").trim().slice(0, 200);
     if (q.length < 2) return { chats: [], documents: [], projects: [] };
     const like = `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
@@ -417,7 +517,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
       db
         .select({ id: project.id, name: project.name, color: project.color })
         .from(project)
-        .where(and(eq(project.workspaceId, req.query.workspaceId), projectVisibleTo(u.id, admin), sql`${project.name} ilike ${like}`))
+        .where(and(eq(project.workspaceId, req.query.workspaceId), projectVisibleTo(u.id, admin, guest), sql`${project.name} ilike ${like}`))
         .limit(8),
     ]);
     const projectNames = new Map(

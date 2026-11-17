@@ -1,0 +1,1 @@
+ALTER TYPE "public"."workspace_role" ADD VALUE 'guest';

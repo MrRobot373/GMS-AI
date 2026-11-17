@@ -145,12 +145,19 @@ export async function processDocument(
   }
 }
 
-/** Documents a user may read in a workspace: their own, workspace-shared ones, and sources of projects they can open. */
+/** Documents a user may read in a workspace: their own, workspace-shared ones (not for guests), and sources of projects they can open. */
 export function accessibleDocs(workspaceId: string, userId: string) {
   return and(
     eq(document.workspaceId, workspaceId),
     or(
-      and(isNull(document.projectId), or(eq(document.scope, "workspace"), eq(document.ownerId, userId))),
+      and(
+        isNull(document.projectId),
+        or(
+          // Shared with the workspace: its own members, not guests from other teams (they see only their projects).
+          and(eq(document.scope, "workspace"), sql`not exists (select 1 from workspace_member gm where gm.workspace_id = "document"."workspace_id" and gm.user_id = ${userId} and gm.role = 'guest')`),
+          eq(document.ownerId, userId),
+        ),
+      ),
       docInAccessibleProject(sql.raw(`"document"."id"`), userId),
     ),
   );

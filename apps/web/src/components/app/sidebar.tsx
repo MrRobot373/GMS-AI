@@ -196,6 +196,8 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   });
 
   const sections = workspace?.sections ?? ["chat"];
+  // A guest from another team: only the projects they were added to (chats and tasks happen inside them).
+  const guest = workspace?.role === "guest" && !me.isAdmin;
   const inWork = pathname.startsWith("/app/work");
   const inCode = pathname.startsWith("/app/code");
   // A section shows when the license includes it and the person (or an admin) has it enabled.
@@ -254,7 +256,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             <button className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-surface px-2 text-left transition-colors hover:border-border-strong">
               <WorkspaceTile name={workspace?.name ?? me.org.name} icon={workspace?.icon} />
               <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{workspace?.name ?? t("No workspace")}</span>
-              {workspace && <span className="shrink-0 text-[11px] text-fg-subtle">{t("team")}</span>}
+              {workspace && <span className="shrink-0 text-[11px] text-fg-subtle">{workspace.role === "guest" ? t("guest") : t("team")}</span>}
               <ChevronsUpDown className="size-3.5 shrink-0 text-fg-subtle" />
             </button>
           </MenuTrigger>
@@ -265,10 +267,11 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                 key={w.id}
                 onSelect={() => {
                   setWorkspaceId(w.id);
-                  router.push("/app/chat");
+                  // A guest is there only for their projects.
+                  router.push(w.role === "guest" ? "/app/projects" : "/app/chat");
                 }}
                 icon={<WorkspaceTile name={w.name} icon={w.icon} className="size-4 text-[9px]" />}
-                shortcut={w.id === workspaceId ? <Check className="size-3.5" /> : null}
+                shortcut={w.id === workspaceId ? <Check className="size-3.5" /> : w.role === "guest" ? <span className="text-[11px] text-fg-subtle">{t("guest")}</span> : null}
               >
                 {w.name}
               </MenuItem>
@@ -304,10 +307,12 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
       <nav className="px-2 pt-3">
         <GroupLabel>{t("Ask")}</GroupLabel>
         <div className="space-y-px">
-          <NavItem href="/app/chat" icon={<SquarePen />} active={pathname === "/app/chat"}>
-            {t("New chat")}
-          </NavItem>
-          {can("chat") && (
+          {!guest && (
+            <NavItem href="/app/chat" icon={<SquarePen />} active={pathname === "/app/chat"}>
+              {t("New chat")}
+            </NavItem>
+          )}
+          {can("chat") && !guest && (
             <NavItem href="/app/chat" icon={<MessageSquare />} active={pathname.startsWith("/app/chat/")} hint={t("Ask, discuss and decide, with your project's facts.")}>
               {t("Chat AI")}
             </NavItem>
@@ -339,7 +344,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             </NavItem>
           )}
         </div>
-        {(can("work") || can("code")) && (
+        {(can("work") || can("code")) && !guest && (
           <>
             <GroupLabel>{t("Do")}</GroupLabel>
             <div className="space-y-px">

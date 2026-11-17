@@ -5,7 +5,7 @@ import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type S
 import { randomToken } from "../crypto";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, processDocument } from "../services/documents";
-import { getProjectAccess } from "../services/projects";
+import { getProjectAccess, requireNotGuest } from "../services/projects";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -84,6 +84,8 @@ export async function documentRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!file) throw badRequest("No file was uploaded");
     const workspaceId = fields.workspaceId ?? "";
     await requireWorkspaceCap(ctx, u, workspaceId, "workspace.use");
+    // Guests keep their files to themselves; sharing with the whole workspace is for its own members.
+    if (fields.scope === "workspace") await requireNotGuest(ctx, u, workspaceId);
     const name = file.name.replace(/[\\/]/g, "_").slice(0, 200) || "Untitled";
     if (!isSupported(name)) throw new HttpError(415, `This file type isn't supported yet. Upload ${SUPPORTED_HINT}.`, "unsupported");
     if (file.data.length === 0) throw badRequest("The file is empty");
@@ -129,6 +131,7 @@ export async function documentRoutes(app: FastifyInstance, ctx: AppContext) {
     const { doc, canManage } = await loadReadable(ctx, u, req.params.id);
     if (!canManage) throw forbidden("Only the owner or a workspace admin can change this document.");
     const body = parse(updateSchema, req.body);
+    if (body.scope === "workspace") await requireNotGuest(ctx, u, doc.workspaceId);
     const [updated] = await db.update(document).set(body).where(eq(document.id, doc.id)).returning();
     if (body.scope && body.scope !== doc.scope)
       await audit(ctx, { actor: u, action: body.scope === "workspace" ? "document.shared" : "document.unshared", workspaceId: doc.workspaceId, targetType: "document", targetId: doc.id });

@@ -18,7 +18,7 @@ import { chooseModel } from "../services/router";
 import { randomToken } from "../crypto";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { PROJECT_FOLDER } from "../services/project-work";
-import { getProjectAccess, requireProjectEdit } from "../services/projects";
+import { getProjectAccess, requireNotGuest, requireProjectEdit } from "../services/projects";
 import { quotaFor } from "../services/quota";
 import { workWebSearchDeps } from "../services/gem";
 import { webSearchReady } from "../services/web-search";
@@ -206,7 +206,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     if (b.projectId) {
       const p = await getProjectAccess(ctx, u, b.projectId);
       if (p.project.workspaceId !== b.workspaceId) throw badRequest("That project is in another workspace.");
-    }
+    } else await requireNotGuest(ctx, u, b.workspaceId);
     const [t] = await db
       .insert(workTask)
       .values({ workspaceId: b.workspaceId, userId: u.id, title: titleFrom(b.prompt), modelId: m.id, routing, projectId: b.projectId ?? null, engine: b.engine })

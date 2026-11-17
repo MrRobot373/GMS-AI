@@ -9,6 +9,13 @@ without one.
 
 ## Unreleased
 
+- **Projects across teams.** A project's people no longer have to be in its workspace. **Share** now searches the whole
+  organization and can add a whole group at once (e.g. "ADAS core" with people from Software, Hardware and Firmware).
+  People from other teams join as **guests** of the project's workspace: they reach only the projects they were added to
+  there (not projects open to the whole workspace, not its library), chat and run tasks only inside them, and stop being
+  guests when they leave their last project there. The projects page lists **In your other workspaces**, and opening a
+  project switches to its workspace. Also fixed: projects open to "everyone in the workspace" could be opened by people
+  from other workspaces who knew the link. Migration `0030` adds the guest role.
 - **Chat AI and Work AI say what each is for.** The sidebar calls chat **Chat AI** and both entries explain themselves on
   hover; the chat home adds "for asking, discussing and deciding; for a job that ends in finished files, use Work AI"
   (with a link), and the Work AI home opens with "Hand over a job and get finished files back".

@@ -75,6 +75,14 @@ export default function ProjectPage() {
     prevParam.current = paramChat;
   }, [paramChat]);
 
+  // A project lives in one workspace (often another team's, where you're a guest): work in that one while it's open,
+  // so its chats, tasks, models and budget are the project's.
+  const { me, workspaceId, setWorkspaceId } = useSession();
+  const home = project.data?.workspaceId;
+  useEffect(() => {
+    if (home && home !== workspaceId && me.workspaces.some((w) => w.id === home)) setWorkspaceId(home);
+  }, [home, workspaceId, me.workspaces, setWorkspaceId]);
+
   if (project.error) {
     return (
       <div className="flex h-full flex-col">

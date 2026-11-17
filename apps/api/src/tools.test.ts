@@ -290,6 +290,8 @@ d("Work AI tools", () => {
     "documents_search", "documents_read", "documents_save",
     // The owner is an org admin and Calculators is on by default, so the tested calculators come too.
     "calculators_search", "calculators_run",
+    // The task's own record, searched after its context was condensed.
+    "task_recall",
   ];
   const BROWSER_TOOLS = ["browser_open", "browser_click", "browser_type", "browser_select", "browser_back", "browser_read", "browser_screenshot", "browser_press", "browser_resize", "browser_click_at", "browser_eval", "browser_upload"];
 

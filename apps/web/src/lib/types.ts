@@ -144,7 +144,8 @@ export interface ProjectDetail {
   canEdit: boolean;
   owner: { id: string; name: string; email: string } | null;
   sources: ProjectSource[];
-  members: { userId: string; name: string; email: string; image: string | null; role: "chat" | "edit" }[];
+  /** guest: from another team (a guest of this workspace); teams: the workspaces they belong to. */
+  members: { userId: string; name: string; email: string; image: string | null; role: "chat" | "edit"; guest?: boolean; teams?: string[] }[];
   chats: { id: string; title: string; updatedAt: string; userId: string; userName: string; sharedToProject: boolean; pinned: boolean }[];
   /** Work AI tasks in the project: the reader's own and those shared to it. */
   tasks: { id: string; title: string; status: import("./work").TaskStatus; updatedAt: string; userId: string; userName: string; sharedToProject: boolean; scheduleId: string | null }[];

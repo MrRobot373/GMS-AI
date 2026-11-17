@@ -2,21 +2,33 @@
 
 import { FolderOpen, Globe, Lock, MessageSquare, Paperclip, Plus, Users } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { TopBar } from "@/components/app/frame";
 import { useSession } from "@/components/app/session";
 import { NewProjectDialog, ProjectIcon, useProjects } from "@/components/projects/projects";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/spinner";
+import { get } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { useT } from "@/i18n";
 
 export default function ProjectsPage() {
   const t = useT();
-  const { me, workspaceId } = useSession();
+  const { me, workspaceId, workspace, setWorkspaceId } = useSession();
+  const router = useRouter();
   const projects = useProjects(workspaceId);
   const [creating, setCreating] = useState(false);
+  // A guest here (from another team) works only in the projects they were added to; they can't start new ones.
+  const guest = workspace?.role === "guest" && !me.isAdmin;
+  // Projects you're in that live in your other workspaces, e.g. a cross-team project another team runs.
+  const elsewhere = useQuery({
+    queryKey: ["projects-elsewhere", workspaceId],
+    queryFn: () => get<{ id: string; name: string; color: string; workspaceId: string; workspaceName: string; guest: boolean }[]>(`/api/projects/elsewhere?workspaceId=${workspaceId}`),
+    enabled: !!workspaceId,
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -24,9 +36,11 @@ export default function ProjectsPage() {
         icon={<FolderOpen />}
         title={t("Projects")}
         actions={
-          <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
-            <Plus className="size-3.5" /> {t("New project")}
-          </Button>
+          !guest && (
+            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+              <Plus className="size-3.5" /> {t("New project")}
+            </Button>
+          )
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -43,9 +57,11 @@ export default function ProjectsPage() {
               icon={<FolderOpen className="size-5" />}
               title={t("No projects yet")}
               action={
-                <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
-                  <Plus className="size-3.5" /> {t("New project")}
-                </Button>
+                !guest && (
+                  <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+                    <Plus className="size-3.5" /> {t("New project")}
+                  </Button>
+                )
               }
             />
           )}
@@ -85,7 +101,7 @@ export default function ProjectsPage() {
                 </div>
               </Link>
             ))}
-            {!!projects.data?.length && (
+            {!!projects.data?.length && !guest && (
               <button
                 onClick={() => setCreating(true)}
                 className="flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-[13px] text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
@@ -94,6 +110,30 @@ export default function ProjectsPage() {
               </button>
             )}
           </div>
+
+          {!!elsewhere.data?.length && (
+            <section className="mt-10" data-testid="projects-elsewhere">
+              <h2 className="text-[13px] font-medium text-fg">{t("In your other workspaces")}</h2>
+              <p className="mt-0.5 text-[12.5px] text-fg-subtle">{t("Projects you're in that another team runs, or that live in your other workspaces. Opening one switches to its workspace.")}</p>
+              <div className="mt-3 divide-y divide-border rounded-xl border border-border">
+                {elsewhere.data.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setWorkspaceId(p.workspaceId);
+                      router.push(`/app/projects/${p.id}`);
+                    }}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2"
+                  >
+                    <ProjectIcon color={p.color} />
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{p.name}</span>
+                    <span className="shrink-0 text-[12px] text-fg-subtle">{p.guest ? t("{workspace} · guest", { workspace: p.workspaceName }) : p.workspaceName}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
       <NewProjectDialog open={creating} onOpenChange={setCreating} />

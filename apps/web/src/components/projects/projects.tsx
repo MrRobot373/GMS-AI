@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Folder, Globe, Lock, Trash2, UserPlus } from "lucide-react";
+import { Check, Folder, Globe, Lock, Search, Trash2, UserPlus, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useCanUse, useSession } from "@/components/app/session";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,13 @@ import { Avatar } from "@/components/ui/misc";
 import { Dialog } from "@/components/ui/overlay";
 import { ApiError, del, get, patch, post, put } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import type { DocumentRow, Person, ProjectDetail, ProjectSummary } from "@/lib/types";
+import type { DocumentRow, ProjectDetail, ProjectSummary } from "@/lib/types";
+
+/** Who can be added to a project: people from any team (workspaceRole null: they would join as a guest) and groups. */
+interface Candidates {
+  people: { id: string; name: string; email: string; image: string | null; workspaceRole: string | null; teams: string[] }[];
+  groups: { id: string; name: string; members: number }[];
+}
 import { useT } from "@/i18n";
 
 export const PROJECT_HUES = ["190", "260", "330", "25", "145", "45", "210", "0"];
@@ -245,12 +251,14 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
   const t = useT();
   const qc = useQueryClient();
   const { me, workspaceId } = useSession();
-  const [adding, setAdding] = useState("");
+  const [query, setQuery] = useState("");
   const [role, setRole] = useState<"chat" | "edit">("chat");
-  const people = useQuery({
-    queryKey: ["people", workspaceId],
-    queryFn: () => get<Person[]>(`/api/workspaces/${workspaceId}/people`),
-    enabled: open && !!workspaceId,
+  const q = useDeferredValue(query.trim());
+  // Anyone in the organization, whatever their team, and whole groups (docs/03-projects.md, "People from other teams").
+  const found = useQuery({
+    queryKey: ["project-candidates", project.id, q],
+    queryFn: () => get<Candidates>(`/api/projects/${project.id}/candidates?q=${encodeURIComponent(q)}`),
+    enabled: open && project.canEdit,
   });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["project", project.id] });
@@ -263,10 +271,12 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
     onError,
   });
   const setMember = useMutation({
-    mutationFn: (b: { userId: string; role: "chat" | "edit" }) => put(`/api/projects/${project.id}/members`, b),
-    onSuccess: () => {
+    mutationFn: (b: { userId?: string; groupId?: string; role: "chat" | "edit" }) => put<{ added: number; guests: number }>(`/api/projects/${project.id}/members`, b),
+    onSuccess: (r, b) => {
       refresh();
-      setAdding("");
+      qc.invalidateQueries({ queryKey: ["project-candidates", project.id] });
+      if (b.groupId) toast(t.n(r.added, "{n} person added", "{n} people added"));
+      if (r.guests) toast(t.n(r.guests, "{n} person from another team joins as a guest: they see only this project here.", "{n} people from other teams join as guests: they see only this project here."));
     },
     onError,
   });
@@ -276,9 +286,10 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
     onError,
   });
   const candidates = useMemo(
-    () => (people.data ?? []).filter((p) => p.id !== project.ownerId && !project.members.some((m) => m.userId === p.id)),
-    [people.data, project],
+    () => (found.data?.people ?? []).filter((p) => p.id !== project.ownerId && !project.members.some((m) => m.userId === p.id)),
+    [found.data, project],
   );
+  const groups = found.data?.groups ?? [];
   const editable = project.canEdit;
 
   return (
@@ -318,26 +329,71 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
         </div>
 
         {editable && (
-          <div className="flex gap-2">
-            <div className="min-w-0 flex-1">
-              <Select value={adding} onChange={(e) => setAdding(e.target.value)} aria-label={t("Person to add")}>
-                <option value="">{candidates.length ? t("Add a person from this workspace…") : t("Everyone here already has access")}</option>
-                {candidates.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} · {p.email}
-                  </option>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-subtle" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("Add people or a team, from any department…")}
+                  aria-label={t("Person or team to add")}
+                  className="pl-8"
+                  data-testid="project-member-search"
+                />
+              </div>
+              <div className="w-28">
+                <Select value={role} onChange={(e) => setRole(e.target.value as "chat" | "edit")} aria-label={t("Role")}>
+                  <option value="chat">{t("Can chat")}</option>
+                  <option value="edit">{t("Can edit")}</option>
+                </Select>
+              </div>
+            </div>
+            {(candidates.length > 0 || groups.length > 0) && (
+              <div className="max-h-56 divide-y divide-border overflow-y-auto rounded-xl border border-border" data-testid="project-candidates">
+                {groups.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    disabled={setMember.isPending || g.members === 0}
+                    onClick={() => setMember.mutate({ groupId: g.id, role })}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    <span className="flex size-7 items-center justify-center rounded-full bg-surface-3 text-fg-subtle">
+                      <Users className="size-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-fg">{g.name}</span>
+                      <span className="block text-[12px] text-fg-subtle">{t.n(g.members, "Group · add its {n} member", "Group · add all {n} members")}</span>
+                    </span>
+                    <UserPlus className="size-3.5 text-fg-subtle" />
+                  </button>
                 ))}
-              </Select>
-            </div>
-            <div className="w-28">
-              <Select value={role} onChange={(e) => setRole(e.target.value as "chat" | "edit")} aria-label={t("Role")}>
-                <option value="chat">{t("Can chat")}</option>
-                <option value="edit">{t("Can edit")}</option>
-              </Select>
-            </div>
-            <Button variant="primary" disabled={!adding} loading={setMember.isPending} onClick={() => setMember.mutate({ userId: adding, role })}>
-              <UserPlus className="size-3.5" /> {t("Add")}
-            </Button>
+                {candidates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={setMember.isPending}
+                    onClick={() => setMember.mutate({ userId: c.id, role })}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    <Avatar name={c.name} image={c.image} className="size-7" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-fg">{c.name}</span>
+                      <span className="block truncate text-[12px] text-fg-subtle">
+                        {c.email}
+                        {c.teams.length > 0 && ` · ${c.teams.join(", ")}`}
+                      </span>
+                    </span>
+                    {!c.workspaceRole && <span className="shrink-0 text-[11.5px] text-fg-subtle">{t("Other team")}</span>}
+                    <UserPlus className="size-3.5 shrink-0 text-fg-subtle" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {found.data && candidates.length === 0 && groups.length === 0 && (
+              <p className="px-1 text-[12px] text-fg-subtle">{q ? t("No one matches “{q}”.", { q }) : t("Everyone already has access.")}</p>
+            )}
           </div>
         )}
 
@@ -361,7 +417,10 @@ export function ShareProjectDialog({ project, open, onOpenChange }: { project: P
                 <div className="truncate text-[13px] text-fg">
                   {m.name} {m.userId === me.user.id && <span className="text-fg-subtle">{t("(you)")}</span>}
                 </div>
-                <div className="truncate text-[12px] text-fg-subtle">{m.email}</div>
+                <div className="truncate text-[12px] text-fg-subtle">
+                  {m.email}
+                  {m.guest && ` · ${m.teams?.length ? t("Guest from {teams}", { teams: m.teams.join(", ") }) : t("Guest")}`}
+                </div>
               </div>
               {editable ? (
                 <>

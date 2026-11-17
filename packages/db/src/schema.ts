@@ -34,7 +34,7 @@ const updatedAt = () =>
 
 export const orgRoleEnum = pgEnum("org_role", ["owner", "admin", "member"]);
 export const userStatusEnum = pgEnum("user_status", ["active", "deactivated"]);
-export const workspaceRoleEnum = pgEnum("workspace_role", ["admin", "member"]);
+export const workspaceRoleEnum = pgEnum("workspace_role", ["admin", "member", "guest"]);
 export const providerTypeEnum = pgEnum("provider_type", ["ollama", "openai_compatible", "mock"]);
 export const budgetPeriodEnum = pgEnum("budget_period", ["day", "week", "month"]);
 export const sectionEnum = pgEnum("section", ["chat", "work", "code", "system", "api", "learning", "knowledge"]);

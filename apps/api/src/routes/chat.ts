@@ -6,7 +6,7 @@ import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type S
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, buildContext, recallProjectChats, retrieve } from "../services/documents";
 import { chatToDocx, chatToMarkdown, fileNameFor, type ExportMessage } from "../services/export";
-import { getProjectAccess } from "../services/projects";
+import { getProjectAccess, requireNotGuest } from "../services/projects";
 import { brainContext } from "../services/brain";
 import { inBackground, learnFromChat } from "../services/brain-learn";
 import { chooseModel, isSmallTalk } from "../services/router";
@@ -127,7 +127,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     if (body.projectId) {
       const { project: p } = await getProjectAccess(ctx, u, body.projectId);
       if (p.workspaceId !== body.workspaceId) throw badRequest("That project belongs to another workspace.");
-    }
+    } else await requireNotGuest(ctx, u, body.workspaceId);
     const [c] = await db
       .insert(chat)
       .values({
@@ -225,7 +225,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       if (projectId) {
         const { project: p } = await getProjectAccess(ctx, u, projectId);
         if (p.workspaceId !== c.workspaceId) throw badRequest("That project belongs to another workspace.");
-      }
+      } else await requireNotGuest(ctx, u, c.workspaceId);
       set.projectId = projectId;
       // A chat moved elsewhere stops being shared with the old project.
       if (projectId !== c.projectId) set.sharedToProject = false;

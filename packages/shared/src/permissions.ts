@@ -7,8 +7,13 @@
 export const ORG_ROLES = ["owner", "admin", "member"] as const;
 export type OrgRole = (typeof ORG_ROLES)[number];
 
+/** Roles an admin gives. */
 export const WORKSPACE_ROLES = ["admin", "member"] as const;
-export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+/**
+ * "guest": someone from another team added to one of this workspace's projects (docs/03-projects.md, "People from other
+ * teams"). They use the workspace only through those projects: no other projects, no library, no chats outside them.
+ */
+export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number] | "guest";
 
 export const SECTIONS = ["chat", "work", "code"] as const;
 export type Section = (typeof SECTIONS)[number];
@@ -61,6 +66,7 @@ const ORG_ROLE_CAPS: Record<OrgRole, readonly OrgCapability[]> = {
 const WORKSPACE_ROLE_CAPS: Record<WorkspaceRole, readonly WorkspaceCapability[]> = {
   admin: WORKSPACE_CAPABILITIES,
   member: ["workspace.use"],
+  guest: ["workspace.use"],
 };
 
 export function orgCan(role: OrgRole, cap: OrgCapability): boolean {

@@ -129,7 +129,6 @@ export const HI: Record<string, string> = {
   "One of those connectors doesn't exist any more.": "उनमें से एक कनेक्टर अब मौजूद नहीं है।",
   "Only the project owner or a workspace admin can delete it.": "सिर्फ़ प्रोजेक्ट का मालिक या वर्कस्पेस एडमिन ही इसे हटा सकता है।",
   "The owner already has full access.": "मालिक के पास पहले से पूरी पहुँच है।",
-  "Only members of this workspace can be added.": "सिर्फ़ इस वर्कस्पेस के सदस्य ही जोड़े जा सकते हैं।",
   "The source to replace isn't in this project.": "बदलने वाला स्रोत इस प्रोजेक्ट में नहीं है।",
   "Source not found": "स्रोत नहीं मिला",
   "A source can't replace itself.": "कोई स्रोत खुद को नहीं बदल सकता।",
@@ -459,4 +458,6 @@ export const HI: Record<string, string> = {
   "There is no waiting entry with that id.": "इस आईडी की कोई प्रतीक्षारत प्रविष्टि नहीं है।",
   "Page not found": "पेज नहीं मिला",
   "The brain is off for this project.": "इस प्रोजेक्ट के लिए ब्रेन बंद है।",
+  "Person not found": "व्यक्ति नहीं मिला",
+  "You're a guest in this workspace: you can work only inside the projects you were added to.": "आप इस वर्कस्पेस में मेहमान हैं: आप सिर्फ़ उन्हीं प्रोजेक्ट में काम कर सकते हैं जिनमें आपको जोड़ा गया है।",
 };

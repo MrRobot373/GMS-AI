@@ -145,7 +145,7 @@ function Members({ ws }: { ws: WorkspaceRow }) {
                   </div>
                 </div>
               </Td>
-              <Td>{m.role === "admin" ? <Badge tone="accent">{t("Workspace admin")}</Badge> : <Badge>{t("Member")}</Badge>}</Td>
+              <Td>{m.role === "admin" ? <Badge tone="accent">{t("Workspace admin")}</Badge> : m.role === "guest" ? <Badge>{t("Guest (projects only)")}</Badge> : <Badge>{t("Member")}</Badge>}</Td>
               <Td>
                 <div className="flex flex-wrap gap-1">
                   {memberSections.map((s) => {
