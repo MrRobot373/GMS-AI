@@ -40,6 +40,8 @@ export interface RuleInput {
   webSearch?: boolean;
   /** Difficulty of the previous answer in this conversation (short follow-ups keep it). */
   follows?: Difficulty | null;
+  /** The last answer ended without text or with an error: a short "ok" or "continue" asks it to carry on. */
+  unfinished?: boolean;
   /** A Work AI or Code task: an agent that has to use tools well (web research, long jobs count as hard). */
   agent?: boolean;
 }
@@ -142,7 +144,8 @@ const RANK: Record<Difficulty, number> = { easy: 0, medium: 1, hard: 2 };
 export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null; reason: string } {
   const t = input.text.trim();
   const words = t.split(/\s+/).filter(Boolean).length;
-  if (SOCIAL.test(t)) return { difficulty: "easy", reason: "a greeting or a thank-you" };
+  // "OK" after an answer that stopped halfway is a request to carry on, not a thank-you.
+  if (SOCIAL.test(t) && !(input.unfinished && input.follows)) return { difficulty: "easy", reason: "a greeting or a thank-you" };
 
   let found: { difficulty: Difficulty | null; reason: string };
   const code = CODE_BLOCK.test(t) || STACK_TRACE.test(t);
@@ -206,7 +209,7 @@ export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null;
   // Small models are weakest outside English.
   if (otherScript && found.difficulty === "easy") found = { difficulty: "medium", reason: "a request in another language" };
   // "And for Pune?" means as much as the question before it.
-  if (input.follows && words < 15 && (found.difficulty === null || RANK[found.difficulty] < RANK[input.follows])) {
+  if (input.follows && (words < 15 || input.unfinished) && (found.difficulty === null || RANK[found.difficulty] < RANK[input.follows])) {
     found = { difficulty: input.follows, reason: "a follow-up in this conversation" };
   }
   return found;
@@ -331,6 +334,7 @@ export interface ChooseInput {
   /** Web search results will be in the prompt. */
   webSearch?: boolean;
   follows?: Difficulty | null;
+  unfinished?: boolean;
   /** Images to look at: prefer models that read images. */
   needsVision?: boolean;
   /** "auto" came from what was saved (a chat on Auto), not from the request: without Auto, use the default. */
@@ -378,7 +382,7 @@ export async function chooseModel(db: DB, box: SecretBox, input: ChooseInput): P
   }
 
   const agent = input.section === "work" || input.section === "code";
-  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, webSearch: input.webSearch, follows: input.follows, agent });
+  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, webSearch: input.webSearch, follows: input.follows, unfinished: input.unfinished, agent });
   let by: Routing["by"] = "rules";
   if (difficulty === null && settings.judge === "model") {
     const judge = await judgeModel(db, box, models, settings);

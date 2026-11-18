@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Fixed: Auto answering "OK" with the fast model after a hard task stopped halfway, and answers with steps but no text.**
+  A short "ok" or "continue" after an answer that ended empty or with an error now keeps the previous answer's tier
+  instead of counting as a thank-you. And when the model uses tools and then writes nothing, chat asks it once more,
+  without tools, for the write-up (what it did, what worked, which files).
 - **Fixed: "network error" in a long chat answer.** While a model wrote a long program, or a tool ran, the stream sent
   nothing, and Next.js's proxy dropped the quiet connection after 30 seconds. The chat stream now sends a keep-alive
   every 10 seconds and the proxy timeout is 15 minutes.

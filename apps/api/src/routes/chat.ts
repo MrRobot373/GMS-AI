@@ -443,6 +443,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       hasSources: Boolean(chatDocIds.length || projectDocIds.length || body.documentIds?.length),
       webSearch: !!webDeps,
       follows: history.find((h) => h.role === "assistant")?.routing?.difficulty ?? null,
+      unfinished: (() => {
+        const last = history.find((h) => h.role === "assistant");
+        return !!last && (!!last.error || !last.content.trim());
+      })(),
     });
     // The workspace pays for its own models; a group pays for a model only it gives.
     const { status: quota, groupId } = await quotaFor(db, c.workspaceId, u.id, m, c.projectId);
@@ -785,6 +789,21 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
           await saveChatCalculation(db, u.id, c.workspaceId, out.calculation).catch(() => undefined);
         }
         pending.push({ role: "tool", tool_call_id: callId, content: out.text });
+      }
+    }
+    // The model used tools but ended without a word (a small model that lost the thread): ask once more, without tools,
+    // for the write-up, so the person isn't left with steps and no answer.
+    if (!text.trim() && pending.length > 0 && !error && !abort.signal.aborted) {
+      try {
+        const wrapUp: ChatMessage = { role: "user", content: "You used tools but wrote no answer. Now write your answer for the person in plain words: what you did, what worked, what didn't, and which files you made. If a step failed, say so and what to try next. Don't call tools." };
+        for await (const ev of streamChat(provider, m.modelKey, [...messages, ...pending, wrapUp], { signal: abort.signal, thinking: false })) {
+          if (ev.type === "delta") {
+            text += ev.text;
+            send("delta", { text: ev.text });
+          } else if (ev.type === "done") addUsage(ev.usage);
+        }
+      } catch (e) {
+        if (!abort.signal.aborted) error = e instanceof Error ? e.message : msg("The model failed to respond.");
       }
     }
     if (toolQueries.length) web = { queries: [...(web?.queries ?? []), ...toolQueries], provider: searchDeps?.provider ?? web?.provider ?? null, note: null };

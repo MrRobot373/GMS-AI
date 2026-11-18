@@ -62,6 +62,12 @@ d("tools in chat", () => {
     const user = r.messages.filter((m) => m.role === "user").at(-1)?.content ?? "";
     const results = r.messages.filter((m) => m.role === "tool").map((m) => m.content);
     const cited = [...results.join("\n").matchAll(/^\[(\d+)\]/gm)].map((m) => Number(m[1]));
+    // Uses a tool, then goes quiet; with no tools offered (the wrap-up) it writes the answer.
+    if (r.messages.some((m) => m.role === "user" && m.content.includes("QUIET"))) {
+      if (r.tools.length && results.length === 0) return { call: { name: "web_search", args: { query: "x" } } };
+      if (r.tools.length) return { text: "" };
+      return { text: "I searched once; nothing useful came back." };
+    }
     if (!r.tools.length) return { text: cited.length ? `From what I found: 570 kHz [${cited[0]}][${cited.at(-1)}]. Invented [99].` : "Answered without tools." };
     if (user.includes("LOOP")) return { call: { name: "web_search", args: { query: `again ${results.length}` } } };
     if (user.includes("WEB")) {
@@ -193,6 +199,13 @@ d("tools in chat", () => {
     expect(off.json.error).toMatch(/needs web search/);
     expect((await h.call(h.owner, "PUT", "/api/admin/gem", { chatWebSearch: true })).status).toBe(200);
   }, 60_000);
+
+  it("when the model used tools and then wrote nothing, asks once more for the write-up", async () => {
+    const r = await ask("QUIET: look something up");
+    expect(r.saved.content).toBe("I searched once; nothing useful came back.");
+    expect(r.sent.at(-1)!.tools).toEqual([]);
+    expect(r.sent.at(-1)!.messages.at(-1)!.content).toMatch(/wrote no answer/);
+  });
 
   it("stops after the last round and answers from what it has", async () => {
     const r = await ask("LOOP forever");

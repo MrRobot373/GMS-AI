@@ -498,3 +498,12 @@ const ollamaUrl = process.env.OLLAMA_TEST_URL;
     console.log(`judge: ${r.json.routing.difficulty} in ${r.json.ms} ms`);
   }, 120_000);
 });
+
+describe("an \"ok\" after an answer that stopped halfway", () => {
+  it("is a request to carry on at the previous tier, not a thank-you", () => {
+    expect(judgeByRules({ text: "OK", follows: "hard" })).toMatchObject({ difficulty: "easy" });
+    expect(judgeByRules({ text: "OK", follows: "hard", unfinished: true })).toMatchObject({ difficulty: "hard", reason: "a follow-up in this conversation" });
+    // Nothing to carry on from: still a greeting.
+    expect(judgeByRules({ text: "OK", follows: null, unfinished: true })).toMatchObject({ difficulty: "easy" });
+  });
+});
