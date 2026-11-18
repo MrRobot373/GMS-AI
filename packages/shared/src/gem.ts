@@ -48,7 +48,8 @@ export interface GemSettings {
 
 export const DEFAULT_GEM_SETTINGS: GemSettings = {
   modules: { learning: true, calculators: true, knowledge: true },
-  betaCalculators: true,
+  // Off until each beta calculator is checked against published sources (docs/decisions.md, D54).
+  betaCalculators: false,
   coursesPerDay: 10,
   lessonsPerDay: 60,
   videoSource: "auto",

@@ -274,6 +274,12 @@ export interface CalcToolOptions {
   showBeta: boolean;
   /** The chat's model, for the model-assisted step (skipped for the demo model). */
   model?: { provider: ProviderConfig; modelKey: string } | null;
+  /**
+   * Let the model map the question to a calculator's inputs when the rules can't. Off by default (docs/decisions.md, D54):
+   * it can't tell two inputs of one kind apart (R1 and R2 of a voltage divider swapped gives a wrong result that looks
+   * tested). The rules path and the model's own calculators_run calls, whose inputs the person sees, stay.
+   */
+  viaModel?: boolean;
   onUsage?: (u: { inputTokens: number; outputTokens: number; estimated: boolean }) => Promise<void>;
 }
 
@@ -302,7 +308,7 @@ export async function findCalculation(o: CalcToolOptions): Promise<CalcToolResul
     if (r && !r.refused) return r;
     refused ??= r;
   }
-  if (!o.model || o.model.provider.type === "mock" || !ranked.length) return refused;
+  if (!o.viaModel || !o.model || o.model.provider.type === "mock" || !ranked.length) return refused;
   // A model may still find the calculator that does run; otherwise the refusal stands.
   const viaM = await viaModel(o, text, ranked.slice(0, 5));
   return viaM && !viaM.refused ? viaM : (refused ?? viaM);

@@ -22,7 +22,7 @@ import { audit, parse, requireUser, type AppContext } from "../context";
 import { badRequest, notFound } from "../errors";
 import { addEntry, decideEntry, deleteEntry, editEntry, ENTRY_KINDS, loadBrain, MAX_TEXT, recentLog, vaultFiles } from "../services/brain";
 import { inBackground, learnPending } from "../services/brain-learn";
-import { getProjectAccess, requireProjectEdit } from "../services/projects";
+import { getProjectAccess, requireProjectEdit, requireProjectMember } from "../services/projects";
 
 const kindSchema = z.enum(ENTRY_KINDS as [string, ...string[]]);
 const entrySchema = z.object({ page: z.string().trim().min(1).max(60), text: z.string().trim().min(8).max(MAX_TEXT), kind: kindSchema.optional() });
@@ -45,7 +45,7 @@ export async function brainRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get<{ Params: { id: string } }>("/api/projects/:id/brain", async (req) => {
     const u = await requireUser(ctx, req);
-    const { project: p, canEdit } = await getProjectAccess(ctx, u, req.params.id);
+    const { project: p, canEdit } = await requireProjectMember(ctx, u, req.params.id);
     const b = await loadBrain(db, p.id, ["active", "pending", "replaced", "rejected"]);
     const authors = new Map(
       (await db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, [...new Set(b.entries.map((e) => e.authorId).filter((x): x is string => !!x))].concat("-")))).map((a) => [a.id, a.name]),
@@ -147,7 +147,7 @@ export async function brainRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get<{ Params: { id: string } }>("/api/projects/:id/brain/export", async (req, reply) => {
     const u = await requireUser(ctx, req);
-    const { project: p } = await getProjectAccess(ctx, u, req.params.id);
+    const { project: p } = await requireProjectMember(ctx, u, req.params.id);
     const b = await loadBrain(db, p.id, ["active", "pending"]);
     const files = Object.fromEntries(vaultFiles(p.name, b).map((f) => [f.path, strToU8(f.content)]));
     const name = `${p.name.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "project"}-brain.zip`;

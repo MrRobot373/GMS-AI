@@ -235,7 +235,12 @@ function ProjectHome({ project: p, composer, notices }: { project: ProjectDetail
             )}
           </section>
 
-          <BrainSection project={p} />
+          {p.managedOnly && (
+            <p className="mt-8 rounded-xl border border-border bg-surface px-4 py-3 text-[13px] text-fg-muted" data-testid="managed-only">
+              {t("You manage this project as an admin, but you aren't one of its people, so its files, chats and brain aren't shown to you. Add yourself under Share to see them.")}
+            </p>
+          )}
+          {!p.managedOnly && <BrainSection project={p} />}
 
           <BudgetSection project={p} />
 

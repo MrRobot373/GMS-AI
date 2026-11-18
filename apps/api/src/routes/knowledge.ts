@@ -12,12 +12,12 @@ import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { localeOf, msg, tr } from "../i18n";
 import { requireModule } from "../services/gem";
 import { citationReadable, finishAnswer, knowledgePrompt, NOT_FOUND_REPLY, retrieveKnowledge } from "../services/knowledge";
-import { getProjectAccess, isWorkspaceAdmin, requireProjectEdit } from "../services/projects";
+import { getProjectAccess, isWorkspaceAdmin, requireProjectEdit, requireProjectMember } from "../services/projects";
 import { quotaFor, quotaMessage } from "../services/quota";
 import { chooseModel } from "../services/router";
 
 async function projectFor(ctx: AppContext, u: SessionUser, projectId: string) {
-  const access = await getProjectAccess(ctx, u, projectId);
+  const access = await requireProjectMember(ctx, u, projectId);
   await requireModule(ctx, u, access.project.workspaceId, "knowledge");
   return access;
 }

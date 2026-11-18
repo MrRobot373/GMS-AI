@@ -522,6 +522,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
             text: content,
             showBeta: gem.betaCalculators,
             model: { provider, modelKey: m.modelKey },
+            viaModel: process.env.CHAT_CALCULATOR_VIA_MODEL === "true",
             onUsage: async (us) => {
               await db.insert(usageEvent).values({ workspaceId: c.workspaceId, projectId: c.projectId, userId: u.id, modelId: m.id, groupId, section: "chat", inputTokens: us.inputTokens, outputTokens: us.outputTokens, estimated: us.estimated });
             },

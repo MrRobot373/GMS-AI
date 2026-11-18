@@ -117,3 +117,30 @@ describe("calculator tool calls", () => {
     expect(r.text).toMatch(/Don't work out a result/);
   });
 });
+
+describe("the model-assisted path is off unless switched on (docs/decisions.md, D54)", () => {
+  it("never asks the model to map a question to inputs by default", async () => {
+    const { createServer } = await import("node:http");
+    let asked = 0;
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        asked++;
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ choices: [{ message: { content: '{"calculatorId": null, "inputs": {}}' }, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 5 } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const model = { provider: { id: "p", type: "openai_compatible", baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`, apiKey: null } as never, modelKey: "m" };
+    const q = "What is the output of a voltage divider with the upper resistor 10 and the lower 5 from 12?";
+    expect(await findCalculation({ text: q, showBeta: false, model })).toBeNull();
+    expect(asked).toBe(0);
+    await findCalculation({ text: q, showBeta: false, model, viaModel: true });
+    expect(asked).toBeGreaterThan(0);
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+
+  it("beta calculators are hidden by default", async () => {
+    const { DEFAULT_GEM_SETTINGS } = await import("@aatmiq/shared");
+    expect(DEFAULT_GEM_SETTINGS.betaCalculators).toBe(false);
+  });
+});

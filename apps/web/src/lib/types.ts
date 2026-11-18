@@ -163,6 +163,8 @@ export interface ProjectDetail {
   ownerId: string | null;
   role: "owner" | "edit" | "chat";
   canEdit: boolean;
+  /** An admin who isn't in the project: they manage it but don't see its material (docs/decisions.md, D53). */
+  managedOnly?: boolean;
   owner: { id: string; name: string; email: string } | null;
   sources: ProjectSource[];
   /** guest: from another team (a guest of this workspace); teams: the workspaces they belong to. */

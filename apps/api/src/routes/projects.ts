@@ -139,7 +139,7 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get<{ Params: { id: string } }>("/api/projects/:id", async (req) => {
     const u = await requireUser(ctx, req);
-    const { project: p, role, canEdit } = await getProjectAccess(ctx, u, req.params.id);
+    const { project: p, role, canEdit, member: isMember } = await getProjectAccess(ctx, u, req.params.id);
     const [sources, members, chats, owner, tasks] = await Promise.all([
       db
         .select({
@@ -213,6 +213,8 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
         .orderBy(desc(workTask.updatedAt))
         .limit(200),
     ]);
+    // An admin who isn't in the project manages it (people, settings) but doesn't see its material.
+    if (!isMember) return { ...p, role, canEdit, owner, sources: [], members, chats: [], tasks: [], managedOnly: true };
     return { ...p, role, canEdit, owner, sources, members, chats, tasks };
   });
 

@@ -23,10 +23,12 @@ export async function loadReadable(ctx: AppContext, u: SessionUser, id: string) 
   const isAdmin = u.orgRole !== "member" || m?.role === "admin";
   if (doc.projectId) {
     const a = await getProjectAccess(ctx, u, doc.projectId).catch(() => null);
-    if (!a) throw notFound("Document not found");
+    // An admin who isn't in the project doesn't read its files.
+    if (!a || !a.member) throw notFound("Document not found");
     return { doc, canManage: a.canEdit || doc.ownerId === u.id };
   }
-  if (doc.scope === "private" && doc.ownerId !== u.id && !isAdmin) {
+  // Someone's private library file is theirs alone: admins don't open, rename, share or delete it by id.
+  if (doc.scope === "private" && doc.ownerId !== u.id) {
     const [ok] = await ctx.db.select({ id: document.id }).from(document).where(and(eq(document.id, id), accessibleDocs(doc.workspaceId, u.id)));
     if (!ok) throw notFound("Document not found");
     return { doc, canManage: false };

@@ -9,6 +9,14 @@ without one.
 
 ## Unreleased
 
+- **Release blockers fixed (docs/16, P0 #7, #8, #9).**
+  - **Project material is for the project's people.** An admin who isn't in a project manages it (people, settings,
+    deleting) but no longer reads its files, chats, brain or Knowledge answers, or anyone's private library files by id.
+    They can add themselves under Share. (D53)
+  - **Beta calculators are off by default.** Only the 20 verified calculators show until an admin switches the 182 beta
+    ones on; the README and docs say so. (D54)
+  - **The model no longer maps chat questions to calculator inputs** when the rules can't (it could swap two inputs of one
+    kind and show a wrong result as tested). `CHAT_CALCULATOR_VIA_MODEL=true` brings it back. (D54)
 - **The project brain is found by meaning too.** With the workspace's embedding model, a chat now finds brain entries by
   what they mean as well as by their words ("How cold can it get?" finds the ambient temperature range). Entries are
   embedded when first needed and again after a correction; without an embedding model it works as before. Migration

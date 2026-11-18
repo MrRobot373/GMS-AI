@@ -45,13 +45,23 @@ export async function getProjectAccess(ctx: AppContext, u: SessionUser, projectI
     .select({ role: projectMember.role })
     .from(projectMember)
     .where(and(eq(projectMember.projectId, p.id), eq(projectMember.userId, u.id)));
+  // Who the project's material is for: its owner, the people added to it, and (when it's open to the workspace) the
+  // workspace's own members. Admins who are none of these manage it (people, settings, deleting) but don't read its
+  // sources, chats, brain or Knowledge answers (docs/decisions.md, D53).
+  const member = p.ownerId === u.id || !!m || (p.visibility === "workspace" && !!wm && wm.role !== "guest");
   let role: ProjectRole | null = null;
   if (p.ownerId === u.id) role = "owner";
   else if (m?.role === "edit" || admin) role = "edit";
-  // Open to the workspace: its own members, not guests (they see only the projects they were added to).
-  else if (m || (p.visibility === "workspace" && wm && wm.role !== "guest")) role = "chat";
+  else if (member) role = "chat";
   if (!role) throw notFound("Project not found");
-  return { project: p, role, admin, canEdit: role !== "chat" };
+  return { project: p, role, admin, member, canEdit: role !== "chat" };
+}
+
+/** The project, for someone who may read its material (admins who aren't members can't). */
+export async function requireProjectMember(ctx: AppContext, u: SessionUser, projectId: string) {
+  const a = await getProjectAccess(ctx, u, projectId);
+  if (!a.member) throw notFound("Project not found");
+  return a;
 }
 
 export async function requireProjectEdit(ctx: AppContext, u: SessionUser, projectId: string) {
@@ -94,10 +104,7 @@ export function docInAccessibleProject(docIdSql: ReturnType<typeof sql.raw>, use
     where ps.document_id = ${docIdSql}
       and (p.owner_id = ${userId}
            or (p.visibility = 'workspace' and exists (select 1 from workspace_member wm where wm.workspace_id = p.workspace_id and wm.user_id = ${userId} and wm.role <> 'guest'))
-           or exists (select 1 from project_member pm where pm.project_id = p.id and pm.user_id = ${userId})
-           or exists (select 1 from workspace_member wm join "user" u on u.id = wm.user_id
-                      where wm.workspace_id = p.workspace_id and wm.user_id = ${userId} and wm.role = 'admin')
-           or exists (select 1 from "user" u where u.id = ${userId} and u.org_role in ('owner', 'admin'))))`;
+           or exists (select 1 from project_member pm where pm.project_id = p.id and pm.user_id = ${userId})))`;
 }
 
 export async function projectDb(db: DB, id: string) {

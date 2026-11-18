@@ -6,7 +6,7 @@ top. They share one sidebar, one sign-in, one admin console and the same models 
 | Module | What it does | Where |
 |---|---|---|
 | **Learning** | A topic and a level become a course written by your own model, lesson by lesson, saved so opening it later costs nothing | `/app/learning` |
-| **Calculators** | 202 engineering formula calculators (20 verified), keypads, a unit converter and math, science, programmer, finance and date tools; the same code is a tool in chat | `/app/calculators` |
+| **Calculators** | 20 verified engineering formula calculators (and 182 beta ones, off by default), keypads, a unit converter and math, science, programmer, finance and date tools; the same code is a tool in chat | `/app/calculators` |
 | **Knowledge** | Questions answered only from one project's documents, citing document, version, page and passage, and saying so when the documents don't have the answer | `/app/knowledge` |
 
 ## Switching modules on and off
@@ -347,7 +347,7 @@ back. Blocking and unblocking are in the activity log (`video.blocked`, `video.u
 
 Every number comes from `packages/calculators`, plain TypeScript with tests, never from a model.
 
-- **Formula calculators**: 202 in 20 categories (basic electrical, power electronics, mechanical,
+- **Formula calculators**: 202 in 20 categories (20 verified; the other 182 are beta and hidden until an admin turns them on, D54) (basic electrical, power electronics, mechanical,
   civil, thermal, instrumentation, chemistry, finance…), across 55 quantities and their units.
   Each states its formula, its assumptions and a formula version that's kept with every saved
   result.

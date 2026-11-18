@@ -2379,4 +2379,5 @@ export const HI: Record<string, string> = {
   "Project members can only read this. Click to let them write here too.": "प्रोजेक्ट के सदस्य इसे सिर्फ़ पढ़ सकते हैं। उन्हें भी यहाँ लिखने देने के लिए क्लिक करें।",
   "Group chat": "ग्रुप चैट",
   "Read-only": "सिर्फ़ पढ़ने के लिए",
+  "You manage this project as an admin, but you aren't one of its people, so its files, chats and brain aren't shown to you. Add yourself under Share to see them.": "आप इस प्रोजेक्ट को एडमिन के रूप में सँभालते हैं, पर आप इसके लोगों में नहीं हैं, इसलिए इसकी फ़ाइलें, चैट और ब्रेन आपको नहीं दिखाई जातीं। उन्हें देखने के लिए शेयर में खुद को जोड़ें।",
 };
