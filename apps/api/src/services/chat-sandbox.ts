@@ -65,8 +65,16 @@ function landlock(): Launcher | null {
 let pythonCache: string | null | undefined;
 function python(): string | null {
   if (pythonCache !== undefined) return pythonCache;
-  const r = spawnSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8", timeout: 5000 });
-  pythonCache = r.status === 0 ? r.stdout.trim() || "python3" : null;
+  // Windows installs it as "python" (or the "py" launcher); Linux and macOS as "python3".
+  const names = process.platform === "win32" ? ["python", "py", "python3"] : ["python3", "python"];
+  pythonCache = null;
+  for (const name of names) {
+    const r = spawnSync(name, ["-c", "import sys; print(sys.executable)"], { encoding: "utf8", timeout: 5000 });
+    if (r.status === 0 && /3\./.test(spawnSync(name, ["-c", "import sys; print(sys.version)"], { encoding: "utf8" }).stdout)) {
+      pythonCache = r.stdout.trim() || name;
+      break;
+    }
+  }
   return pythonCache;
 }
 
@@ -84,8 +92,9 @@ export class ChatSandbox {
   }
   /** Why Python can't run here, or null when it can. */
   unavailable(): string | null {
-    if (!python()) return "Python 3 isn't installed on this server.";
+    if (!python()) return "Python 3 isn't installed on this server (it must run as python, python3 or py).";
     if (this.ctx.cfg.workSandbox === "off") return null;
+    if (process.platform === "win32") return "On Windows programs can't be confined, so Python in chat is off. For a test machine only, set WORK_SANDBOX=off to run it unconfined.";
     const l = landlock();
     if (!l || l.enforcement === "unusable") return "This server can't confine programs (no Landlock); set WORK_SANDBOX=off only if you accept running them unconfined.";
     return null;
@@ -212,10 +221,13 @@ export class ChatSandbox {
     const py = python()!;
     // Limits first, then the program: memory, CPU seconds, file size, processes.
     const limits = `ulimit -v ${MEMORY_KB}; ulimit -t ${Math.ceil((opts.timeoutMs ?? RUN_TIMEOUT_MS) / 1000) + 5}; ulimit -f ${FILE_KB}; ulimit -u 256 2>/dev/null; exec "$0" -I -X utf8 .run/main.py`;
-    const l = this.ctx.cfg.workSandbox === "off" ? null : landlock();
-    const argv = l ? [l.path, ...l.grantArgs({ readOnly: ["/"], readWrite: ["/dev/null", dir] }), "--", "/bin/sh", "-c", limits, py] : ["/bin/sh", "-c", limits, py];
+    const windows = process.platform === "win32";
+    const l = this.ctx.cfg.workSandbox === "off" || windows ? null : landlock();
+    // Windows (WORK_SANDBOX=off): no shell limits and no confinement; the run folder is just the working directory.
+    const argv = windows ? [py, "-I", "-X", "utf8", ".run/main.py"] : l ? [l.path, ...l.grantArgs({ readOnly: ["/"], readWrite: ["/dev/null", dir] }), "--", "/bin/sh", "-c", limits, py] : ["/bin/sh", "-c", limits, py];
     const env = {
-      PATH: "/usr/local/bin:/usr/bin:/bin",
+      ...(windows ? { SystemRoot: process.env.SystemRoot ?? "C:\\Windows", PATHEXT: process.env.PATHEXT ?? "", USERPROFILE: dir } : {}),
+      PATH: windows ? (process.env.PATH ?? "") : "/usr/local/bin:/usr/bin:/bin",
       HOME: dir,
       TMPDIR: join(dir, ".tmp"),
       MPLCONFIGDIR: join(dir, ".tmp"),
@@ -224,7 +236,7 @@ export class ChatSandbox {
       PYTHONDONTWRITEBYTECODE: "1",
       PYTHONIOENCODING: "utf-8",
     };
-    const child = spawn(argv[0]!, argv.slice(1), { cwd: dir, env, detached: true, stdio: ["ignore", "pipe", "pipe"], ...(uid !== undefined ? { uid, gid: uid } : {}) });
+    const child = spawn(argv[0]!, argv.slice(1), { cwd: dir, env, detached: !windows, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...(uid !== undefined ? { uid, gid: uid } : {}) });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (b) => (stdout = (stdout + b).slice(-OUTPUT_CHARS * 4)));
@@ -232,7 +244,8 @@ export class ChatSandbox {
     let timedOut = false;
     const kill = () => {
       try {
-        process.kill(-child.pid!, "SIGKILL");
+        if (windows) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { timeout: 5000 });
+        else process.kill(-child.pid!, "SIGKILL");
       } catch {
         child.kill("SIGKILL");
       }

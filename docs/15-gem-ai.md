@@ -134,6 +134,9 @@ analyse a CSV, Excel, PDF or ZIP, draw charts, and make Excel, Word, PowerPoint,
   user (the one their Work AI tasks use), so it can't read other people's files, and the user firewall keeps it off
   private networks. It fails closed: with `WORK_SANDBOX=on` and no Landlock, Python isn't offered. Limits: 90 seconds
   (the whole process group is killed), 2 GB of memory, 300 MB per file, 256 processes, capped output.
+- **Windows.** Programs can't be confined there, so Python in chat is off; on a test machine only, `WORK_SANDBOX=off`
+  runs it unconfined (no limits either) with Python found as `python`, `py` or `python3`. Admin → Settings → GEM AI says
+  why it is off.
 - **Libraries** come from the image: numpy, scipy, pandas, matplotlib, openpyxl, python-docx, python-pptx, reportlab,
   pypdf, pillow.
 - **Admin → Settings → GEM AI → Let Chat AI run Python** turns it off for everyone (it's on by default where the server
