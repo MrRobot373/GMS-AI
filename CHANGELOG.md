@@ -9,6 +9,9 @@ without one.
 
 ## Unreleased
 
+- **Fixed: "network error" in a long chat answer.** While a model wrote a long program, or a tool ran, the stream sent
+  nothing, and Next.js's proxy dropped the quiet connection after 30 seconds. The chat stream now sends a keep-alive
+  every 10 seconds and the proxy timeout is 15 minutes.
 - **Fixed: Chat AI tool calls failing with "Provider returned 500 … Extra data" on Ollama behind LiteLLM.** Some servers
   repeat the tool's name and its whole arguments in every streamed chunk; they were joined (`run_pythonrun_python`,
   `{…}{…}`), so the call was unknown and the next request was rejected. The stream reader now keeps one name and the first

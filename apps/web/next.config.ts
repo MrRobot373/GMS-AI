@@ -6,6 +6,9 @@ const config: NextConfig = {
   output: "standalone",
   transpilePackages: ["@aatmiq/shared", "@aatmiq/ui", "@aatmiq/calculators"],
   poweredByHeader: false,
+  // Streamed answers (a model writing a long program, a deep research) can be quiet for a while: don't cut the proxied
+  // connection after Next's default 30 seconds.
+  experimental: { proxyTimeout: 15 * 60_000 },
   // Aatmiq's pages may only be framed by Aatmiq itself (no clickjacking an "Approve" button from
   // another site). The IDE (which Aatmiq frames from the IDE's own host) and the API set their own.
   async headers() {

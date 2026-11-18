@@ -597,6 +597,13 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const send = (event: string, data: unknown) => {
       if (!res.destroyed && !res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
+    // A model writing a long program (or a tool running) sends nothing for a while, and proxies (Next.js's is 30 s by
+    // default) drop a quiet connection: a comment line every 10 s keeps it open. Readers ignore comments.
+    const heartbeat = setInterval(() => {
+      if (res.destroyed || res.writableEnded) clearInterval(heartbeat);
+      else res.write(": keepalive\n\n");
+    }, 10_000);
+    res.on("close", () => clearInterval(heartbeat));
     const abort = new AbortController();
     // Deep research carries on when the page is closed; anything else stops with it.
     res.on("close", () => {
