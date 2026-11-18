@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { completeChat, embed, listModels, mockEmbed, modelInfo, openAiBase, streamChat, testProvider, thinkingParams, type FunctionTool } from "./index";
+import { collapseRepeat, completeChat, embed, firstJsonObject, listModels, mockEmbed, modelInfo, openAiBase, streamChat, testProvider, thinkingParams, type FunctionTool } from "./index";
 
 let server: Server;
 let base = "";
@@ -45,6 +45,16 @@ beforeAll(async () => {
           res.write(part({ tool_calls: [{ index: 0, function: { arguments: 'id":"ohms-law"}' } }] }));
           res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })}\n\n`);
           res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 8 } })}\n\n`);
+          res.end("data: [DONE]\n\n");
+          return;
+        }
+        // Ollama behind LiteLLM: the name and the whole arguments again in each chunk.
+        if (body.tools && ask === "repeat-tool") {
+          const part = (delta: unknown) => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+          const call = { index: 0, id: "call_9", function: { name: "run_python", arguments: '{"code":"print(\\"a}b\\")","purpose":"x"}' } };
+          res.write(part({ tool_calls: [call] }));
+          res.write(part({ tool_calls: [{ ...call, id: undefined }] }));
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })}\n\n`);
           res.end("data: [DONE]\n\n");
           return;
         }
@@ -101,6 +111,27 @@ describe("openai-compatible provider", () => {
       calls: [{ id: "call_1", name: "calculators_run", arguments: '{"calculator_id":"ohms-law"}' }],
     });
     expect(events.at(-1)).toMatchObject({ type: "done", finishReason: "tool_calls" });
+  });
+
+  it("keeps one name and one JSON object when a server repeats the whole call in every chunk", async () => {
+    const cfg = { type: "openai_compatible" as const, baseUrl: base };
+    const tools: FunctionTool[] = [{ type: "function", function: { name: "run_python", description: "Run", parameters: { type: "object" } } }];
+    const events = [];
+    for await (const e of streamChat(cfg, "qwen-test", [{ role: "user", content: "repeat-tool" }], { tools })) events.push(e);
+    const call = (events.find((e) => e.type === "tool_calls") as { calls: { name: string; arguments: string }[] }).calls[0]!;
+    expect(call.name).toBe("run_python");
+    expect(JSON.parse(call.arguments)).toEqual({ code: 'print("a}b")', purpose: "x" });
+  });
+
+  it("repairs joined names and arguments", () => {
+    expect(collapseRepeat("run_pythonrun_python")).toBe("run_python");
+    expect(collapseRepeat("web_search")).toBe("web_search");
+    expect(collapseRepeat("abab")).toBe("abab");
+    expect(firstJsonObject('{"a":1}{"a":1}')).toBe('{"a":1}');
+    expect(firstJsonObject('{"a":"}{"}{"b":2}')).toBe('{"a":"}{"}');
+    expect(firstJsonObject('{"a":1}')).toBe('{"a":1}');
+    expect(firstJsonObject("")).toBe("{}");
+    expect(firstJsonObject('{"a":')).toBe('{"a":');
   });
 
   it("switches thinking per request: vLLM through the chat template, Ollama by reasoning effort", async () => {

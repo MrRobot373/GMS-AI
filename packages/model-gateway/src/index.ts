@@ -272,7 +272,10 @@ async function* streamOpenAiCompatible(
       const i = part.index ?? 0;
       const cur = toolCalls.get(i) ?? { id: "", name: "", arguments: "" };
       if (part.id) cur.id = part.id;
-      if (part.function?.name) cur.name += part.function.name;
+      // OpenAI sends a tool's name once; some servers (Ollama behind LiteLLM) repeat it in every chunk: appending would
+      // make "run_pythonrun_python". A name that is only a repeat of the one so far is ignored.
+      const piece = part.function?.name;
+      if (piece && piece !== cur.name) cur.name += piece;
       if (part.function?.arguments) cur.arguments += part.function.arguments;
       toolCalls.set(i, cur);
     }
@@ -290,10 +293,57 @@ async function* streamOpenAiCompatible(
       type: "tool_calls",
       calls: [...toolCalls.entries()]
         .sort((a, b) => a[0] - b[0])
-        .map(([, c]) => c),
+        .map(([, c]) => ({ ...c, name: collapseRepeat(c.name), arguments: firstJsonObject(c.arguments) })),
     };
   }
   yield { type: "done", usage: usage ?? estimateUsage(messages, output), finishReason };
+}
+
+/** "run_pythonrun_python" → "run_python": a name sent again by every chunk and joined. */
+export function collapseRepeat(name: string): string {
+  const n = name.length;
+  for (let k = 2; k <= 4; k++) {
+    if (n % k === 0 && name.slice(0, n / k).repeat(k) === name && n / k >= 3) return name.slice(0, n / k);
+  }
+  return name;
+}
+
+/**
+ * A tool call's arguments as one JSON value. Some servers send the whole arguments again in each chunk, so joined they
+ * read `{"a":1}{"a":1}`, which the next request to the provider rejects ("Extra data"). The first complete object is kept;
+ * anything already valid, or with no complete object, is left as it is.
+ */
+export function firstJsonObject(args: string): string {
+  const text = args.trim();
+  if (!text) return "{}";
+  try {
+    JSON.parse(text);
+    return text;
+  } catch {
+    // fall through
+  }
+  const start = text.indexOf("{");
+  if (start < 0) return args;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]!;
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) {
+      const one = text.slice(start, i + 1);
+      try {
+        JSON.parse(one);
+        return one;
+      } catch {
+        return args;
+      }
+    }
+  }
+  return args;
 }
 
 export function estimateUsage(messages: ChatMessage[], output: string): Usage {

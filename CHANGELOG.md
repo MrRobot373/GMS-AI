@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Fixed: Chat AI tool calls failing with "Provider returned 500 … Extra data" on Ollama behind LiteLLM.** Some servers
+  repeat the tool's name and its whole arguments in every streamed chunk; they were joined (`run_pythonrun_python`,
+  `{…}{…}`), so the call was unknown and the next request was rejected. The stream reader now keeps one name and the first
+  complete JSON object.
 - **Tools for the data-dependent release blockers (P0 #1–#6).** `scripts/knowledge-ingest.mjs` loads a folder of documents
   in bulk (resumable, retries, pages per minute); `scripts/knowledge-eval.mjs` now checks the right document is in the
   top 5, a given page, a `--min-pass` threshold (24 of 30), a token-free `--retrieval-only` mode and p50/p95 latency;
