@@ -457,6 +457,33 @@ when it should be, and that every citation is a retrieved passage. Unanswerable 
 retrieve passages suggest a lower distance; expected documents that are missed suggest a higher
 one. It exits with 1 when a case fails.
 
+**Acceptance run (at least 24 of 30 questions have the right evidence in the top 5).** Cases can also name a `pages` list
+(a passage from that page of that document must be among the top results). Options:
+
+```bash
+node scripts/knowledge-eval.mjs questions.json --min-pass 24 --top-k 5 --report knowledge-eval.json
+node scripts/knowledge-eval.mjs questions.json --retrieval-only --min-pass 24   # checks retrieval only, uses no tokens
+```
+
+`--top-k` is how far down the right document may be (rank, not just "retrieved"); `--min-pass` sets the threshold the exit
+code uses; `--report` saves the per-question results and the time to the first answer (p50 and p95) as evidence.
+
+### Loading a large corpus
+
+`scripts/knowledge-ingest.mjs` ingests a folder in bulk: each sub-folder becomes a project (created if it doesn't exist),
+each file is uploaded as a source and followed until it is ready or failed.
+
+```bash
+KNOWLEDGE_EVAL_URL=… KNOWLEDGE_EVAL_EMAIL=… KNOWLEDGE_EVAL_PASSWORD=… \
+  node scripts/knowledge-ingest.mjs ./corpus --state ingest-state.json --report ingest-report.json --concurrency 3
+```
+
+It is resumable (files are recorded by their SHA-256; run it again after an interruption and finished files are skipped),
+retries uploads with backoff, and reports files, pages, failures and pages per minute per project. Keep the state and
+report files outside the corpus folder. `scripts/check-lesson-videos.mjs` samples saved lesson videos and checks each
+against YouTube's oEmbed. How fast exact vector search is at 10,000 pages (about 140 ms, no index needed) and when to add
+one: [evidence](evidence/2026-11-18-vector-scan/README.md).
+
 ## Release checks
 
 These block a release, and each has tests that run on every push:

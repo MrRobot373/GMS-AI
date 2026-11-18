@@ -9,6 +9,12 @@ without one.
 
 ## Unreleased
 
+- **Tools for the data-dependent release blockers (P0 #1–#6).** `scripts/knowledge-ingest.mjs` loads a folder of documents
+  in bulk (resumable, retries, pages per minute); `scripts/knowledge-eval.mjs` now checks the right document is in the
+  top 5, a given page, a `--min-pass` threshold (24 of 30), a token-free `--retrieval-only` mode and p50/p95 latency;
+  `scripts/check-lesson-videos.mjs` samples 20 lesson videos against oEmbed; `tests/e2e/run-backup.sh` also restores a
+  calculator row, a course with progress and Knowledge chunks. Measured: exact vector search takes about 19 ms for 1,000
+  pages and about 140 ms for 10,000, so no index is needed ([evidence](docs/evidence/2026-11-18-vector-scan/README.md)).
 - **Release blockers fixed (docs/16, P0 #7, #8, #9).**
   - **Project material is for the project's people.** An admin who isn't in a project manages it (people, settings,
     deleting) but no longer reads its files, chats, brain or Knowledge answers, or anyone's private library files by id.

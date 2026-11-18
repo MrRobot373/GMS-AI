@@ -236,6 +236,19 @@ deploy/team.sh up -d                                          # …and start it 
 
 Restore refuses while Aatmiq is running. Test a restore once, on a spare machine if you can.
 
+**What a backup holds, and what it doesn't.**
+- The database holds everything people made: chats, projects and their brains, courses with each person's progress,
+  calculator history and favorites, Knowledge chunks and embeddings, settings and audit log. Uploaded files, task
+  folders and each chat's Python folder (`CHAT_DIR`) are in the `files` volume, which the backup archives too.
+- **Files kept in an S3 bucket** (`S3_BUCKET`) are *not* in the backup: the bucket is a separate store, and the
+  database only points at it. Back it up with the bucket's own versioning or replication, and restore it to the same
+  keys. Without it a restored database lists documents whose files are gone.
+- **Keep `APP_SECRET`** with the backups: stored credentials (model keys, connector tokens, SSO secrets) are encrypted
+  with it and can't be read without it.
+- Restoring brings back what the database and volume held that night, including each person's lesson progress and
+  calculator history. `tests/e2e/run-backup.sh` checks this (a project file, a calculator row, a course with progress,
+  Knowledge chunks) on the Compose stack; it needs Docker and runs in the Nightly workflow.
+
 ## Updating
 
 From a release (the images from the registry; [13-releases.md](13-releases.md)): set the new

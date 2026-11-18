@@ -49,6 +49,17 @@ api POST /api/setup '{"orgName":"Acme","name":"Asha Owner","email":"owner@acme.t
 WS=$(api GET /api/me | jq -r '.workspaces[0].id')
 PID=$(api POST /api/projects "{\"workspaceId\":\"$WS\",\"name\":\"Launch plan\"}" | jq -r .id)
 DOC=$(api POST "/api/projects/$PID/sources/note" '{"title":"Budget","content":"The launch budget is 42 lakh."}' | jq -r .id)
+# More than a project file (acceptance P0 #1): a calculator history row, a course with a lesson and progress, and a
+# Knowledge source with its searchable chunks. (A course needs a model to generate, so its rows are inserted directly.)
+api POST /api/calculators/history "{\"workspaceId\":\"$WS\",\"calculatorId\":\"scientific\",\"expression\":\"2+3*4\",\"angle\":\"deg\"}" >/dev/null
+UID_=$(api GET /api/me | jq -r .user.id)
+sql() { "${C[@]}" exec -T postgres psql -U aatmiq -d aatmiq -v ON_ERROR_STOP=1 -tA -c "$1"; }
+sql "with c as (insert into course (workspace_id, user_id, topic, level, title, status, outline) values ('$WS', '$UID_', 'Buck converters', 'basic', 'Buck converters', 'ready', '{\"modules\":[{\"title\":\"Basics\",\"lessons\":[\"Duty cycle\"]}]}'::jsonb) returning id) insert into course_lesson (course_id, ordinal, title, status, content) select id, 0, 'Duty cycle', 'ready', '{\"title\":\"Duty cycle\",\"sections\":[]}'::jsonb from c" >/dev/null
+COURSE=$(api GET "/api/learning/courses?workspaceId=$WS" | jq -r '.[0].id')
+api PUT "/api/learning/courses/$COURSE/lessons/0/state" '{"completed":true}' >/dev/null
+CHUNKS=$(sql "select count(*) from document_chunk where document_id = '$DOC'")
+check "more data to back up: a calculator row, a course with progress, and the source's chunks" '[ "$(api GET "/api/calculators/history?workspaceId=$WS" | jq length)" = 1 ] && [ "$(api GET /api/learning/courses/$COURSE | jq -r ".lessons[0].completedAt")" != null ] && [ "$CHUNKS" -gt 0 ]'
+
 check "data to back up: a project with a file" '[ "$(api GET /api/documents/$DOC/file)" = "The launch budget is 42 lakh." ]'
 
 "${C[@]}" exec -T backup /scripts/backup.sh > "$T/backup.log" 2>&1 || { cat "$T/backup.log"; exit 1; }
@@ -74,6 +85,10 @@ check "restore refuses while Aatmiq is running" refused
 "${C[@]}" up -d --no-build api web >/dev/null 2>&1
 up
 check "after the restore the project is back, signed in as before" '[ "$(api GET /api/projects/$PID | jq -r .name)" = "Launch plan" ]'
+check "the calculator history row is back" '[ "$(api GET "/api/calculators/history?workspaceId=$WS" | jq -r ".[0].outputs.value")" = 14 ]'
+check "the course is back with its lesson and the person's progress" '[ "$(api GET /api/learning/courses/$COURSE | jq -r ".lessons[0].title + \" \" + (.lessons[0].completedAt != null | tostring)")" = "Duty cycle true" ]'
+check "the Knowledge source has the same number of searchable chunks" '[ "$(sql "select count(*) from document_chunk where document_id = '"'"'$DOC'"'"'")" = "$CHUNKS" ]'
+check "and it is listed in the project's Knowledge sources" 'api GET "/api/knowledge/projects/$PID" | jq -e "tostring | test(\"Budget\")" >/dev/null'
 check "and its file reads the same" '[ "$(api GET /api/documents/$DOC/file)" = "The launch budget is 42 lakh." ]'
 check "files keep their owners and modes" '[ "$("${C[@]}" exec -T api stat -c %a /data/files)" = 700 ]'
 
