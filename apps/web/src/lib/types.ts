@@ -159,6 +159,8 @@ export interface ProjectDetail {
   color: string;
   description: string | null;
   instructions: string | null;
+  /** The project's shared folder on the server (tasks work in it by default). */
+  workFolder?: string | null;
   visibility: "private" | "workspace";
   ownerId: string | null;
   role: "owner" | "edit" | "chat";

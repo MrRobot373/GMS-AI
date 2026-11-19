@@ -9,6 +9,11 @@ without one.
 
 ## Unreleased
 
+- **Undo, shared project folders and a folder picker for tasks working in a folder.** Before a task changes a folder, its
+  state is kept privately; the Files panel lists what changed and can undo all of it or one file. A project can have a shared
+  folder that its tasks use by default (or a private copy instead), and **Browse** picks an allowed folder instead of typing
+  the path. Migration `0036`. Folders aren't available with `WORK_ISOLATION=container`.
+
 - **Work AI and Super AI can work directly in a folder.** With **Allowed folders** set (Admin → Work AI, or `WORK_FOLDERS`),
   the task box has **Work in a folder**: type a folder inside an allowed one and the task works there, with no private
   copy to upload to or download from. Links are resolved, Aatmiq's own folders can't be used, and only one task at a time

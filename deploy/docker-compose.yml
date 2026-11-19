@@ -24,6 +24,8 @@ x-app-env: &app-env
   # Work AI: commands may only change their task folder (Landlock/bubblewrap). Set "off" only on
   # hosts whose kernel has neither; each task still runs as its own Unix user.
   WORK_SANDBOX: ${WORK_SANDBOX:-on}
+  # Folders on the server Work AI / Super AI tasks may work in directly (";"-separated); see docker-compose.folders.yml.
+  WORK_FOLDERS: ${WORK_FOLDERS:-}
   # Outgoing email for invitations and password resets. Optional: admins can also set it in
   # Admin → Settings → Email. Example: smtps://user:password@smtp.example.com:465
   SMTP_URL: ${SMTP_URL:-}

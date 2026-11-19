@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { timeAgo } from "@/lib/format";
 import type { AvailableModel } from "@/lib/types";
 import { describeCall, usePendingApprovals, useWorkInfo, useWorkTasks, type WorkTaskSummary } from "@/lib/work";
+import { FolderPickerButton } from "./folder-picker";
 import { StatusIcon, WorkComposer, WorkTabs, type StagedFile, type WorkComposerHandle } from "./parts";
 import { msg, useT } from "@/i18n";
 
@@ -48,6 +49,8 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
   const [sending, setSending] = useState(false);
   // A folder on the server to work in directly (when an admin allowed some).
   const [folder, setFolder] = useState("");
+  // In a project with a shared folder, tasks work there unless a private copy is chosen.
+  const [privateCopy, setPrivateCopy] = useState(false);
   const composerRef = useRef<WorkComposerHandle>(null);
   // Started from a project (/app/work?project=…): the task works with its instructions, files and connectors.
   const params = useSearchParams();
@@ -61,7 +64,8 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
   const start = async () => {
     const prompt = input.trim();
     if (!prompt || sending) return;
-    if (folder.trim() && files.length) {
+    const projectFolder = projectId ? project.data?.workFolder ?? null : null;
+    if ((folder.trim() || (projectFolder && !privateCopy)) && files.length) {
       toast.error(t("Attached files can't be added when working in a folder: put them in the folder instead."));
       return;
     }
@@ -69,7 +73,7 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
     try {
       // With files, the task is created first, the files go into its folder, then it starts.
       const inProject = projectId && project.data ? project.data.id : undefined;
-      const task = await post<{ id: string }>("/api/work/tasks", { workspaceId, prompt, modelId: model?.id, projectId: inProject, start: files.length === 0, ...(superAi ? { engine } : {}), ...(folder.trim() ? { folder: folder.trim() } : {}) });
+      const task = await post<{ id: string }>("/api/work/tasks", { workspaceId, prompt, modelId: model?.id, projectId: inProject, start: files.length === 0, ...(superAi ? { engine } : {}), ...(folder.trim() ? { folder: folder.trim() } : privateCopy ? { privateCopy: true } : {}) });
       if (files.length) {
         for (const f of files) {
           const form = new FormData();
@@ -160,7 +164,14 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
                     className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-subtle"
                     data-testid="work-folder-input"
                   />
+                  <FolderPickerButton workspaceId={workspaceId} start={folder} onPick={setFolder} />
                 </label>
+                {!folder.trim() && project.data?.workFolder && (
+                  <label className="mt-1 flex items-center gap-2 px-1 text-[12px] text-fg-subtle" data-testid="project-folder-note">
+                    <input type="checkbox" className="accent-[var(--accent)]" checked={privateCopy} onChange={(e) => setPrivateCopy(e.target.checked)} />
+                    {privateCopy ? t("It works in a private copy instead of the project's folder.") : t("It works in the project's shared folder {folder}. Tick to use a private copy instead.", { folder: project.data.workFolder })}
+                  </label>
+                )}
                 {folder.trim() && (
                   <p className="mt-1 px-1 text-[12px] text-fg-subtle">
                     {files.length > 0

@@ -34,6 +34,7 @@ import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { dropProjectGuestIfDone, ensureProjectGuest, getProjectAccess, isGuest, isWorkspaceAdmin, projectVisibleTo, requireNotGuest, requireProjectEdit } from "../services/projects";
 import { MAX_UPLOAD_BYTES } from "./documents";
 import { getOrgPeriod, getProjectQuotaStatus } from "../services/quota";
+import { resolveWorkFolder } from "../services/work-folder";
 import { defaultUserQuota, periodEnd, periodStart } from "@aatmiq/shared";
 
 const createSchema = z.object({
@@ -51,6 +52,8 @@ const updateSchema = z.object({
   visibility: z.enum(["private", "workspace"]).optional(),
   /** Connectors Work AI tasks in the project may use; null: all the organization's. */
   connectorIds: z.array(z.string()).max(200).nullable().optional(),
+  /** The project's shared folder on the server (inside an allowed folder); null or "" removes it. */
+  workFolder: z.string().trim().max(1000).nullable().optional(),
 });
 /** One person (from any team), or every member of a group at once. */
 const memberSchema = z
@@ -226,6 +229,12 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
       const known = new Set((await db.select({ id: connector.id }).from(connector).where(inArray(connector.id, body.connectorIds))).map((c) => c.id));
       if (body.connectorIds.some((id) => !known.has(id))) throw badRequest("One of those connectors doesn't exist any more.");
     }
+    // The shared folder: checked like a task's folder, and kept as its real path.
+    if (body.workFolder) {
+      const ok = await resolveWorkFolder(body.workFolder, await ctx.work.folderRules());
+      if (!ok.ok) throw badRequest(ok.error);
+      body.workFolder = ok.path;
+    } else if (body.workFolder !== undefined) body.workFolder = null;
     const [updated] = await db.update(project).set(body).where(eq(project.id, p.id)).returning();
     await audit(ctx, {
       actor: u,

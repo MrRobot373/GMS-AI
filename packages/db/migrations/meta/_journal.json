@@ -253,6 +253,13 @@
       "when": 1795117414359,
       "tag": "0035_work_folder",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795118108174,
+      "tag": "0036_project_folder_snapshot",
+      "breakpoints": true
     }
   ]
 }

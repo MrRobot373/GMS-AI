@@ -22,9 +22,10 @@ import { getProjectAccess, requireNotGuest, requireProjectEdit } from "../servic
 import { quotaFor, quotaMessage } from "../services/quota";
 import { workWebSearchDeps } from "../services/gem";
 import { webSearchReady } from "../services/web-search";
-import { busyMessage, folderBusy, resolveWorkFolder } from "../services/work-folder";
+import { browseFolders, busyMessage, folderBusy, resolveWorkFolder } from "../services/work-folder";
+import { changesSince, undoChanges } from "../services/work-snapshot";
 import { getWorkSettings, superAiWindowProblem, titleFrom, type WorkStreamEvent } from "../services/work";
-import { localeOf, tr } from "../i18n";
+import { localeOf, msg, tr } from "../i18n";
 
 const MAX_FILES = 1000;
 // `.task` holds long requests saved for the agent (services/work.ts), not something it made.
@@ -141,6 +142,15 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     return w ?? null;
   };
 
+  /** The folders inside an allowed folder, for the folder picker (no path: the allowed folders themselves). */
+  app.get<{ Querystring: { workspaceId?: string; path?: string } }>("/api/work/folders", async (req) => {
+    const u = await requireUser(ctx, req);
+    if (req.query.workspaceId) await requireWorkSection(ctx, u, req.query.workspaceId);
+    const r = await browseFolders(req.query.path ?? null, await work.folderRules());
+    if (!r.ok) throw badRequest(r.error);
+    return r.listing;
+  });
+
   /** What Work AI can do here (for the UI). */
   app.get<{ Querystring: { workspaceId?: string } }>("/api/work/info", async (req) => {
     const u = await requireUser(ctx, req);
@@ -214,10 +224,15 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       const p = await getProjectAccess(ctx, u, b.projectId);
       if (p.project.workspaceId !== b.workspaceId) throw badRequest("That project is in another workspace.");
     } else await requireNotGuest(ctx, u, b.workspaceId);
-    // Working directly in a folder on the server instead of a private copy.
+    // Working directly in a folder on the server instead of a private copy: the one typed, or the project's shared folder.
     let workFolder: string | null = null;
-    if (b.folder) {
-      const ok = await resolveWorkFolder(b.folder, await work.folderRules());
+    let wanted = b.folder ?? null;
+    if (!wanted && b.projectId && !b.privateCopy) {
+      const [pf] = await db.select({ f: project.workFolder }).from(project).where(eq(project.id, b.projectId));
+      wanted = pf?.f ?? null;
+    }
+    if (wanted) {
+      const ok = await resolveWorkFolder(wanted, await work.folderRules());
       if (!ok.ok) throw badRequest(ok.error);
       const busy = await folderBusy(db, ok.path);
       if (busy) throw new HttpError(409, busyMessage(busy), "folder_busy");
@@ -393,6 +408,37 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     reply.header("x-content-type-options", "nosniff");
     reply.header("content-security-policy", "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
     return reply.send(createReadStream(full));
+  });
+
+  /** What a task working in a folder has changed there since before it started (and whether it can be undone). */
+  app.get<{ Params: { id: string } }>("/api/work/tasks/:id/changes", async (req) => {
+    const u = await requireUser(ctx, req);
+    const { task: t } = await loadReadableTask(ctx, u, req.params.id);
+    if (!t.workFolder) return { folder: null, snapshot: null, changes: [], total: 0, canUndo: false };
+    const snap = t.workSnapshot;
+    const root = await filesRoot(t);
+    if (!snap?.before || !root) return { folder: t.workFolder, snapshot: snap ? { status: snap.status, note: snap.note } : null, changes: [], total: 0, canUndo: false };
+    const { changes, total } = await changesSince(work.taskDir(t.id), root, snap.before);
+    const busy = ["queued", "running", "needs_approval"].includes(t.status);
+    return { folder: t.workFolder, snapshot: { status: snap.status, note: snap.note }, changes, total, canUndo: !busy && t.userId === u.id && changes.length > 0 };
+  });
+
+  /** Put the folder back as it was before the task: everything it changed, or only the given files. */
+  app.post<{ Params: { id: string } }>("/api/work/tasks/:id/undo", async (req) => {
+    const u = await requireUser(ctx, req);
+    const t = await loadOwnTask(ctx, u, req.params.id);
+    await requireWorkSection(ctx, u, t.workspaceId);
+    const { paths } = parse(z.object({ paths: z.array(z.string().max(1000)).max(1000).optional() }), req.body ?? {});
+    if (!t.workFolder || !t.workSnapshot?.before) throw badRequest(msg("There is nothing to undo for this task."));
+    if (["queued", "running", "needs_approval"].includes(t.status)) throw new HttpError(409, msg("The task is still working: stop it first, then undo."), "task_busy");
+    const root = await filesRoot(t);
+    if (!root) throw notFound(msg("Not found"));
+    const known = new Set((await changesSince(work.taskDir(t.id), root, t.workSnapshot.before, Number.MAX_SAFE_INTEGER)).changes.map((c) => c.path));
+    if (paths?.some((p) => !known.has(p))) throw badRequest(msg("One of those files wasn't changed by this task."));
+    const r = await undoChanges(work.taskDir(t.id), root, t.workSnapshot.before, paths);
+    await audit(ctx, { actor: u, action: "work.task.undone", workspaceId: t.workspaceId, targetType: "work_task", targetId: t.id, meta: { files: r.restored + r.removed, partial: !!paths } });
+    work.pulse(t.id, "files", {});
+    return r;
   });
 
   /** Add a file to the task folder (multipart, one `file`; optional `dir`). */

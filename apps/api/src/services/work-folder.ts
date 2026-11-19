@@ -9,7 +9,7 @@
  * - two tasks can't work in the same folder (or one inside another) at once.
  */
 import { and, eq, inArray, isNotNull, workTask, type DB } from "@aatmiq/db";
-import { access, constants, realpath, stat } from "node:fs/promises";
+import { access, constants, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fill, msg } from "../i18n";
 
@@ -88,3 +88,33 @@ export const rootsFromEnv = (value: string | undefined) => (value ?? "").split("
 
 /** What a person is told when a task is already working in the folder. */
 export const busyMessage = (title: string) => fill(msg("Another task (\"{title}\") is working in this folder. Wait for it to finish, or stop it."), { title });
+
+export interface FolderListing {
+  /** The folder listed, or null for the list of allowed folders. */
+  path: string | null;
+  /** The folder above it (null: go back to the list of allowed folders). */
+  parent: string | null;
+  folders: { name: string; path: string }[];
+}
+
+/** The folders inside an allowed folder, for the picker (names only; nothing outside the allowed list is shown). */
+export async function browseFolders(input: string | null, rules: FolderRules): Promise<{ ok: true; listing: FolderListing } | { ok: false; error: string }> {
+  const roots = await realRoots(rules.roots);
+  if (!input?.trim()) return { ok: true, listing: { path: null, parent: null, folders: roots.map((r) => ({ name: r, path: r })) } };
+  const r = await resolveWorkFolder(input, rules);
+  if (!r.ok) return r;
+  const names = (await readdir(r.path, { withFileTypes: true }).catch(() => [])).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name).sort((a, b) => a.localeCompare(b)).slice(0, 500);
+  const folders: { name: string; path: string }[] = [];
+  for (const name of names) {
+    const child = path.join(r.path, name);
+    let hidden = false;
+    for (const f of rules.forbidden) {
+      const rf = (await real(f)) ?? path.resolve(f);
+      if (isInside(rf, child) || isInside(child, rf)) hidden = true;
+    }
+    if (!hidden) folders.push({ name, path: child });
+  }
+  const up = path.dirname(r.path);
+  const parent = up !== r.path && roots.some((root) => isInside(root, up)) ? up : null;
+  return { ok: true, listing: { path: r.path, parent, folders } };
+}

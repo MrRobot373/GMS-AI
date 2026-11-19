@@ -55,6 +55,7 @@ import { ApiError, del, formatBytes, get, patch, post, readSse } from "@/lib/api
 import { cn } from "@/lib/cn";
 import { formatTokens, routingReason, timeAgo, TIER_NAMES } from "@/lib/format";
 import { ACTIVE, describeCall, type ChecklistItem, type TaskStatus, type WorkEvent, type WorkFile, type WorkTaskDetail, type WorkVerification } from "@/lib/work";
+import { FolderChanges } from "./folder-changes";
 import { StatusPill, WorkComposer, type WorkComposerHandle } from "./parts";
 import { useT } from "@/i18n";
 
@@ -589,6 +590,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     projectName={proj?.name}
                     code={code}
                     workFolder={workFolder}
+                    changes={workFolder && own ? <FolderChanges taskId={taskId} status={status} /> : null}
                   />
                 )}
               </div>
@@ -1026,6 +1028,7 @@ function FilesPanel({
   projectName,
   code,
   workFolder,
+  changes,
 }: {
   taskId: string;
   files?: WorkFile[];
@@ -1038,6 +1041,8 @@ function FilesPanel({
   code?: { id: string; name: string } | null;
   /** The folder the task works in directly. */
   workFolder?: string | null;
+  /** What the task changed in its folder, with undo. */
+  changes?: ReactNode;
 }) {
   const t = useT();
   if (!files) return <Skeleton className="h-24 rounded-lg" />;
@@ -1106,6 +1111,7 @@ function FilesPanel({
         </ul>
       )}
       {truncated && <p className="mt-2 text-[12px] text-fg-subtle">{t("Showing the first 1,000 files.")}</p>}
+      {changes}
     </div>
   );
 }

@@ -39,6 +39,7 @@ import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type W
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
 import { runChecks, type CheckResult } from "./work-checks";
+import { takeSnapshot } from "./work-snapshot";
 import { busyMessage, folderBusy, resolveWorkFolder, type FolderRules } from "./work-folder";
 import { gitSnapshot, loadProgress, loadState, PROGRESS_FILE, progressEntry, saveState, STAGE_ROUNDS, stagePrompt } from "./work-stages";
 import {
@@ -939,7 +940,14 @@ export class WorkRunner {
         if (!ok.ok) throw new Error(ok.error);
         const busy = await folderBusy(db, ok.path, taskId);
         if (busy) throw new Error(busyMessage(busy));
+        // A container sees only its own folder: a folder on this machine isn't there.
+        if (this.containerEngine && task.engine !== "claude" && !task.parentId) throw new Error("Working in a folder isn't available while tasks run in containers (WORK_ISOLATION=container). Use a private copy, or another isolation mode.");
         external = ok.path;
+        // Keep the folder's state before the task changes anything, so its changes can be listed and undone.
+        if (!task.workSnapshot) {
+          const snap = await takeSnapshot(this.taskDir(taskId), external);
+          await db.update(workTask).set({ workSnapshot: snap }).where(eq(workTask.id, taskId));
+        }
       }
       const workdir = external ?? (code ? this.ctx.code.workspacePath(task.userId, code.slug) : this.filesDir(taskId));
       const homeDir = join(this.taskDir(taskId), "runtime");

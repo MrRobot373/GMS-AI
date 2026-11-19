@@ -59,6 +59,8 @@ export const workTaskCreateSchema = z.object({
   engine: z.enum(["dsh", "claude"]).default("dsh"),
   /** A folder on the server to work in directly (inside one an admin allowed), instead of a private copy. */
   folder: z.string().trim().min(1).max(1000).optional(),
+  /** In a project with a shared folder: use a private copy instead of the project's folder. */
+  privateCopy: z.boolean().optional(),
   /** false: create the task without starting it (to add files first), then send the prompt as a message. */
   start: z.boolean().default(true),
 });

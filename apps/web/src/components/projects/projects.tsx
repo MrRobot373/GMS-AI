@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Avatar } from "@/components/ui/misc";
 import { Dialog } from "@/components/ui/overlay";
+import { FolderPickerButton } from "@/components/work/folder-picker";
 import { ApiError, del, get, patch, post, put } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { DocumentRow, ProjectDetail, ProjectSummary } from "@/lib/types";
@@ -147,6 +148,8 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: { project
   const [color, setColor] = useState(project.color);
   const [description, setDescription] = useState(project.description ?? "");
   const [instructions, setInstructions] = useState(project.instructions ?? "");
+  const [workFolder, setWorkFolder] = useState(project.workFolder ?? "");
+  const folders = useQuery({ queryKey: ["work-info", workspaceId], queryFn: () => get<{ folders?: boolean }>(`/api/work/info?workspaceId=${workspaceId}`), enabled: open && !!workspaceId });
   // Which connectors the project's Work AI tasks get (null: all of them).
   const canWork = useCanUse("work");
   const connectors = useQuery({
@@ -161,6 +164,7 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: { project
     setColor(project.color);
     setDescription(project.description ?? "");
     setInstructions(project.instructions ?? "");
+    setWorkFolder(project.workFolder ?? "");
     setConnectorIds(project.connectorIds);
   }, [open, project]);
   const save = useMutation({
@@ -170,6 +174,7 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: { project
         color,
         description: description.trim() || null,
         instructions: instructions.trim() || null,
+        ...(folders.data?.folders ? { workFolder: workFolder.trim() || null } : {}),
         // Only once the list has loaded, so a quick save never clears the choice.
         ...(canWork && connectors.data ? { connectorIds: connectorIds?.filter((id) => connectors.data.some((c) => c.id === id)) ?? null } : {}),
       }),
@@ -213,6 +218,14 @@ export function ProjectSettingsDialog({ project, open, onOpenChange }: { project
             data-testid="project-instructions"
           />
         </Field>
+        {folders.data?.folders && (
+          <Field label={t("Shared folder")} hint={t("Optional. A folder on the server the project's Work AI and Super AI tasks work in by default, so everyone works on the same files. One task at a time can use it.")}>
+            <div className="flex items-center gap-2">
+              <Input value={workFolder} onChange={(e) => setWorkFolder(e.target.value)} placeholder={t("Full path, e.g. E:\\Projects\\ADAS")} data-testid="project-work-folder" />
+              <FolderPickerButton workspaceId={workspaceId} start={workFolder} onPick={setWorkFolder} />
+            </div>
+          </Field>
+        )}
         {canWork && (connectors.data?.length ?? 0) > 0 && (
           <Field label={t("Connectors for Work AI tasks")} hint={t("Tasks in this project can use only the apps chosen here (each person still signs in to their own).")}>
             <div className="space-y-2" data-testid="project-connectors">

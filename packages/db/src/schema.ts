@@ -732,6 +732,8 @@ export const project = pgTable(
      * "review" holds everything for a person with edit access to accept, "off" neither learns nor is used.
      */
     brainMode: text("brain_mode").$type<"auto" | "review" | "off">().notNull().default("auto"),
+    /** The project's shared folder on the server: its Work AI and Super AI tasks work there directly (no copies). */
+    workFolder: text("work_folder"),
     /**
      * The project's own budget (docs/03-projects.md, "Project budget"), on top of the workspace's: tokens per budget period
      * for everyone together (null: no project total), and per person (null: the total split evenly among its people).
@@ -1007,6 +1009,8 @@ export const workTask = pgTable(
     codeWorkspaceId: text("code_workspace_id").references((): AnyPgColumn => codeWorkspace.id, { onDelete: "cascade" }),
     /** A folder on the server the task works in directly (no private copy); set from the folders an admin allowed. */
     workFolder: text("work_folder"),
+    /** The state of that folder before the task changed it, kept privately so the changes can be undone (services/work-snapshot.ts). */
+    workSnapshot: jsonb("work_snapshot").$type<{ before: string | null; status: "ok" | "skipped"; note: string | null; at: string }>(),
     pinned: boolean("pinned").notNull().default(false),
     /** A reviewer task's builder task. Reviewer tasks work on a copy of the folder and are not listed. */
     parentId: text("parent_id").references((): AnyPgColumn => workTask.id, { onDelete: "cascade" }),

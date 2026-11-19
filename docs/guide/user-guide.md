@@ -10,7 +10,7 @@ company's single sign-on button (Google, Microsoft…) if there is one. If two-s
 also type the 6-digit code from your authenticator app. You lost your phone: use a backup code, or
 ask an admin. You forgot your password: **Forgot password?** on the sign-in page.
 
-The sidebar on the left: **New chat**, **Chat**, **Projects**, **Documents**, **Work AI**, **Code**
+The sidebar on the left: **New chat**, **Chat**, **Projects**, **Documents**, **Work AI**, **Super AI**, **Code**
 (the sections your admin gave you), your recent chats, and at the bottom your name (Settings, sign
 out) and the bell (notifications).
 
@@ -60,7 +60,14 @@ your files, researches on the web, fills in a form, organizes data, writes and r
    stops and asks. **Approve** or **Reject**; it's also in the bell and on the Work AI home page.
 4. Answer it to continue ("now add a summary table"), or **Stop** it.
 
-Also in Work AI: **Scheduled** (a task every Monday at 9, for example), **Skills** (your own
+**Super AI** is the same kind of task on a different engine (Claude Code); use it to compare answers with Work AI.
+
+**Working in a folder.** If your admin allowed folders, the task box has **Work in a folder** (type the path or press
+**Browse**): the task works directly in that folder, with no copy. When it stops, the Files panel lists what it changed and
+**Undo all** (or the arrow beside a file) puts the folder back as it was. A project can have a **shared folder**
+(Project settings) that its tasks use by default, one task at a time; tick *private copy* to avoid it.
+
+Also in Work AI: **Skills** (your own
 instructions it can follow) and **Connections** (your accounts in other apps, such as Gmail or
 GitHub, signed in once by you; nobody else can use them).
 

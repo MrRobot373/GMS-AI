@@ -53,6 +53,18 @@ and changes files there, and its Files panel lists that folder.
 - **Where the folder is.** It is a path on the machine Aatmiq runs on. On your own PC that is your PC's folder; on a shared
   server it must be on the server or on a network share it mounts, so team projects can live in one folder everyone uses.
 
+**Undo.** Before the task starts, its folder's state is kept privately (a Git copy in the task's own folder, nothing is
+added to yours; `node_modules`, virtual environments and caches aren't kept). The Files panel then lists what the task
+changed (added, changed, deleted) with **Undo all** and a per-file undo, once the task has stopped working. Only its owner
+can undo. A folder over 20,000 files or 1 GB, or a machine without Git, is skipped and the task says so.
+
+**Shared folder per project.** In **Project settings → Shared folder** a project can have one folder; its Work AI and
+Super AI tasks then work there by default, so everyone on the project uses the same files (one task at a time). The task
+box has a tick to use a private copy instead. **Browse** next to a path opens a picker that lists only the allowed folders.
+
+**Containers.** Working in a folder isn't available with `WORK_ISOLATION=container`. With Docker Compose, mount the folder
+into the `api` container: set `WORK_FOLDERS_HOST` in `.env` and add `-f deploy/docker-compose.folders.yml`.
+
 ## For admins
 
 **Admin → Work AI**

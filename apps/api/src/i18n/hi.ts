@@ -480,4 +480,7 @@ export const HI: Record<string, string> = {
   "Pick a folder, not a whole drive.": "फ़ोल्डर चुनें, पूरा ड्राइव नहीं।",
   "Aatmiq can't read and write that folder. Check its permissions.": "Aatmiq उस फ़ोल्डर को पढ़-लिख नहीं सकता। उसकी अनुमतियाँ जाँचें।",
   "Another task (\"{title}\") is working in this folder. Wait for it to finish, or stop it.": "एक और टास्क (\"{title}\") इस फ़ोल्डर में काम कर रहा है। उसके पूरा होने का इंतज़ार करें, या उसे रोकें।",
+  "There is nothing to undo for this task.": "इस टास्क के लिए पूर्ववत करने को कुछ नहीं है।",
+  "The task is still working: stop it first, then undo.": "टास्क अभी काम कर रहा है: पहले उसे रोकें, फिर पूर्ववत करें।",
+  "One of those files wasn't changed by this task.": "उनमें से एक फ़ाइल इस टास्क ने नहीं बदली।",
 };
