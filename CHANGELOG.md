@@ -9,6 +9,12 @@ without one.
 
 ## Unreleased
 
+- **Fixed: Super AI "Read was called with input that could not be parsed as JSON" and "no user query found in messages".**
+  The Claude Code gateway joined tool arguments that a server repeats in every chunk (`{…}{…}`) and now keeps the first
+  complete object, also for Windows paths; and it never sends a conversation without a user message (an empty one gets
+  "(continue)"), which Qwen's template on Ollama refuses. If a task still ends with that error, the model server is
+  running with a smaller context than the prompt (Super AI sends about 80K tokens a step): set the model's context length
+  in Admin → Models to what the server really runs with.
 - **Fixed: Auto answering "OK" with the fast model after a hard task stopped halfway, and answers with steps but no text.**
   A short "ok" or "continue" after an answer that ended empty or with an error now keeps the previous answer's tier
   instead of counting as a thank-you. And when the model uses tools and then writes nothing, chat asks it once more,

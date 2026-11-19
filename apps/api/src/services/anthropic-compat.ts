@@ -97,6 +97,10 @@ export function toOpenAi(req: AnthropicRequest): Record<string, unknown> {
       messages.push({ role: "user", content: onlyText ? parts.map((p) => (p as { text: string }).text).join("\n") : parts });
     } else if (!results.length) messages.push({ role: "user", content: "" });
   }
+  // Chat templates (Qwen's on Ollama) refuse a conversation with no user message ("no user query found in messages"):
+  // an empty one counts as none, so give it a word.
+  for (const m of messages) if (m.role === "user" && m.content === "") m.content = "(continue)";
+  if (!messages.some((m) => m.role === "user")) messages.splice(messages[0]?.role === "system" ? 1 : 0, 0, { role: "user", content: "(continue)" });
   const tools = (req.tools ?? [])
     .filter((t) => t.name && t.input_schema && (!t.type || t.type === "custom"))
     .map((t) => ({ type: "function", function: { name: t.name, description: t.description ?? "", parameters: t.input_schema } }));
@@ -135,6 +139,10 @@ export function repairJson(s: string): string {
   } catch {
     /* repair below */
   }
+  // Some servers (Ollama behind LiteLLM) send the whole arguments again in every chunk, so joined they read {…}{…}:
+  // keep the first complete object.
+  const first = firstObject(s);
+  if (first !== null && first.length < s.trim().length) return repairJson(first);
   const control = (c: string) => (c === "\n" ? "\\n" : c === "\r" ? "\\r" : c === "\t" ? "\\t" : `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
   const fixString = (raw: string): string => {
     const drivePath = /[A-Za-z]:\\(?!\\)/.test(raw);
@@ -180,6 +188,24 @@ export function repairJson(s: string): string {
   } catch {
     return s;
   }
+}
+
+/** The first complete {...} in the text (braces inside strings ignored, a backslash skips the next character), or null. */
+export function firstObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]!;
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
 }
 
 /* ───────────── Reply: OpenAI → Anthropic ───────────── */

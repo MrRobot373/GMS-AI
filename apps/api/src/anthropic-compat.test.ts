@@ -137,6 +137,16 @@ describe("tool arguments a model wrote as invalid JSON", () => {
     expect(repairJson("")).toBe("");
   });
 
+  it("keeps the first object when a server sent the whole arguments again in every chunk", () => {
+    const valid = '{"file_path":"/a/b.txt","n":1}';
+    expect(repairJson(valid + valid)).toBe(valid);
+    expect(JSON.parse(repairJson('{"a":"}{"}{"a":"}{"}'))).toEqual({ a: "}{" });
+    // A single-backslash Windows path, repeated: the first copy, repaired.
+    const win = '{"file_path":"E:\\GEM AI\\a.txt"}';
+    expect(win).toContain("E:\\GEM");
+    expect(JSON.parse(repairJson(win + win))).toEqual({ file_path: "E:\\GEM AI\\a.txt" });
+  });
+
   it("reads a Windows path written with single backslashes literally, even where \\f, \\n, \\t, \\r or \\b would be escapes", () => {
     // What Qwen sent: E:\GEM AI\apps\api\.data\work\19fe\files\node_modules\tmp\runtime\bin
     const raw = '{"command":"cd \\"E:\\GEM AI\\apps\\api\\.data\\work\\19fe\\files\\node_modules\\tmp\\runtime\\bin\\x\\" ; npm install","description":"Install"}';
@@ -164,5 +174,17 @@ describe("tool arguments a model wrote as invalid JSON", () => {
     // The same through a plain (non-streamed) reply.
     const r = fromOpenAi({ choices: [{ message: { tool_calls: [{ id: "c", function: { name: "PowerShell", arguments: bad } }] }, finish_reason: "tool_calls" }] }, "m");
     expect((r.content as { input: unknown }[])[0]!.input).toEqual({ command: "cd E:\\GEM AI\\files" });
+  });
+});
+
+describe("a conversation always has a user message", () => {
+  it("fills an empty one and adds one when there is none (Qwen's template refuses otherwise)", () => {
+    expect(toOpenAi({ max_tokens: 1, system: "S", messages: [{ role: "user", content: [] }] }).messages).toEqual([
+      { role: "system", content: "S" },
+      { role: "user", content: "(continue)" },
+    ]);
+    const m = toOpenAi({ max_tokens: 1, messages: [{ role: "assistant", content: [{ type: "tool_use", id: "t", name: "X", input: {} }] }] }).messages as { role: string }[];
+    expect(m[0]).toEqual({ role: "user", content: "(continue)" });
+    expect(m).toHaveLength(2);
   });
 });
