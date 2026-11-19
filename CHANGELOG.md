@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Work AI and Super AI are separate again; Scheduled tab removed; Deep research always visible.** Super AI has its own
+  entry under Work AI in the sidebar (when an admin has turned it on) with its own page and task list, and no longer
+  appears as a tab inside Work AI. The Scheduled tab is gone (Work AI keeps Tasks, Skills, Connections). In Chat AI the
+  Deep research button is always shown; without web search it is greyed with a note on how to enable it.
 - **Fixed: Super AI "Read was called with input that could not be parsed as JSON" and "no user query found in messages".**
   The Claude Code gateway joined tool arguments that a server repeats in every chunk (`{…}{…}`) and now keeps the first
   complete object, also for Windows paths; and it never sends a conversation without a user message (an empty one gets

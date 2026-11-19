@@ -46,7 +46,7 @@ interface Props {
   /** "Search the web", when the organization offers it: on for every message until switched off. */
   webSearch?: { on: boolean; onToggle: () => void };
   /** Deep research for the next message (when web search is set up). */
-  research?: { on: boolean; onToggle: () => void };
+  research?: { on: boolean; onToggle: () => void; /** Shown but off: web search isn't set up here. */ unavailable?: boolean };
 }
 
 /** Bordered prompt box: text on top, tools and send on the bottom row. */
@@ -172,7 +172,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           disabled={disabled}
         />
         {webSearch && <WebToggle on={webSearch.on} onToggle={webSearch.onToggle} disabled={disabled} />}
-        {research && <ResearchToggle on={research.on} onToggle={research.onToggle} disabled={disabled} />}
+        {research && <ResearchToggle on={research.on} onToggle={research.onToggle} disabled={disabled || research.unavailable} unavailable={research.unavailable} />}
         <span className="mx-1.5 h-4 w-px bg-border max-sm:hidden" />
         <span className="max-sm:hidden">
           <ToolButton label={t("Skills · coming with Work AI")} disabled wide>
@@ -272,10 +272,10 @@ function WebToggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => vo
 }
 
 /** Deep research: many searches and pages, then a report with sources (a few minutes; it carries on if the page is closed). */
-function ResearchToggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
+function ResearchToggle({ on, onToggle, disabled, unavailable }: { on: boolean; onToggle: () => void; disabled?: boolean; unavailable?: boolean }) {
   const t = useT();
   return (
-    <Tooltip content={on ? t("Turn off deep research") : t("Deep research: a report from many sources (a few minutes)")}>
+    <Tooltip content={unavailable ? t("Deep research needs web search. An admin can set it up in Admin → Settings → GEM AI.") : on ? t("Turn off deep research") : t("Deep research: a report from many sources (a few minutes)")}>
       <span>
         <button
           type="button"

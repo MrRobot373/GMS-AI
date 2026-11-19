@@ -90,7 +90,7 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
   return (
     <div className="flex h-full min-h-0 flex-col">
       <TopBar icon={<Workflow />} title={superAi ? t("Super AI") : t("Work AI")} />
-      <WorkTabs />
+      {!superAi && <WorkTabs />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[760px] flex-col px-4 pt-[9vh] pb-8 sm:px-6">
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }} className="text-center">

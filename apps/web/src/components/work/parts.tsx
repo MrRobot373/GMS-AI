@@ -52,19 +52,17 @@ export function StatusPill({ status }: { status: TaskStatus }) {
 
 const TABS = [
   { href: "/app/work", label: msg("Tasks"), exact: true },
-  { href: "/app/work/schedules", label: msg("Scheduled") },
   { href: "/app/work/skills", label: msg("Skills") },
   { href: "/app/work/connections", label: msg("Connections") },
 ];
 
-/** Tasks · Scheduled · Skills · Connections, under the top bar of Work AI's list pages. */
+/** Tasks · Skills · Connections, under the top bar of Work AI's list pages (Super AI has its own entry in the sidebar). */
 export function WorkTabs() {
   const t = useT();
   const pathname = usePathname();
   const { workspaceId } = useSession();
   const info = useWorkInfo(workspaceId);
-  // Super AI (the Claude Code engine) is a tab of its own, only when an admin has turned it on.
-  const tabs = info.data?.superAi ? [TABS[0]!, { href: "/app/work/super", label: msg("Super AI") }, ...TABS.slice(1)] : TABS;
+  const tabs = TABS;
   return (
     <div className="flex h-10 shrink-0 items-end gap-5 border-b border-border px-4 sm:px-6">
       {tabs.map((tab) => {

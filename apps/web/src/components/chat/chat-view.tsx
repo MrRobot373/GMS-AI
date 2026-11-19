@@ -613,7 +613,7 @@ export function ChatView({
       onRemoveAttachment={(key) => setAttachments((l) => l.filter((a) => a.key !== key))}
       library={library.data}
       webSearch={webAvailable ? { on: webOn, onToggle: () => setWebOn((v) => !v) } : undefined}
-      research={webAvailable ? { on: researchOn, onToggle: () => setResearchOn((v) => !v) } : undefined}
+      research={{ on: webAvailable && researchOn, onToggle: () => setResearchOn((v) => !v), unavailable: !webAvailable }}
     />
   );
 

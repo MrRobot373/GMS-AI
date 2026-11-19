@@ -2380,4 +2380,6 @@ export const HI: Record<string, string> = {
   "Group chat": "ग्रुप चैट",
   "Read-only": "सिर्फ़ पढ़ने के लिए",
   "You manage this project as an admin, but you aren't one of its people, so its files, chats and brain aren't shown to you. Add yourself under Share to see them.": "आप इस प्रोजेक्ट को एडमिन के रूप में सँभालते हैं, पर आप इसके लोगों में नहीं हैं, इसलिए इसकी फ़ाइलें, चैट और ब्रेन आपको नहीं दिखाई जातीं। उन्हें देखने के लिए शेयर में खुद को जोड़ें।",
+  "Deep research needs web search. An admin can set it up in Admin → Settings → GEM AI.": "गहन शोध के लिए वेब खोज चाहिए। एडमिन इसे एडमिन → सेटिंग्स → GEM AI में सेट कर सकते हैं।",
+  "The Claude Code engine, to compare with Work AI.": "Claude Code इंजन, Work AI से तुलना के लिए।",
 };

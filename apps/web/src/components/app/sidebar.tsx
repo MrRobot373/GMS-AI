@@ -28,6 +28,7 @@ import {
   SquarePen,
   Trash2,
   Workflow,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -45,7 +46,7 @@ import { NotificationsButton } from "./notifications";
 import { SearchPalette } from "./search-palette";
 import { useCanUseModule, useSession } from "./session";
 import { StatusIcon } from "@/components/work/parts";
-import { usePendingApprovals, useWorkTasks } from "@/lib/work";
+import { usePendingApprovals, useWorkInfo, useWorkTasks } from "@/lib/work";
 import { useCodeWorkspaces } from "@/lib/code";
 import { chatTitle } from "@/lib/format";
 import { WorkspaceIcon, workspaceIconTone } from "@/lib/workspace-icons";
@@ -205,7 +206,14 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const canLearn = useCanUseModule("learning");
   const canCalc = useCanUseModule("calculators");
   const canKnow = useCanUseModule("knowledge");
-  const workTasks = useWorkTasks(can("work") ? workspaceId : "");
+  // Work AI and Super AI are two separate things, each with its own page and task list (Super AI only when an admin has
+  // turned it on); a task page shows the list of the engine the task belongs to.
+  const workInfo = useWorkInfo(can("work") ? workspaceId : "");
+  const hasSuper = !!workInfo.data?.superAi;
+  const dshTasks = useWorkTasks(can("work") ? workspaceId : "");
+  const superTasks = useWorkTasks(can("work") && hasSuper ? workspaceId : "", "claude");
+  const inSuper = pathname.startsWith("/app/work/super") || (hasSuper && (superTasks.data ?? []).some((x) => pathname === `/app/work/${x.id}`));
+  const workTasks = inSuper ? superTasks : dshTasks;
   const codeWorkspaces = useCodeWorkspaces(inCode && can("code") ? workspaceId : "");
   const approvalsQ = usePendingApprovals(can("work") ? workspaceId : "");
   const pendingApprovals = approvalsQ.data?.length ?? 0;
@@ -349,8 +357,13 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             <GroupLabel>{t("Do")}</GroupLabel>
             <div className="space-y-px">
               {can("work") && (
-                <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work")} hint={t("Hand over a job; get finished files back.")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
+                <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work") && !inSuper} hint={t("Hand over a job; get finished files back.")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
                   {t("Work AI")}
+                </NavItem>
+              )}
+              {can("work") && hasSuper && (
+                <NavItem href="/app/work/super" icon={<Sparkles />} active={inSuper} hint={t("The Claude Code engine, to compare with Work AI.")}>
+                  {t("Super AI")}
                 </NavItem>
               )}
               {can("code") && (
