@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Work AI and Super AI can work directly in a folder.** With **Allowed folders** set (Admin → Work AI, or `WORK_FOLDERS`),
+  the task box has **Work in a folder**: type a folder inside an allowed one and the task works there, with no private
+  copy to upload to or download from. Links are resolved, Aatmiq's own folders can't be used, and only one task at a time
+  works in a folder. Migration `0035`. See docs/06-work-ai.md.
 - **Work AI and Super AI are separate again; Scheduled tab removed; Deep research always visible.** Super AI has its own
   entry under Work AI in the sidebar (when an admin has turned it on) with its own page and task list, and no longer
   appears as a tab inside Work AI. The Scheduled tab is gone (Work AI keeps Tasks, Skills, Connections). In Chat AI the

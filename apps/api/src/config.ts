@@ -19,6 +19,8 @@ export interface Config {
   version?: string;
   /** Where Work AI task folders live. */
   workDir?: string;
+  /** Folders tasks may work in directly, besides the ones an admin lists (WORK_FOLDERS, ";"-separated). */
+  workFolders?: string[];
   /** Each chat's private folder for the Python it runs (CHAT_DIR). */
   chatDir?: string;
   /** How the agent runtime reaches this API (default: this server on 127.0.0.1). */
@@ -109,6 +111,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     version: env.APP_VERSION || readVersion(),
     workDir: env.WORK_DIR ?? ".data/work",
     chatDir: env.CHAT_DIR ?? ".data/chat",
+    workFolders: (env.WORK_FOLDERS ?? "").split(";").map((s) => s.trim()).filter(Boolean),
     workControlUrl: env.WORK_CONTROL_URL || null,
     workSandbox: env.WORK_SANDBOX === "off" ? "off" : "on",
     workIsolation: env.WORK_ISOLATION === "off" ? "off" : env.WORK_ISOLATION === "container" ? "container" : "auto",

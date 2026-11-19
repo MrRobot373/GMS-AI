@@ -9,6 +9,7 @@ import { buildApp } from "../src/app";
 import type { Config } from "../src/config";
 import { StorageNotFound, type Storage } from "../src/services/storage";
 import type { YtDlpRunner } from "../src/services/youtube";
+import type { HarnessEngine } from "@aatmiq/harness";
 
 export const APP_URL = "http://localhost:3000";
 export type Jar = { cookie: string };
@@ -48,7 +49,7 @@ export function memoryStorage(): Storage {
 
 export async function startHarness(
   extra: Partial<Config> = {},
-  opts: { fetch?: typeof fetch; ytDlp?: YtDlpRunner; resolve?: (host: string) => Promise<string[]> } = {},
+  opts: { fetch?: typeof fetch; ytDlp?: YtDlpRunner; resolve?: (host: string) => Promise<string[]>; workEngine?: HarnessEngine } = {},
 ): Promise<Harness> {
   const url = process.env.TEST_DATABASE_URL!;
   const cfg: Config = {
@@ -68,7 +69,7 @@ export async function startHarness(
         execute 'truncate table "' || r.tablename || '" cascade';
       end loop;
     end $$;`);
-  const app = await buildApp(db, cfg, { storage: memoryStorage(), fetch: opts.fetch, resolve: opts.resolve, ytDlp: opts.ytDlp });
+  const app = await buildApp(db, cfg, { storage: memoryStorage(), fetch: opts.fetch, resolve: opts.resolve, ytDlp: opts.ytDlp, workEngine: opts.workEngine });
   await app.ready();
 
   const absorb = (j: Jar, set: unknown) => {

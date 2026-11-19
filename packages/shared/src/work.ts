@@ -16,6 +16,12 @@ export const DEFAULT_WORK_SETTINGS = {
   superAi: false,
   /** Internal hosts the browser may open anyway (private addresses are refused otherwise). */
   browserAllowedHosts: [] as string[],
+  /**
+   * Folders (absolute paths on the machine Aatmiq runs on) people may point a task at, so it works there directly instead
+   * of in a private copy (docs/06-work-ai.md, "Working in a folder"). A task's folder must be inside one of them. Empty:
+   * the feature is off unless WORK_FOLDERS names some.
+   */
+  folderRoots: [] as string[],
   /** Container mode: CPUs, memory and internet access per task. */
   containerCpus: 2,
   containerMemoryMb: 4096,
@@ -34,6 +40,7 @@ export const workSettingsSchema = z.object({
   disabledLibrarySkills: z.array(z.string().max(80)).max(500).optional(),
   browser: z.boolean().optional(),
   superAi: z.boolean().optional(),
+  folderRoots: z.array(z.string().trim().min(1).max(500)).max(100).optional(),
   containerCpus: z.number().min(0.25).max(64).optional(),
   containerMemoryMb: z.number().int().min(256).max(262_144).optional(),
   containerNetwork: z.enum(["proxy", "none"]).optional(),
@@ -50,6 +57,8 @@ export const workTaskCreateSchema = z.object({
   projectId: z.string().optional(),
   /** Which agent engine runs it: Work AI's ("dsh") or Super AI's Claude Code ("claude"). */
   engine: z.enum(["dsh", "claude"]).default("dsh"),
+  /** A folder on the server to work in directly (inside one an admin allowed), instead of a private copy. */
+  folder: z.string().trim().min(1).max(1000).optional(),
   /** false: create the task without starting it (to add files first), then send the prompt as a message. */
   start: z.boolean().default(true),
 });

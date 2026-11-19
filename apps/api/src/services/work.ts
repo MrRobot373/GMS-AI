@@ -39,6 +39,7 @@ import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type W
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
 import { runChecks, type CheckResult } from "./work-checks";
+import { busyMessage, folderBusy, resolveWorkFolder, type FolderRules } from "./work-folder";
 import { gitSnapshot, loadProgress, loadState, PROGRESS_FILE, progressEntry, saveState, STAGE_ROUNDS, stagePrompt } from "./work-stages";
 import {
   allGood,
@@ -684,6 +685,14 @@ export class WorkRunner {
       else await chown(p, uid, uid).catch(() => undefined);
     }
   }
+  /** What a task's folder may be: the roots an admin allowed (and WORK_FOLDERS), and never Aatmiq's own folders. */
+  async folderRules(): Promise<FolderRules> {
+    const cfg = this.ctx.cfg;
+    return {
+      roots: [...((await getWorkSettings(this.ctx.db)).folderRoots ?? []), ...(cfg.workFolders ?? [])],
+      forbidden: [this.dir, cfg.storageDir, cfg.chatDir ?? ".data/chat", cfg.codeDir ?? ".data/code", ".data"].filter(Boolean).map((p) => resolve(p)),
+    };
+  }
   taskDir(taskId: string) {
     return join(this.dir, taskId);
   }
@@ -923,7 +932,16 @@ export class WorkRunner {
       l.contextWindow = m.contextLength ?? DEFAULT_WINDOW;
       if (task.modelId !== m.id) await db.update(workTask).set({ modelId: m.id }).where(eq(workTask.id, taskId));
       const runUid = code ? await this.ctx.code.uidFor(task.userId) : task.runUid;
-      const workdir = code ? this.ctx.code.workspacePath(task.userId, code.slug) : this.filesDir(taskId);
+      // A task pointed at a folder works there directly (checked again now: the allowed folders may have changed).
+      let external: string | null = null;
+      if (task.workFolder && !code) {
+        const ok = await resolveWorkFolder(task.workFolder, await this.folderRules());
+        if (!ok.ok) throw new Error(ok.error);
+        const busy = await folderBusy(db, ok.path, taskId);
+        if (busy) throw new Error(busyMessage(busy));
+        external = ok.path;
+      }
+      const workdir = external ?? (code ? this.ctx.code.workspacePath(task.userId, code.slug) : this.filesDir(taskId));
       const homeDir = join(this.taskDir(taskId), "runtime");
       l.workdir = workdir;
       l.runUid = this.isolated ? (runUid ?? undefined) : undefined;
@@ -943,7 +961,7 @@ export class WorkRunner {
       await this.prepareFolder(taskId, runUid);
       if (code) await this.ctx.code.prepare(task.userId, workdir);
       // A build gets its checklist once, before the builder starts (a restarted task reads the file).
-      l.acceptance = await this.acceptanceFor(l, task, code ? "code" : "work", String(asked[0]?.data.text ?? ""));
+      l.acceptance = await this.acceptanceFor(l, task, code || external ? "code" : "work", String(asked[0]?.data.text ?? ""));
       if (l.acceptance) {
         const st = await loadState(workdir);
         l.milestone = Math.min(st?.milestone ?? 1, l.acceptance.milestones.length);
@@ -955,10 +973,11 @@ export class WorkRunner {
       let instructions: string | undefined;
       const proj = task.projectId && !code ? await projectFor(db, task.userId, task.projectId) : null;
       if (proj) {
-        const dir = join(workdir, PROJECT_FOLDER);
+        // In the person's own folder the project's files aren't copied into it: they're in the task's private folder.
+        const dir = external ? join(this.taskDir(taskId), PROJECT_FOLDER) : join(workdir, PROJECT_FOLDER);
         const { copied, brain } = await writeProjectFiles(db, this.ctx.storage, proj, dir);
         await this.chownTree(dir, runUid);
-        instructions = projectInstructions(proj, copied, brain);
+        instructions = projectInstructions(proj, copied, brain, external ? dir : undefined);
         l.connectorIds = proj.connectorIds ?? null;
       }
       // Container mode: Work AI tasks get their own container; the container is their sandbox.

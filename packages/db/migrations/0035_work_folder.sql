@@ -1,0 +1,1 @@
+ALTER TABLE "work_task" ADD COLUMN "work_folder" text;

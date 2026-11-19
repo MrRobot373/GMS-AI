@@ -31,6 +31,28 @@ Tasks are private to the person who started them, unless shared to their project
 the project's people: they can't send messages, approve, stop or add files). Usage counts against the same token allowance as
 Chat (section `work` in usage reports).
 
+### Working in a folder
+
+By default a task works in a private folder: uploaded files are copied in, and results are downloaded. When an admin has
+allowed some folders, the task box (Work AI and Super AI) has **Work in a folder**: type the full path of a folder on the
+machine Aatmiq runs on, and the task works **directly there**, with no copy: it reads the files that are there, creates
+and changes files there, and its Files panel lists that folder.
+
+- The folder must be inside one an admin allowed (**Admin → Work AI → Folders**, or `WORK_FOLDERS` with paths separated by
+  `;`). Links are followed first, so a link inside an allowed folder that leads elsewhere is refused. The folder must
+  exist (it is never created), and Aatmiq's own data folders (task folders, uploads, chat and Code homes) can't be used.
+- One task at a time per folder: a second task in the same folder, or one inside or around it, is refused until the first
+  finishes.
+- Files can't be attached to such a task (put them in the folder). The project's files, when the task is in a project, are
+  read-only copies in the task's private folder, outside yours.
+- The task keeps a small `.task/` folder in yours (notes). It makes no Git commits and no stage checklist there.
+- **It can change, add and delete files there.** Where programs can't be confined (Windows, or `WORK_SANDBOX=off`) the system
+  doesn't keep it inside the folder, only its instructions and the approval rules do. Where they can (Linux, Landlock),
+  writes outside the folder are refused. On a server, the task runs as the person's own Unix user, so the operating
+  system's permissions on the folder apply too.
+- **Where the folder is.** It is a path on the machine Aatmiq runs on. On your own PC that is your PC's folder; on a shared
+  server it must be on the server or on a network share it mounts, so team projects can live in one folder everyone uses.
+
 ## For admins
 
 **Admin → Work AI**

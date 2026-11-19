@@ -25,6 +25,7 @@ interface WorkSettings {
   browser: boolean;
   superAi: boolean;
   browserAllowedHosts: string[];
+  folderRoots: string[];
   containerCpus: number;
   containerMemoryMb: number;
   containerNetwork: "proxy" | "none";
@@ -53,6 +54,7 @@ export default function AdminWorkPage() {
   const [form, setForm] = useState<WorkSettings | null>(null);
   // What's typed in the hosts box, kept as typed (the form holds the parsed list).
   const [hostsText, setHostsText] = useState<string | null>(null);
+  const [foldersText, setFoldersText] = useState<string | null>(null);
   useEffect(() => {
     if (q.data && !form) setForm(q.data.settings);
   }, [q.data, form]);
@@ -181,6 +183,30 @@ export default function AdminWorkPage() {
               />
             </Field>
           </div>
+        </Card>
+      </Section>
+
+      <Section title={t("Folders")} description={t("Folders on this machine that Work AI and Super AI tasks may work in directly, instead of in a private copy. A task's folder must be inside one of them.")}>
+        <Card className="p-5">
+          <Field
+            label={t("Allowed folders")}
+            hint={t("One full path per line, for example E:\\Projects or /data/projects. People type a folder inside one of these in the task box; Aatmiq's own data folders can never be used. Empty: tasks use private copies only.")}
+          >
+            <Textarea
+              rows={4}
+              value={foldersText ?? form.folderRoots.join("\n")}
+              onChange={(e) => {
+                setFoldersText(e.target.value);
+                setForm({ ...form, folderRoots: e.target.value.split(/\r?\n/).map((h) => h.trim()).filter(Boolean) });
+              }}
+              placeholder={"E:\\Projects\n/data/projects"}
+              className="font-mono text-[12.5px]"
+              data-testid="work-folder-roots"
+            />
+          </Field>
+          <p className="mt-2 text-[12px] text-fg-subtle">
+            {t("The task can change, add and delete files in that folder. Where programs can't be confined (Windows, or WORK_SANDBOX=off) it isn't kept inside the folder by the system, only by its instructions.")}
+          </p>
         </Card>
       </Section>
 

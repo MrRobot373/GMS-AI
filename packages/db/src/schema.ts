@@ -1005,6 +1005,8 @@ export const workTask = pgTable(
     sharedToProject: boolean("shared_to_project").notNull().default(false),
     /** Set when the agent works in a Code workspace (Aatmiq panel) instead of its own task folder. */
     codeWorkspaceId: text("code_workspace_id").references((): AnyPgColumn => codeWorkspace.id, { onDelete: "cascade" }),
+    /** A folder on the server the task works in directly (no private copy); set from the folders an admin allowed. */
+    workFolder: text("work_folder"),
     pinned: boolean("pinned").notNull().default(false),
     /** A reviewer task's builder task. Reviewer tasks work on a copy of the folder and are not listed. */
     parentId: text("parent_id").references((): AnyPgColumn => workTask.id, { onDelete: "cascade" }),

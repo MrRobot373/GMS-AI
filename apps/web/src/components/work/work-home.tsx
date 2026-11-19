@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, CalendarClock, Code2, FileSearch, FileSpreadsheet, Globe, Pin, ShieldAlert, Workflow, X } from "lucide-react";
+import { BarChart3, CalendarClock, Code2, FileSearch, FileSpreadsheet, FolderOpen, Globe, Pin, ShieldAlert, Workflow, X } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -46,6 +46,8 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [modelId, setModelId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  // A folder on the server to work in directly (when an admin allowed some).
+  const [folder, setFolder] = useState("");
   const composerRef = useRef<WorkComposerHandle>(null);
   // Started from a project (/app/work?project=…): the task works with its instructions, files and connectors.
   const params = useSearchParams();
@@ -59,11 +61,15 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
   const start = async () => {
     const prompt = input.trim();
     if (!prompt || sending) return;
+    if (folder.trim() && files.length) {
+      toast.error(t("Attached files can't be added when working in a folder: put them in the folder instead."));
+      return;
+    }
     setSending(true);
     try {
       // With files, the task is created first, the files go into its folder, then it starts.
       const inProject = projectId && project.data ? project.data.id : undefined;
-      const task = await post<{ id: string }>("/api/work/tasks", { workspaceId, prompt, modelId: model?.id, projectId: inProject, start: files.length === 0, ...(superAi ? { engine } : {}) });
+      const task = await post<{ id: string }>("/api/work/tasks", { workspaceId, prompt, modelId: model?.id, projectId: inProject, start: files.length === 0, ...(superAi ? { engine } : {}), ...(folder.trim() ? { folder: folder.trim() } : {}) });
       if (files.length) {
         for (const f of files) {
           const form = new FormData();
@@ -141,6 +147,28 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" } = {})
                 model={model}
                 onModelChange={(m) => setModelId(m.id)}
               />
+            )}
+            {info.data?.folders && (
+              <div className="mt-2" data-testid="work-folder">
+                <label className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-[13px] focus-within:border-border-strong">
+                  <FolderOpen className="size-4 shrink-0 text-fg-subtle" />
+                  <input
+                    value={folder}
+                    onChange={(e) => setFolder(e.target.value)}
+                    placeholder={t("Work in a folder (optional): full path, e.g. E:\\Projects\\ADAS")}
+                    aria-label={t("Folder to work in")}
+                    className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-subtle"
+                    data-testid="work-folder-input"
+                  />
+                </label>
+                {folder.trim() && (
+                  <p className="mt-1 px-1 text-[12px] text-fg-subtle">
+                    {files.length > 0
+                      ? t("Attached files can't be added when working in a folder: put them in the folder instead.")
+                      : t("It works directly in this folder: no copy is made, and it can change, add and delete files there.")}
+                  </p>
+                )}
+              </div>
             )}
           </motion.div>
           <div className="mt-3 flex flex-wrap justify-center gap-2">

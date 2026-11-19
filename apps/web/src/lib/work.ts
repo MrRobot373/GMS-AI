@@ -73,6 +73,8 @@ export interface WorkTaskDetail {
   project: { id: string; name: string; color: string; canEdit: boolean } | null;
   /** A Code task's workspace: its files are the Files panel's, read only here. */
   code: { id: string; name: string } | null;
+  /** The folder on the server this task works in directly (no private copy). */
+  workFolder?: string | null;
 }
 
 export interface PendingApproval {
@@ -98,6 +100,8 @@ export interface WorkInfo {
   maxConcurrentPerUser: number;
   /** Super AI (the Claude Code engine) is turned on and installed. */
   superAi?: boolean;
+  /** An admin allowed folders tasks may work in directly. */
+  folders?: boolean;
 }
 
 export interface Skill {

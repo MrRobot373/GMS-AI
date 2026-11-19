@@ -22,6 +22,7 @@ import { getProjectAccess, requireNotGuest, requireProjectEdit } from "../servic
 import { quotaFor, quotaMessage } from "../services/quota";
 import { workWebSearchDeps } from "../services/gem";
 import { webSearchReady } from "../services/web-search";
+import { busyMessage, folderBusy, resolveWorkFolder } from "../services/work-folder";
 import { getWorkSettings, superAiWindowProblem, titleFrom, type WorkStreamEvent } from "../services/work";
 import { localeOf, tr } from "../i18n";
 
@@ -123,6 +124,12 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
    * only here: they change it in the IDE). Null when that workspace is gone.
    */
   const filesRoot = async (t: typeof workTask.$inferSelect): Promise<string | null> => {
+    // A task working in a folder: the files are there (checked against the allowed folders again, so a folder an admin has
+    // since taken off the list isn't served).
+    if (t.workFolder) {
+      const ok = await resolveWorkFolder(t.workFolder, await work.folderRules());
+      return ok.ok ? ok.path : null;
+    }
     if (!t.codeWorkspaceId) return work.filesDir(t.id);
     const [w] = await db.select({ userId: codeWorkspace.userId, slug: codeWorkspace.slug }).from(codeWorkspace).where(eq(codeWorkspace.id, t.codeWorkspaceId));
     return w ? ctx.code.workspacePath(w.userId, w.slug) : null;
@@ -139,7 +146,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     if (req.query.workspaceId) await requireWorkSection(ctx, u, req.query.workspaceId);
     const s = await getWorkSettings(db);
-    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser, superAi: s.superAi && (await claudeAvailable()) };
+    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser, superAi: s.superAi && (await claudeAvailable()), folders: (await work.folderRules()).roots.length > 0 };
   });
 
   app.get<{ Querystring: { workspaceId?: string; q?: string; engine?: string } }>("/api/work/tasks", async (req) => {
@@ -207,9 +214,19 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       const p = await getProjectAccess(ctx, u, b.projectId);
       if (p.project.workspaceId !== b.workspaceId) throw badRequest("That project is in another workspace.");
     } else await requireNotGuest(ctx, u, b.workspaceId);
+    // Working directly in a folder on the server instead of a private copy.
+    let workFolder: string | null = null;
+    if (b.folder) {
+      const ok = await resolveWorkFolder(b.folder, await work.folderRules());
+      if (!ok.ok) throw badRequest(ok.error);
+      const busy = await folderBusy(db, ok.path);
+      if (busy) throw new HttpError(409, busyMessage(busy), "folder_busy");
+      workFolder = ok.path;
+    }
     const [t] = await db
       .insert(workTask)
-      .values({ workspaceId: b.workspaceId, userId: u.id, title: titleFrom(b.prompt), modelId: m.id, routing, projectId: b.projectId ?? null, engine: b.engine })
+      .values({ workspaceId: b.workspaceId, userId: u.id, title: titleFrom(b.prompt), modelId: m.id, routing, projectId: b.projectId ?? null, engine: b.engine, workFolder })
+    
       .returning();
     if (b.start) await work.submit(t!.id, b.prompt);
     const [fresh] = await db.select().from(workTask).where(eq(workTask.id, t!.id));
@@ -238,6 +255,8 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       ownerName: owner?.name ?? null,
       project: access ? { id: access.project.id, name: access.project.name, color: access.project.color, canEdit: access.canEdit } : null,
       code: await codeOf(t.codeWorkspaceId),
+      // The folder a task works in directly (shown on the task page).
+      workFolder: t.workFolder,
     };
   });
 
@@ -382,6 +401,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const t = await loadOwnTask(ctx, u, req.params.id);
     await requireWorkSection(ctx, u, t.workspaceId);
     if (t.codeWorkspaceId) throw badRequest("This task works in a Code workspace: add files there, in the editor.");
+    if (t.workFolder) throw badRequest("This task works directly in a folder: put the file there.");
     if (!req.isMultipart()) throw badRequest("Send the file as multipart/form-data");
     let saved: string | null = null;
     for await (const part of req.parts({ limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })) {
@@ -408,7 +428,9 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const { project: p } = await requireProjectEdit(ctx, u, t.projectId);
     const { path } = parse(z.object({ path: z.string().min(1).max(1000) }), req.body);
     if (path === PROJECT_FOLDER || path.startsWith(`${PROJECT_FOLDER}/`)) throw badRequest("That file is already one of the project's sources.");
-    const full = await safePath(work.filesDir(t.id), path);
+    const root = await filesRoot(t);
+    if (!root) throw notFound("File not found");
+    const full = await safePath(root, path);
     const s = await stat(full).catch(() => null);
     if (!s?.isFile()) throw notFound("File not found");
     if (s.size > MAX_UPLOAD_BYTES) throw new HttpError(413, "Files can be up to 25 MB.", "too_large");

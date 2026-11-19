@@ -299,6 +299,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const proj = detail.data?.project ?? null;
   // A Code task works in the person's Code workspace: its files are there (changed in the editor).
   const code = detail.data?.code ?? null;
+  const workFolder = detail.data?.workFolder ?? null;
 
   const send = useMutation({
     mutationFn: (prompt: string) => post(`/api/work/tasks/${taskId}/messages`, { prompt }),
@@ -583,10 +584,11 @@ export function TaskView({ taskId }: { taskId: string }) {
                     files={files.data?.files}
                     truncated={files.data?.truncated}
                     onPreview={setPreview}
-                    onUpload={own && !code ? () => uploadRef.current?.click() : undefined}
+                    onUpload={own && !code && !workFolder ? () => uploadRef.current?.click() : undefined}
                     onSave={proj?.canEdit ? (f) => saveFile.mutate(f.path) : undefined}
                     projectName={proj?.name}
                     code={code}
+                    workFolder={workFolder}
                   />
                 )}
               </div>
@@ -1023,6 +1025,7 @@ function FilesPanel({
   onSave,
   projectName,
   code,
+  workFolder,
 }: {
   taskId: string;
   files?: WorkFile[];
@@ -1033,6 +1036,8 @@ function FilesPanel({
   projectName?: string;
   /** A Code task's workspace: listed read only (people change it in the editor). */
   code?: { id: string; name: string } | null;
+  /** The folder the task works in directly. */
+  workFolder?: string | null;
 }) {
   const t = useT();
   if (!files) return <Skeleton className="h-24 rounded-lg" />;
@@ -1043,6 +1048,11 @@ function FilesPanel({
           <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg-subtle" data-testid="files-code-workspace">
             <Code2 className="size-3.5 shrink-0" />
             <span className="truncate">{t("Code workspace · {workspace}", { workspace: code.name })}</span>
+          </span>
+        ) : workFolder ? (
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg-subtle" title={workFolder} data-testid="files-work-folder">
+            <FolderOpen className="size-3.5 shrink-0" />
+            <span className="truncate">{t("Working in {folder}", { folder: workFolder })}</span>
           </span>
         ) : (
           <span className="text-[12px] text-fg-subtle">{t("Task folder")}</span>
