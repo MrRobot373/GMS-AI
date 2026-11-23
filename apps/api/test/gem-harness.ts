@@ -49,7 +49,7 @@ export function memoryStorage(): Storage {
 
 export async function startHarness(
   extra: Partial<Config> = {},
-  opts: { fetch?: typeof fetch; ytDlp?: YtDlpRunner; resolve?: (host: string) => Promise<string[]>; workEngine?: HarnessEngine } = {},
+  opts: { fetch?: typeof fetch; ytDlp?: YtDlpRunner; resolve?: (host: string) => Promise<string[]>; workEngine?: HarnessEngine; opencodeEngine?: HarnessEngine } = {},
 ): Promise<Harness> {
   const url = process.env.TEST_DATABASE_URL!;
   const cfg: Config = {
@@ -69,7 +69,7 @@ export async function startHarness(
         execute 'truncate table "' || r.tablename || '" cascade';
       end loop;
     end $$;`);
-  const app = await buildApp(db, cfg, { storage: memoryStorage(), fetch: opts.fetch, resolve: opts.resolve, ytDlp: opts.ytDlp, workEngine: opts.workEngine });
+  const app = await buildApp(db, cfg, { storage: memoryStorage(), fetch: opts.fetch, resolve: opts.resolve, ytDlp: opts.ytDlp, workEngine: opts.workEngine, opencodeEngine: opts.opencodeEngine });
   await app.ready();
 
   const absorb = (j: Jar, set: unknown) => {

@@ -10,7 +10,7 @@ company's single sign-on button (Google, Microsoft…) if there is one. If two-s
 also type the 6-digit code from your authenticator app. You lost your phone: use a backup code, or
 ask an admin. You forgot your password: **Forgot password?** on the sign-in page.
 
-The sidebar on the left: **New chat**, **Chat**, **Projects**, **Documents**, **Work AI**, **Super AI**, **Code**
+The sidebar on the left: **New chat**, **Chat**, **Projects**, **Documents**, **Work AI**, **Super AI**, **Agent AI**, **Code**
 (the sections your admin gave you), your recent chats, and at the bottom your name (Settings, sign
 out) and the bell (notifications).
 
@@ -60,7 +60,7 @@ your files, researches on the web, fills in a form, organizes data, writes and r
    stops and asks. **Approve** or **Reject**; it's also in the bell and on the Work AI home page.
 4. Answer it to continue ("now add a summary table"), or **Stop** it.
 
-**Super AI** is the same kind of task on a different engine (Claude Code); use it to compare answers with Work AI.
+**Super AI** and **Agent AI** are the same kind of task on other engines (Claude Code, and opencode, which is fast and light); use them to compare answers with Work AI.
 
 **Working in a folder.** If your admin allowed folders, the task box has **Work in a folder** (type the path or press
 **Browse**): the task works directly in that folder, with no copy. When it stops, the Files panel lists what it changed and

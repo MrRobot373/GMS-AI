@@ -356,7 +356,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["work-tasks", workspaceId] });
       toast(t("Task deleted"));
-      router.push(task?.engine === "claude" ? "/app/work/super" : "/app/work");
+      router.push(task?.engine === "claude" ? "/app/work/super" : task?.engine === "opencode" ? "/app/work/agent" : "/app/work");
     },
   });
   const upload = async (list: File[]) => {
@@ -400,9 +400,9 @@ export function TaskView({ taskId }: { taskId: string }) {
             )}
             <span className="truncate" data-testid="task-title">{task?.title ?? t("Task")}</span>
             {task && <StatusPill status={status} />}
-            {task?.engine === "claude" && (
+            {(task?.engine === "claude" || task?.engine === "opencode") && (
               <span className="shrink-0 rounded-full border border-border px-2 py-px text-[11px] text-fg-subtle" data-testid="engine-badge">
-                {t("Super AI")}
+                {task.engine === "claude" ? t("Super AI") : t("Agent AI")}
               </span>
             )}
             {task?.routing && (

@@ -34,7 +34,7 @@ import {
   type DB,
   type WorkVerification,
 } from "@aatmiq/db";
-import { SUPER_AI_MIN_WINDOW, containerLauncher, createClaudeEngine, createDshEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
+import { SUPER_AI_MIN_WINDOW, containerLauncher, createClaudeEngine, createDshEngine, createOpencodeEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
 import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
@@ -618,13 +618,14 @@ export class WorkRunner {
   private engine: HarnessEngine;
   /** The Claude Code engine of Super AI (docs/20-super-ai.md), made when the first such task starts. */
   private claudeEngine: HarnessEngine | null = null;
+  private opencodeEngine: HarnessEngine | null = null;
   /** Container mode: Work AI tasks run here (Aatmiq Code's agent stays in the person's IDE workspace). */
   private containerEngine: HarnessEngine | null = null;
   private stopped = false;
 
   constructor(
     private ctx: AppContext,
-    private opts: { controlUrl: () => string; engine?: HarnessEngine; claudeEngine?: HarnessEngine; log?: (msg: string, err?: unknown) => void },
+    private opts: { controlUrl: () => string; engine?: HarnessEngine; claudeEngine?: HarnessEngine; opencodeEngine?: HarnessEngine; log?: (msg: string, err?: unknown) => void },
   ) {
     this.engine = opts.engine ?? createDshEngine();
     const c = ctx.cfg.workContainer;
@@ -946,7 +947,7 @@ export class WorkRunner {
         const busy = await folderBusy(db, ok.path, taskId);
         if (busy) throw new Error(busyMessage(busy));
         // A container sees only its own folder: a folder on this machine isn't there.
-        if (this.containerEngine && task.engine !== "claude" && !task.parentId) throw new Error("Working in a folder isn't available while tasks run in containers (WORK_ISOLATION=container). Use a private copy, or another isolation mode.");
+        if (this.containerEngine && task.engine === "dsh" && !task.parentId) throw new Error("Working in a folder isn't available while tasks run in containers (WORK_ISOLATION=container). Use a private copy, or another isolation mode.");
         external = ok.path;
         // Keep the folder's state before the task changes anything, so its changes can be listed and undone.
         if (!task.workSnapshot) {
@@ -998,11 +999,24 @@ export class WorkRunner {
       // Container mode: Work AI tasks get their own container; the container is their sandbox.
       const superAi = task.engine === "claude" && !code && !task.parentId;
       if (superAi && this.containerEngine) throw new Error("Super AI doesn't run in container mode yet.");
-      l.plain = superAi;
+      // Agent AI (opencode) is plain too: its own prompts and tools, none of Work AI's checklist or reviewer.
+      const agentAi = task.engine === "opencode" && !code && !task.parentId;
+      if (agentAi && this.containerEngine) throw new Error("Agent AI doesn't run in container mode yet.");
+      l.plain = superAi || agentAi;
+      // Super AI and Agent AI condense older steps into a summary that can lose the request's details (a code word, the
+      // exact wording): its first request stays in their instructions, word for word. Work AI has task_recall for this.
+      const firstAsk = String(asked[0]?.data.text ?? "").trim();
+      if (l.plain && firstAsk) instructions = [instructions, `This task began with the person's request (word for word; keep to it, also after older steps were condensed):\n${firstAsk.slice(0, 2000)}`].filter(Boolean).join("\n\n");
       const tooSmall = superAi ? superAiWindowProblem(m.displayName, m.contextLength) : null;
       if (tooSmall) throw new Error(tooSmall);
-      const inContainer = !code && !superAi && !!this.containerEngine;
-      const engine = superAi ? (this.claudeEngine ??= this.opts.claudeEngine ?? createClaudeEngine()) : inContainer ? this.containerEngine! : this.engine;
+      const inContainer = !code && !superAi && !agentAi && !!this.containerEngine;
+      const engine = superAi
+        ? (this.claudeEngine ??= this.opts.claudeEngine ?? createClaudeEngine())
+        : agentAi
+          ? (this.opencodeEngine ??= this.opts.opencodeEngine ?? createOpencodeEngine())
+          : inContainer
+            ? this.containerEngine!
+            : this.engine;
       l.internet = inContainer && settings.containerNetwork === "proxy";
       l.inContainer = inContainer;
       const runtime = await engine.start(
@@ -1066,7 +1080,7 @@ export class WorkRunner {
    * request that asks for something to be built (Work AI tasks only; a reviewer's task has none).
    */
   private async acceptanceFor(l: Live, task: typeof workTask.$inferSelect, section: "work" | "code", request: string): Promise<Acceptance | null> {
-    if (!l.workdir || section === "code" || task.parentId || task.engine === "claude") return null;
+    if (!l.workdir || section === "code" || task.parentId || task.engine !== "dsh") return null;
     const have = await loadAcceptance(l.workdir);
     if (have) return have;
     // Only a task's first message gets a checklist; a later "continue" on an old task doesn't.
@@ -1914,6 +1928,8 @@ export class WorkRunner {
 
 /** File names a request asks for ("write report.md", "make sales.xlsx"): a name with a document, data or image extension. */
 export function namedFiles(request: string): string[] {
+  // A request that also deletes, moves or renames things names files that shouldn't exist at the end: no reminder.
+  if (/\b(delete|deleting|remove|removing|rm|erase|move|rename|clean ?up|get rid of)\b/i.test(request)) return [];
   const out: string[] = [];
   for (const word of request.split(/\s+/)) {
     const w = word.replace(/^["'`(\[<]+|["'`)\]>,;:!?.]+$/g, "");

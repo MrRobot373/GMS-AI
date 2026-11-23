@@ -9,6 +9,9 @@ describe("files a request asks for", () => {
   it("finds the file names in a request", () => {
     expect(namedFiles("Create sales.xlsx with 12 months of data, make a PNG bar chart, and write report.md summarising the trends.")).toEqual(["sales.xlsx", "report.md"]);
     expect(namedFiles("Make a chart (PNG) from this data")).toEqual([]);
+    // Files to be deleted or moved aren't promised.
+    expect(namedFiles("Make scratch/a.txt, then delete the scratch folder with rm -rf.")).toEqual([]);
+    expect(namedFiles("Rename old.md to new.md")).toEqual([]);
     expect(namedFiles("Read https://example.com/a.pdf and save the summary to out/summary.docx")).toEqual(["summary.docx"]);
   });
 

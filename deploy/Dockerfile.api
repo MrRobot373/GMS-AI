@@ -47,6 +47,21 @@ WORKDIR /opt/claude
 RUN mkdir -p node_modules \
  && if [ "$SUPER_AI" = "true" ]; then npm install --no-save --no-audit --no-fund --omit=dev "@anthropic-ai/claude-agent-sdk@${CLAUDE_AGENT_SDK_VERSION}"; fi
 
+# Agent AI's opencode engine (docs/22-agent-ai.md): opencode (MIT) as one prebuilt program (about 200 MB), unless
+# built with --build-arg AGENT_AI=false. Its install script isn't run: the program is copied from the package for this
+# platform, and the API finds it through AATMIQ_OPENCODE_BIN.
+FROM node:22-bookworm AS opencode
+ARG AGENT_AI=true
+ARG OPENCODE_VERSION=1.19.6
+WORKDIR /opt/opencode
+RUN mkdir -p bin \
+ && if [ "$AGENT_AI" = "true" ]; then \
+      npm install --no-save --no-audit --no-fund --ignore-scripts "opencode-ai@${OPENCODE_VERSION}" \
+      && arch=$(node -p 'process.arch') \
+      && cp "node_modules/opencode-linux-${arch}/bin/opencode" bin/opencode \
+      && rm -rf node_modules; \
+    fi
+
 # Aatmiq Code (the IDE): the pinned Code-OSS server build plus our branding and extensions.
 FROM node:22-bookworm AS code
 WORKDIR /build/apps/code
@@ -97,7 +112,10 @@ COPY --from=dsh /opt/dsh /opt/dsh
 # Empty unless built with SUPER_AI=true.
 COPY --from=claude /opt/claude/node_modules /app/node_modules
 COPY --from=code /opt/aatmiq-code /opt/aatmiq-code
+# Empty when built with AGENT_AI=false (Agent AI then says it isn't installed).
+COPY --from=opencode /opt/opencode/bin /opt/opencode/bin
 ENV AATMIQ_DSH_CLI=/opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js
+ENV AATMIQ_OPENCODE_BIN=/opt/opencode/bin/opencode
 # The API runs as root inside the container so each Work AI task and each person's IDE can run as
 # its own unprivileged Unix user (no access to documents or anyone else's folders).
 # See docs/06-work-ai.md and docs/07-code.md.

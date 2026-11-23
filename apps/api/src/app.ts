@@ -62,7 +62,7 @@ import { chmod, mkdir } from "node:fs/promises";
 export async function buildApp(
   db: DB,
   cfg: Config,
-  opts: { logger?: boolean; storage?: Storage; fetch?: typeof fetch; resolve?: (host: string) => Promise<string[]>; workEngine?: HarnessEngine; claudeEngine?: HarnessEngine; jobs?: (ctx: AppContext) => Jobs; ytDlp?: YtDlpRunner } = {},
+  opts: { logger?: boolean; storage?: Storage; fetch?: typeof fetch; resolve?: (host: string) => Promise<string[]>; workEngine?: HarnessEngine; claudeEngine?: HarnessEngine; opencodeEngine?: HarnessEngine; jobs?: (ctx: AppContext) => Jobs; ytDlp?: YtDlpRunner } = {},
 ): Promise<FastifyInstance> {
   // The IDE proxy (/code/ide) handles its requests before Fastify, so bodies and WebSocket
   // upgrades pass through untouched.
@@ -139,6 +139,7 @@ export async function buildApp(
   ctx.work = new WorkRunner(ctx, {
     engine: opts.workEngine,
     claudeEngine: opts.claudeEngine,
+    opencodeEngine: opts.opencodeEngine,
     controlUrl: () => {
       if (cfg.workControlUrl) return cfg.workControlUrl.replace(/\/$/, "");
       const a = app.server.address() as AddressInfo | null;

@@ -108,6 +108,11 @@ export function claudeSettings(spec: TaskSpec): Record<string, string> {
     CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(window),
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(clamp(window / 4, 1024, 32_000)),
     CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "75",
+    // One file read, command output or tool result may fill at most about 15% of the window. Bigger ones are read in
+    // parts; otherwise a single large file overflows a small window, and condensing fails too (it resends it all).
+    CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: String(clamp(window * 0.15, 2000, 25_000)),
+    MAX_MCP_OUTPUT_TOKENS: String(clamp(window * 0.15, 2000, 25_000)),
+    BASH_MAX_OUTPUT_LENGTH: String(clamp(window * 0.15 * 3, 6000, 30_000)),
     // Nothing leaves for Anthropic: no telemetry, error reports, update checks or other optional traffic.
     DISABLE_TELEMETRY: "1",
     DISABLE_ERROR_REPORTING: "1",

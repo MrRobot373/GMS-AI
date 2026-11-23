@@ -24,6 +24,7 @@ interface WorkSettings {
   idleMinutes: number;
   browser: boolean;
   superAi: boolean;
+  agentAi: boolean;
   browserAllowedHosts: string[];
   folderRoots: string[];
   containerCpus: number;
@@ -36,6 +37,8 @@ interface AdminWork {
   browserInstalled: boolean;
   /** The Claude Code engine (Super AI) is installed on this server. */
   superAiInstalled: boolean;
+  /** The opencode engine (Agent AI) is installed on this server. */
+  agentAiInstalled: boolean;
   /** "container" when the server runs each task in its own Docker container. */
   isolation: "container" | "process";
   stats: { running: number; queued: number; week: number };
@@ -148,6 +151,22 @@ export default function AdminWorkPage() {
               </p>
             </div>
             <Switch checked={form.superAi && d.superAiInstalled} disabled={!d.superAiInstalled || d.isolation === "container"} onCheckedChange={(v) => setForm({ ...form, superAi: v })} label={t("Offer Super AI")} data-testid="super-ai-switch" />
+          </div>
+        </Card>
+      </Section>
+
+      <Section title={t("Agent AI")} description={t("A third engine for tasks: opencode, an open-source agent (MIT), running on the same models. Fast and light on tokens; like Super AI, its tasks are plain, without Work AI's checklist or reviewer.")}>
+        <Card className="divide-y divide-border">
+          <div className="flex items-start gap-4 p-5">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13.5px] text-fg">{t("Offer Agent AI")}</div>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-fg-subtle">
+                {d.agentAiInstalled
+                  ? t("Adds an Agent AI tab under Super AI. It uses your Work AI models, quotas and approvals, and runs the opencode program on this server, without plugins or update checks.")
+                  : t("The opencode engine isn't installed on this server. It is an optional package of the harness (opencode-ai).")}
+              </p>
+            </div>
+            <Switch checked={form.agentAi && d.agentAiInstalled} disabled={!d.agentAiInstalled || d.isolation === "container"} onCheckedChange={(v) => setForm({ ...form, agentAi: v })} label={t("Offer Agent AI")} data-testid="agent-ai-switch" />
           </div>
         </Card>
       </Section>

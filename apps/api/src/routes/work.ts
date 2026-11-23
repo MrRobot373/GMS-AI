@@ -11,7 +11,7 @@ import { lstat, readdir, readFile, realpath, stat, writeFile } from "node:fs/pro
 import { basename, extname, join, relative, sep } from "node:path";
 import { z } from "zod";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
-import { claudeAvailable } from "@aatmiq/harness";
+import { claudeAvailable, opencodeAvailable } from "@aatmiq/harness";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { resolveModel, type AvailableModel } from "../services/models";
 import { chooseModel } from "../services/router";
@@ -156,7 +156,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     if (req.query.workspaceId) await requireWorkSection(ctx, u, req.query.workspaceId);
     const s = await getWorkSettings(db);
-    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser, superAi: s.superAi && (await claudeAvailable()), folders: (await work.folderRules()).roots.length > 0 };
+    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser, superAi: s.superAi && (await claudeAvailable()), agentAi: s.agentAi && (await opencodeAvailable()), folders: (await work.folderRules()).roots.length > 0 };
   });
 
   app.get<{ Querystring: { workspaceId?: string; q?: string; engine?: string } }>("/api/work/tasks", async (req) => {
@@ -164,8 +164,8 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const wsId = req.query.workspaceId ?? "";
     await requireWorkSection(ctx, u, wsId);
     const q = req.query.q?.trim();
-    // Work AI and Super AI each list their own tasks.
-    const engine = req.query.engine === "claude" ? "claude" : "dsh";
+    // Work AI, Super AI and Agent AI each list their own tasks.
+    const engine = req.query.engine === "claude" || req.query.engine === "opencode" ? req.query.engine : "dsh";
     return db
       .select({
         id: workTask.id,
@@ -205,6 +205,11 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       if (!(await getWorkSettings(db)).superAi) throw badRequest("Super AI is turned off. An admin can turn it on under Admin → Work AI.");
       if (!(await claudeAvailable())) throw badRequest("Super AI isn't installed on this server.");
       if (work.mode === "container") throw badRequest("Super AI doesn't run in container mode yet.");
+    }
+    if (b.engine === "opencode") {
+      if (!(await getWorkSettings(db)).agentAi) throw badRequest(msg("Agent AI is turned off. An admin can turn it on under Admin → Work AI."));
+      if (!(await opencodeAvailable())) throw badRequest(msg("Agent AI isn't installed on this server."));
+      if (work.mode === "container") throw badRequest(msg("Agent AI doesn't run in container mode yet."));
     }
     // The model asked for, or Auto's pick for this task (it keeps the model for its follow-ups).
     const { model: m, routing } = await chooseModel(db, ctx.box, {

@@ -5,3 +5,5 @@ export { classifyRisk } from "./policy";
 export { harnessFile, harnessRoot } from "./files";
 export { containerArgs, containerEnv, containerLauncher, containerName, egressToken, removeStaleContainers, type ContainerLimits, type ContainerOptions } from "./dsh/container";
 export { SUPER_AI_MIN_WINDOW, claudeAvailable, createClaudeEngine, extraSettings, windowsEnv, ClaudeUnavailable, claudeSettings, MODEL_ALIAS, type ClaudeSdk } from "./claude/engine";
+export { createOpencodeEngine, opencodeAvailable, opencodeBin, opencodeConfig } from "./opencode/engine";
+export { mapOpencodeEvent, newOpencodeState, permissionCall, toolName as opencodeToolName } from "./opencode/map";

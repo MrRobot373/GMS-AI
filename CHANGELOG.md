@@ -9,6 +9,15 @@ without one.
 
 ## Unreleased
 
+- **Agent AI: a third engine for tasks, on opencode** (MIT, docs/22-agent-ai.md). Its own page under Super AI, with the
+  same models, quotas, approvals, tools (web search and reading, browser, documents, calculators, recall), connectors,
+  skills and folders as the other two. Fast and light; like Super AI, its tasks have no checklist or reviewer. On by
+  default when installed (Admin → Work AI); the Docker image includes it unless built with `AGENT_AI=false`.
+- **Super AI and Agent AI keep the task's first request in their instructions**, word for word, so condensing older
+  steps no longer loses details such as a code word. Super AI also reads big files and long outputs in parts (at most
+  about 15% of the window each). Super AI still needs a 64K window for work with big files (docs/22-agent-ai.md).
+- **The "missing files" reminder no longer recreates files a request asked to delete, move or rename.**
+
 - **Work AI and Super AI: programs can save their settings and caches.** Commands inside a task couldn't write their home
   folder, so matplotlib warned, and `pip install --user` failed. Each task now has a private settings and cache folder.
 - **A task that says it's done without the files it was asked for is reminded once.** If a request names files (for example

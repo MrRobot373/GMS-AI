@@ -8,11 +8,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
-    "./dsh-plugin/*": "./dsh-plugin/*"
+    "./dsh-plugin/*": "./dsh-plugin/*",
+    "./opencode/*": "./opencode/*"
   },
   "files": [
     "src",
-    "dsh-plugin"
+    "dsh-plugin",
+    "opencode"
   ],
   "scripts": {
     "typecheck": "tsc -p .",
@@ -28,6 +30,7 @@
     "@anthropic-ai/claude-agent-sdk": "0.3.317",
     "@deepseek-ai/dsh": "0.2.0-rc.2",
     "@types/node": "^22.18.0",
+    "opencode-ai": "1.19.6",
     "vitest": "^3.2.4"
   },
   "description": "Work AI engine adapter. The DeepSeek Harness runtime itself is a dev dependency here; production images install it at /opt/dsh (deploy/dsh) and point AATMIQ_DSH_CLI at it."
