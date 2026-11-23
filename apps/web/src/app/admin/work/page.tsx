@@ -25,6 +25,7 @@ interface WorkSettings {
   browser: boolean;
   superAi: boolean;
   agentAi: boolean;
+  computerAi: boolean;
   browserAllowedHosts: string[];
   folderRoots: string[];
   containerCpus: number;
@@ -39,6 +40,8 @@ interface AdminWork {
   superAiInstalled: boolean;
   /** The opencode engine (Agent AI) is installed on this server. */
   agentAiInstalled: boolean;
+  /** Computer AI can control this machine (null), or why not. */
+  computerAiSupport: string | null;
   /** "container" when the server runs each task in its own Docker container. */
   isolation: "container" | "process";
   stats: { running: number; queued: number; week: number };
@@ -167,6 +170,22 @@ export default function AdminWorkPage() {
               </p>
             </div>
             <Switch checked={form.agentAi && d.agentAiInstalled} disabled={!d.agentAiInstalled || d.isolation === "container"} onCheckedChange={(v) => setForm({ ...form, agentAi: v })} label={t("Offer Agent AI")} data-testid="agent-ai-switch" />
+          </div>
+        </Card>
+      </Section>
+
+      <Section title={t("Computer AI")} description={t("Tasks that use the screen, mouse and keyboard of the computer Aatmiq runs on, with a vision model: for apps that have no other way in. Only admins can use it, one task at a time.")}>
+        <Card className="divide-y divide-border">
+          <div className="flex items-start gap-4 p-5">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13.5px] text-fg">{t("Offer Computer AI")}</div>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-fg-subtle">
+                {d.computerAiSupport
+                  ? d.computerAiSupport
+                  : t("It controls this computer for real: what is open on it, signed in or saved can be used. Turn it on only on a computer set aside for it, or your own. It asks before risky actions; moving the mouse to the top-left corner stops it.")}
+              </p>
+            </div>
+            <Switch checked={form.computerAi && !d.computerAiSupport} disabled={!!d.computerAiSupport || d.isolation === "container"} onCheckedChange={(v) => setForm({ ...form, computerAi: v })} label={t("Offer Computer AI")} data-testid="computer-ai-switch" />
           </div>
         </Card>
       </Section>

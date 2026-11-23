@@ -34,7 +34,7 @@ import {
   type DB,
   type WorkVerification,
 } from "@aatmiq/db";
-import { SUPER_AI_MIN_WINDOW, containerLauncher, createClaudeEngine, createDshEngine, createOpencodeEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
+import { SUPER_AI_MIN_WINDOW, containerLauncher, createClaudeEngine, createComputerEngine, createDshEngine, createOpencodeEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
 import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
@@ -619,13 +619,14 @@ export class WorkRunner {
   /** The Claude Code engine of Super AI (docs/20-super-ai.md), made when the first such task starts. */
   private claudeEngine: HarnessEngine | null = null;
   private opencodeEngine: HarnessEngine | null = null;
+  private computerEngine: HarnessEngine | null = null;
   /** Container mode: Work AI tasks run here (Aatmiq Code's agent stays in the person's IDE workspace). */
   private containerEngine: HarnessEngine | null = null;
   private stopped = false;
 
   constructor(
     private ctx: AppContext,
-    private opts: { controlUrl: () => string; engine?: HarnessEngine; claudeEngine?: HarnessEngine; opencodeEngine?: HarnessEngine; log?: (msg: string, err?: unknown) => void },
+    private opts: { controlUrl: () => string; engine?: HarnessEngine; claudeEngine?: HarnessEngine; opencodeEngine?: HarnessEngine; computerEngine?: HarnessEngine; log?: (msg: string, err?: unknown) => void },
   ) {
     this.engine = opts.engine ?? createDshEngine();
     const c = ctx.cfg.workContainer;
@@ -1001,19 +1002,24 @@ export class WorkRunner {
       if (superAi && this.containerEngine) throw new Error("Super AI doesn't run in container mode yet.");
       // Agent AI (opencode) is plain too: its own prompts and tools, none of Work AI's checklist or reviewer.
       const agentAi = task.engine === "opencode" && !code && !task.parentId;
+      const computerAi = task.engine === "computer" && !code && !task.parentId;
+      if (computerAi && this.containerEngine) throw new Error("Computer AI can't run in container mode.");
+      if (computerAi && !m.vision) throw new Error(`Computer AI needs a model that can see images, and ${m.displayName} can't. Pick a vision model (Admin → Models marks them).`);
       if (agentAi && this.containerEngine) throw new Error("Agent AI doesn't run in container mode yet.");
-      l.plain = superAi || agentAi;
+      l.plain = superAi || agentAi || computerAi;
       // Super AI and Agent AI condense older steps into a summary that can lose the request's details (a code word, the
       // exact wording): its first request stays in their instructions, word for word. Work AI has task_recall for this.
       const firstAsk = String(asked[0]?.data.text ?? "").trim();
       if (l.plain && firstAsk) instructions = [instructions, `This task began with the person's request (word for word; keep to it, also after older steps were condensed):\n${firstAsk.slice(0, 2000)}`].filter(Boolean).join("\n\n");
       const tooSmall = superAi ? superAiWindowProblem(m.displayName, m.contextLength) : null;
       if (tooSmall) throw new Error(tooSmall);
-      const inContainer = !code && !superAi && !agentAi && !!this.containerEngine;
+      const inContainer = !code && !superAi && !agentAi && !computerAi && !!this.containerEngine;
       const engine = superAi
         ? (this.claudeEngine ??= this.opts.claudeEngine ?? createClaudeEngine())
         : agentAi
           ? (this.opencodeEngine ??= this.opts.opencodeEngine ?? createOpencodeEngine())
+          : computerAi
+            ? (this.computerEngine ??= this.opts.computerEngine ?? createComputerEngine())
           : inContainer
             ? this.containerEngine!
             : this.engine;

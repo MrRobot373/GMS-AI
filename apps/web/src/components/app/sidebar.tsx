@@ -30,6 +30,7 @@ import {
   Workflow,
   Sparkles,
   Bot,
+  Monitor,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -217,7 +218,10 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const hasAgent = !!workInfo.data?.agentAi;
   const agentTasks = useWorkTasks(can("work") && hasAgent ? workspaceId : "", "opencode");
   const inAgent = pathname.startsWith("/app/work/agent") || (hasAgent && (agentTasks.data ?? []).some((x) => pathname === `/app/work/${x.id}`));
-  const workTasks = inSuper ? superTasks : inAgent ? agentTasks : dshTasks;
+  const hasComputer = !!workInfo.data?.computerAi;
+  const computerTasks = useWorkTasks(can("work") && hasComputer ? workspaceId : "", "computer");
+  const inComputer = pathname.startsWith("/app/work/computer") || (hasComputer && (computerTasks.data ?? []).some((x) => pathname === `/app/work/${x.id}`));
+  const workTasks = inSuper ? superTasks : inAgent ? agentTasks : inComputer ? computerTasks : dshTasks;
   const codeWorkspaces = useCodeWorkspaces(inCode && can("code") ? workspaceId : "");
   const approvalsQ = usePendingApprovals(can("work") ? workspaceId : "");
   const pendingApprovals = approvalsQ.data?.length ?? 0;
@@ -361,7 +365,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             <GroupLabel>{t("Do")}</GroupLabel>
             <div className="space-y-px">
               {can("work") && (
-                <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work") && !inSuper && !inAgent} hint={t("Hand over a job; get finished files back.")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
+                <NavItem href="/app/work" icon={<Workflow />} active={pathname.startsWith("/app/work") && !inSuper && !inAgent && !inComputer} hint={t("Hand over a job; get finished files back.")} shortcut={pendingApprovals > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-medium text-bg" aria-label={t("{pendingApprovals} waiting for approval", { pendingApprovals: pendingApprovals })}>{pendingApprovals}</span> : undefined}>
                   {t("Work AI")}
                 </NavItem>
               )}
@@ -373,6 +377,11 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
               {can("work") && hasAgent && (
                 <NavItem href="/app/work/agent" icon={<Bot />} active={inAgent} hint={t("The opencode engine: fast and light, to compare with Work AI.")}>
                   {t("Agent AI")}
+                </NavItem>
+              )}
+              {can("work") && hasComputer && (
+                <NavItem href="/app/work/computer" icon={<Monitor />} active={inComputer} hint={t("Uses this computer's screen, mouse and keyboard.")}>
+                  {t("Computer AI")}
                 </NavItem>
               )}
               {can("code") && (

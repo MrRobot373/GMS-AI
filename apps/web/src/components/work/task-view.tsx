@@ -356,7 +356,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["work-tasks", workspaceId] });
       toast(t("Task deleted"));
-      router.push(task?.engine === "claude" ? "/app/work/super" : task?.engine === "opencode" ? "/app/work/agent" : "/app/work");
+      router.push(task?.engine === "claude" ? "/app/work/super" : task?.engine === "opencode" ? "/app/work/agent" : task?.engine === "computer" ? "/app/work/computer" : "/app/work");
     },
   });
   const upload = async (list: File[]) => {
@@ -400,9 +400,9 @@ export function TaskView({ taskId }: { taskId: string }) {
             )}
             <span className="truncate" data-testid="task-title">{task?.title ?? t("Task")}</span>
             {task && <StatusPill status={status} />}
-            {(task?.engine === "claude" || task?.engine === "opencode") && (
+            {(task?.engine === "claude" || task?.engine === "opencode" || task?.engine === "computer") && (
               <span className="shrink-0 rounded-full border border-border px-2 py-px text-[11px] text-fg-subtle" data-testid="engine-badge">
-                {task.engine === "claude" ? t("Super AI") : t("Agent AI")}
+                {task.engine === "claude" ? t("Super AI") : task.engine === "opencode" ? t("Agent AI") : t("Computer AI")}
               </span>
             )}
             {task?.routing && (
@@ -590,7 +590,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     projectName={proj?.name}
                     code={code}
                     workFolder={workFolder}
-                    changes={workFolder && own ? <FolderChanges taskId={taskId} status={status} /> : null}
+                    changes={workFolder && own ? <FolderChanges taskId={taskId} status={status} /> : task?.engine === "computer" ? <LiveScreen taskId={taskId} status={status} /> : null}
                   />
                 )}
               </div>
@@ -1112,6 +1112,31 @@ function FilesPanel({
       )}
       {truncated && <p className="mt-2 text-[12px] text-fg-subtle">{t("Showing the first 1,000 files.")}</p>}
       {changes}
+    </div>
+  );
+}
+
+/** Computer AI: the latest screenshot, refreshed while the task works. */
+function LiveScreen({ taskId, status }: { taskId: string; status: string }) {
+  const t = useT();
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!ACTIVE.includes(status as TaskStatus)) return;
+    const timer = setInterval(() => setTick((n) => n + 1), 2000);
+    return () => clearInterval(timer);
+  }, [status]);
+  return (
+    <div className="mt-4 border-t border-border pt-3" data-testid="live-screen">
+      <div className="mb-1.5 text-[12px] font-medium text-fg">{t("Screen")}</div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/api/work/tasks/${taskId}/files/content?path=screen.jpg&t=${tick}`}
+        alt={t("The computer's screen")}
+        className="w-full rounded-md border border-border"
+        onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")}
+        onLoad={(e) => ((e.target as HTMLImageElement).style.visibility = "visible")}
+      />
+      <p className="mt-1.5 text-[11.5px] text-fg-subtle">{t("To stop it at once, move the mouse to the top-left corner of the screen.")}</p>
     </div>
   );
 }

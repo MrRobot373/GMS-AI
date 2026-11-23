@@ -29,7 +29,7 @@ const STARTERS = [
   { icon: FileSearch, label: msg("Review documents"), prompt: msg("Read the attached documents and list the decisions, open questions and deadlines in a table.") },
 ];
 
-export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" | "opencode" } = {}) {
+export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" | "opencode" | "computer" } = {}) {
   const t = useT();
   const { me, workspaceId } = useSession();
   const router = useRouter();
@@ -37,6 +37,7 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" | "open
   const tasks = useWorkTasks(workspaceId, engine);
   const superAi = engine === "claude";
   const agentAi = engine === "opencode";
+  const computerAi = engine === "computer";
   const approvals = usePendingApprovals(workspaceId);
   const info = useWorkInfo(workspaceId);
   const models = useQuery({
@@ -100,14 +101,16 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" | "open
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <TopBar icon={<Workflow />} title={superAi ? t("Super AI") : agentAi ? t("Agent AI") : t("Work AI")} />
+      <TopBar icon={<Workflow />} title={superAi ? t("Super AI") : agentAi ? t("Agent AI") : computerAi ? t("Computer AI") : t("Work AI")} />
       {engine === "dsh" && <WorkTabs />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[760px] flex-col px-4 pt-[9vh] pb-8 sm:px-6">
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }} className="text-center">
             <h1 className="font-serif text-[36px] leading-tight tracking-[-0.02em] text-fg">{t("What should I work on, {firstName}?", { firstName: firstName })}</h1>
             <p className="mx-auto mt-2 max-w-md text-[13px] text-fg-subtle">
-              {agentAi
+              {computerAi
+                ? t("Computer AI uses this computer's screen, mouse and keyboard to do your task, with a vision model. It asks before risky actions. To stop it at once, move the mouse to the top-left corner of the screen.")
+                : agentAi
                 ? t("Agent AI runs your task on the opencode engine: fast and light, with its own prompts and tools, so you can compare it with Work AI and Super AI. It works in a private folder and asks you before anything risky.")
                 : superAi
                 ? t("Super AI runs your task on the Claude Code engine, with its own prompts and tools, so you can compare it with Work AI. It works in a private folder and asks you before anything risky.")

@@ -30,7 +30,7 @@ export interface ChecklistItem {
 export interface WorkTaskSummary {
   id: string;
   /** Work AI's engine ("dsh") or Super AI's Claude Code ("claude"). */
-  engine?: "dsh" | "claude" | "opencode";
+  engine?: "dsh" | "claude" | "opencode" | "computer";
   title: string;
   status: TaskStatus;
   result: string | null;
@@ -102,6 +102,8 @@ export interface WorkInfo {
   superAi?: boolean;
   /** Agent AI (the opencode engine) is on and installed. */
   agentAi?: boolean;
+  /** Computer AI is on, this machine can be controlled, and the person is an admin. */
+  computerAi?: boolean;
   /** An admin allowed folders tasks may work in directly. */
   folders?: boolean;
 }
@@ -137,7 +139,7 @@ export interface Schedule {
 
 export const ACTIVE: TaskStatus[] = ["queued", "running", "needs_approval"];
 
-export function useWorkTasks(workspaceId: string, engine: "dsh" | "claude" | "opencode" = "dsh") {
+export function useWorkTasks(workspaceId: string, engine: "dsh" | "claude" | "opencode" | "computer" = "dsh") {
   return useQuery({
     queryKey: ["work-tasks", workspaceId, engine],
     queryFn: () => get<WorkTaskSummary[]>(`/api/work/tasks?workspaceId=${workspaceId}${engine !== "dsh" ? `&engine=${engine}` : ""}`),

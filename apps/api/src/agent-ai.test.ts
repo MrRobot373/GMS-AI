@@ -51,4 +51,16 @@ d("Agent AI", () => {
     expect(t.status).toBe(400);
     expect(t.json.error).toMatch(/Agent AI is turned off/);
   });
+
+  it("Computer AI is off by default, and only for admins", async () => {
+    expect((await h.call(h.owner, "GET", "/api/admin/work")).json.settings.computerAi).toBe(false);
+    const off = await h.call(h.owner, "POST", "/api/work/tasks", { workspaceId: h.workspaceId, prompt: "Open Notepad", engine: "computer" });
+    expect(off.status).toBe(400);
+    expect(off.json.error).toMatch(/Computer AI is turned off/);
+    await h.call(h.owner, "PUT", "/api/admin/work", { computerAi: true });
+    expect((await h.call(h.alice, "GET", `/api/work/info?workspaceId=${h.workspaceId}`)).json.computerAi).toBe(false);
+    const member = await h.call(h.alice, "POST", "/api/work/tasks", { workspaceId: h.workspaceId, prompt: "Open Notepad", engine: "computer" });
+    expect(member.status).toBe(403);
+    expect(member.json.error).toMatch(/Only admins/);
+  });
 });

@@ -9,6 +9,12 @@ without one.
 
 ## Unreleased
 
+- **Computer AI** (docs/23-computer-ai.md): tasks that use the screen, mouse and keyboard of the computer Aatmiq runs on,
+  with a vision model; Windows (PowerShell, nothing to install) and Linux desktops (xdotool). Admins only, off by default,
+  one task at a time; the screen shows live in the task page; risky keys and commands ask first; moving the mouse to the
+  top-left corner stops it. Positions on a 0-1000 scale by default (`AATMIQ_COMPUTER_COORDS=pixels` for Qwen2.5-VL).
+- The model gateway counts an image as about 1,500 tokens, not the length of its base64 text.
+
 - **Agent AI: a third engine for tasks, on opencode** (MIT, docs/22-agent-ai.md). Its own page under Super AI, with the
   same models, quotas, approvals, tools (web search and reading, browser, documents, calculators, recall), connectors,
   skills and folders as the other two. Fast and light; like Super AI, its tasks have no checklist or reviewer. On by

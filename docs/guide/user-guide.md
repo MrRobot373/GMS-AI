@@ -10,7 +10,7 @@ company's single sign-on button (Google, Microsoft…) if there is one. If two-s
 also type the 6-digit code from your authenticator app. You lost your phone: use a backup code, or
 ask an admin. You forgot your password: **Forgot password?** on the sign-in page.
 
-The sidebar on the left: **New chat**, **Chat**, **Projects**, **Documents**, **Work AI**, **Super AI**, **Agent AI**, **Code**
+The sidebar on the left: **New chat**, **Chat**, **Projects**, **Documents**, **Work AI**, **Super AI**, **Agent AI**, **Computer AI** (admins), **Code**
 (the sections your admin gave you), your recent chats, and at the bottom your name (Settings, sign
 out) and the bell (notifications).
 

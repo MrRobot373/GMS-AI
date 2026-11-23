@@ -11,7 +11,7 @@ import { lstat, readdir, readFile, realpath, stat, writeFile } from "node:fs/pro
 import { basename, extname, join, relative, sep } from "node:path";
 import { z } from "zod";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
-import { claudeAvailable, opencodeAvailable } from "@aatmiq/harness";
+import { claudeAvailable, computerAvailable, opencodeAvailable } from "@aatmiq/harness";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { resolveModel, type AvailableModel } from "../services/models";
 import { chooseModel } from "../services/router";
@@ -156,7 +156,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     if (req.query.workspaceId) await requireWorkSection(ctx, u, req.query.workspaceId);
     const s = await getWorkSettings(db);
-    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser, superAi: s.superAi && (await claudeAvailable()), agentAi: s.agentAi && (await opencodeAvailable()), folders: (await work.folderRules()).roots.length > 0 };
+    return { webSearch: webSearchReady(await workWebSearchDeps(ctx)), approvals: s.approvals, allowNetwork: s.allowNetwork, maxConcurrentPerUser: s.maxConcurrentPerUser, superAi: s.superAi && (await claudeAvailable()), agentAi: s.agentAi && (await opencodeAvailable()), computerAi: s.computerAi && isOrgAdmin(u.orgRole) && work.mode !== "container" && (await computerAvailable()), folders: (await work.folderRules()).roots.length > 0 };
   });
 
   app.get<{ Querystring: { workspaceId?: string; q?: string; engine?: string } }>("/api/work/tasks", async (req) => {
@@ -165,7 +165,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     await requireWorkSection(ctx, u, wsId);
     const q = req.query.q?.trim();
     // Work AI, Super AI and Agent AI each list their own tasks.
-    const engine = req.query.engine === "claude" || req.query.engine === "opencode" ? req.query.engine : "dsh";
+    const engine = req.query.engine === "claude" || req.query.engine === "opencode" || req.query.engine === "computer" ? req.query.engine : "dsh";
     return db
       .select({
         id: workTask.id,
@@ -210,6 +210,12 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
       if (!(await getWorkSettings(db)).agentAi) throw badRequest(msg("Agent AI is turned off. An admin can turn it on under Admin → Work AI."));
       if (!(await opencodeAvailable())) throw badRequest(msg("Agent AI isn't installed on this server."));
       if (work.mode === "container") throw badRequest(msg("Agent AI doesn't run in container mode yet."));
+    }
+    if (b.engine === "computer") {
+      if (!(await getWorkSettings(db)).computerAi) throw badRequest(msg("Computer AI is turned off. An admin can turn it on under Admin → Work AI."));
+      if (!isOrgAdmin(u.orgRole)) throw forbidden(msg("Only admins can use Computer AI: it controls the computer Aatmiq runs on."));
+      if (work.mode === "container" || !(await computerAvailable())) throw badRequest(msg("Computer AI can't control this machine: it needs Windows, or a Linux desktop with xdotool."));
+      if (b.folder) throw badRequest(msg("Computer AI works on the screen, not in a folder."));
     }
     // The model asked for, or Auto's pick for this task (it keeps the model for its follow-ups).
     const { model: m, routing } = await chooseModel(db, ctx.box, {

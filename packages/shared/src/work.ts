@@ -16,6 +16,8 @@ export const DEFAULT_WORK_SETTINGS = {
   superAi: false,
   /** Agent AI: tasks on the opencode engine (docs/22-agent-ai.md). */
   agentAi: true,
+  /** Computer AI: tasks that use the screen, mouse and keyboard of the machine Aatmiq runs on (docs/23-computer-ai.md). Admins only. */
+  computerAi: false,
   /** Internal hosts the browser may open anyway (private addresses are refused otherwise). */
   browserAllowedHosts: [] as string[],
   /**
@@ -43,6 +45,7 @@ export const workSettingsSchema = z.object({
   browser: z.boolean().optional(),
   superAi: z.boolean().optional(),
   agentAi: z.boolean().optional(),
+  computerAi: z.boolean().optional(),
   folderRoots: z.array(z.string().trim().min(1).max(500)).max(100).optional(),
   containerCpus: z.number().min(0.25).max(64).optional(),
   containerMemoryMb: z.number().int().min(256).max(262_144).optional(),
@@ -59,7 +62,7 @@ export const workTaskCreateSchema = z.object({
   modelId: z.string().optional(),
   projectId: z.string().optional(),
   /** Which agent engine runs it: Work AI's ("dsh"), Super AI's Claude Code ("claude") or Agent AI's opencode ("opencode"). */
-  engine: z.enum(["dsh", "claude", "opencode"]).default("dsh"),
+  engine: z.enum(["dsh", "claude", "opencode", "computer"]).default("dsh"),
   /** A folder on the server to work in directly (inside one an admin allowed), instead of a private copy. */
   folder: z.string().trim().min(1).max(1000).optional(),
   /** In a project with a shared folder: use a private copy instead of the project's folder. */

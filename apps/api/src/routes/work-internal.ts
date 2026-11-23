@@ -71,6 +71,9 @@ function llmError(reply: FastifyReply, status: number, message: string, type = "
 }
 
 
+/** What an image in a request counts as (about 1,500 tokens). */
+const IMAGE_PLACEHOLDER = "x".repeat(6000);
+
 /** The least room a reply needs; a request that leaves less is over the window. */
 const MIN_REPLY_TOKENS = 256;
 
@@ -85,7 +88,9 @@ export function fitWindow(
   window: number | null,
 ): { overflow: string } | { cap?: { field: "max_tokens" | "max_completion_tokens"; tokens: number } } {
   if (!window || window <= 0) return {};
-  const input = estimateTokens(JSON.stringify(body.messages ?? [])) + (body.tools ? estimateTokens(JSON.stringify(body.tools)) : 0);
+  // An image counts as what a vision model spends on it (about 1,500 tokens), not as the length of its base64 text.
+  const text = JSON.stringify(body.messages ?? [], (_k, v) => (typeof v === "string" && v.startsWith("data:image/") ? IMAGE_PLACEHOLDER : v));
+  const input = estimateTokens(text) + (body.tools ? estimateTokens(JSON.stringify(body.tools)) : 0);
   if (input > window - MIN_REPLY_TOKENS) return { overflow: `Input length (${input}) exceeds model's maximum context length (${window}).` };
   const field = typeof body.max_completion_tokens === "number" ? "max_completion_tokens" : typeof body.max_tokens === "number" ? "max_tokens" : null;
   if (!field) return {};
@@ -133,7 +138,7 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     if (!quota.result.allowed)
       return refuse(402, quota.scope.kind === "project" ? quotaMessage(quota) : quota.scope.kind === "group" ? `You've used your share of the ${quota.scope.name} group's tokens for this period. Ask your admin for more.` : "You've used your token allowance for this period. Ask your admin for more tokens.");
     const body = (req.body ?? {}) as Record<string, unknown> & { messages?: unknown[]; stream?: boolean };
-    const inputGuess = estimateTokens(JSON.stringify(body.messages ?? []));
+    const inputGuess = estimateTokens(JSON.stringify(body.messages ?? [], (_k, v) => (typeof v === "string" && v.startsWith("data:image/") ? IMAGE_PLACEHOLDER : v)));
     const fit = fitWindow(body, m.contextLength);
     // Not an error for the person: the runtime condenses older steps and asks again.
     if ("overflow" in fit) return llmError(reply, 400, fit.overflow, "context_length_exceeded");
