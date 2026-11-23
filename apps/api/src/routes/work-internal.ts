@@ -14,6 +14,7 @@
  *   POST /api/internal/work/calculators/run            run one by id; the number comes from the calculator code
  *   POST /api/internal/work/recall                     search this task's own full record, word for word (task_recall)
  */
+import { contextRequest } from "../services/model-context";
 import { and, document, eq, sql, usageEvent, user, workspaceMember, workTask } from "@aatmiq/db";
 import { estimateUsage, fetchWithKeys, openAiBase, thinkingParams } from "@aatmiq/model-gateway";
 import { estimateTokens, isOrgAdmin } from "@aatmiq/shared";
@@ -69,13 +70,6 @@ function llmError(reply: FastifyReply, status: number, message: string, type = "
   return reply.status(status).send({ error: { message, type } });
 }
 
-/** Ollama, behind LiteLLM, uses num_ctx as the context window for this call. */
-function contextRequest(provider: { baseUrl?: string | null }, contextLength: number | null): { num_ctx?: number } {
-  const host = provider.baseUrl ?? "";
-  if (!contextLength || contextLength <= 0) return {};
-  if (!host.includes("100.107.231.75") && !host.includes("desktop-adr28n2")) return {};
-  return { num_ctx: contextLength };
-}
 
 /** The least room a reply needs; a request that leaves less is over the window. */
 const MIN_REPLY_TOKENS = 256;

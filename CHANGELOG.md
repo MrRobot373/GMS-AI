@@ -9,6 +9,10 @@ without one.
 
 ## Unreleased
 
+- **Long chats no longer fail.** Each chat request is kept inside the model's context window: the oldest turns are left
+  out first, then large tool results (web pages, files, Python output) are shortened. Chat also asks Ollama for the model's
+  full window (`num_ctx`), as Work AI already did, instead of the server's default.
+
 - **Undo, shared project folders and a folder picker for tasks working in a folder.** Before a task changes a folder, its
   state is kept privately; the Files panel lists what changed and can undo all of it or one file. A project can have a shared
   folder that its tasks use by default (or a private copy instead), and **Browse** picks an allowed folder instead of typing

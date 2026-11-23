@@ -5,6 +5,8 @@
  */
 import { estimateTokens, type ProviderType } from "@aatmiq/shared";
 
+export { countTokens, fitToWindow } from "./fit";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
@@ -52,6 +54,8 @@ export interface StreamOptions {
   thinking?: boolean;
   /** Functions the model may call. Omitted when empty. */
   tools?: FunctionTool[];
+  /** Extra request fields for this server (for example num_ctx for Ollama). */
+  extraBody?: Record<string, unknown>;
 }
 
 /**
@@ -230,6 +234,7 @@ async function* streamOpenAiCompatible(
       ...(opts.maxTokens !== undefined && { max_tokens: opts.maxTokens }),
       ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
       ...thinkingParams(cfg, opts.thinking),
+      ...opts.extraBody,
     }),
   });
   if (!res.ok || !res.body) {

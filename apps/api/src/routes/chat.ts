@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
-import { GatewayError, streamChat, type ChatMessage } from "@aatmiq/model-gateway";
+import { fitToWindow, GatewayError, streamChat, type ChatMessage } from "@aatmiq/model-gateway";
+import { answerRoom, contextRequest, DEFAULT_CHAT_WINDOW } from "../services/model-context";
 import { AUTO_MODEL_ID, chatCreateSchema, chatUpdateSchema, estimateTokens, isOrgAdmin, PRODUCT_NAME, sendMessageSchema, type Routing } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
@@ -678,13 +679,17 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const maxRounds = research ? RESEARCH_ROUNDS : MAX_TOOL_ROUNDS;
     const maxCalls = research ? RESEARCH_CALLS_PER_ROUND : MAX_CALLS_PER_ROUND;
     if (research) researching.set(c.id, Date.now());
+    // Every request is kept inside the model's window: a long chat drops its oldest turns, large tool results are shortened.
+    const window = m.contextLength ?? DEFAULT_CHAT_WINDOW;
+    const extraBody = contextRequest(provider, m.contextLength);
+    const fit = (ms: ChatMessage[]) => fitToWindow(ms, window, answerRoom(window)).messages;
     for (let round = 0; round <= maxRounds && !error && !abort.signal.aborted; round++) {
       let roundText = "";
       let calls: { id: string; name: string; arguments: string }[] = [];
       // The last round has no tools: the model answers from what it found.
       const offer = allowTools && round < maxRounds ? tools : undefined;
       try {
-        for await (const ev of streamChat(provider, m.modelKey, [...messages, ...pending], { signal: abort.signal, thinking, tools: offer })) {
+        for await (const ev of streamChat(provider, m.modelKey, fit([...messages, ...pending]), { signal: abort.signal, thinking, tools: offer, extraBody })) {
           if (ev.type === "delta") {
             roundText += ev.text;
             text += ev.text;
@@ -796,7 +801,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!text.trim() && pending.length > 0 && !error && !abort.signal.aborted) {
       try {
         const wrapUp: ChatMessage = { role: "user", content: "You used tools but wrote no answer. Now write your answer for the person in plain words: what you did, what worked, what didn't, and which files you made. If a step failed, say so and what to try next. Don't call tools." };
-        for await (const ev of streamChat(provider, m.modelKey, [...messages, ...pending, wrapUp], { signal: abort.signal, thinking: false })) {
+        for await (const ev of streamChat(provider, m.modelKey, fit([...messages, ...pending, wrapUp]), { signal: abort.signal, thinking: false, extraBody })) {
           if (ev.type === "delta") {
             text += ev.text;
             send("delta", { text: ev.text });
