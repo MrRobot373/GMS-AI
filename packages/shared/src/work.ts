@@ -26,6 +26,10 @@ export const DEFAULT_WORK_SETTINGS = {
    * the feature is off unless WORK_FOLDERS names some.
    */
   folderRoots: [] as string[],
+  /** Remove finished, unpinned tasks after this many days without activity (null: keep them). */
+  taskRetentionDays: null as number | null,
+  /** How much one person's tasks may hold on disk, in MB (null: no limit). */
+  taskStorageMbPerUser: null as number | null,
   /** Container mode: CPUs, memory and internet access per task. */
   containerCpus: 2,
   containerMemoryMb: 4096,
@@ -47,6 +51,8 @@ export const workSettingsSchema = z.object({
   agentAi: z.boolean().optional(),
   computerAi: z.boolean().optional(),
   folderRoots: z.array(z.string().trim().min(1).max(500)).max(100).optional(),
+  taskRetentionDays: z.number().int().min(1).max(3650).nullable().optional(),
+  taskStorageMbPerUser: z.number().int().min(10).max(10_000_000).nullable().optional(),
   containerCpus: z.number().min(0.25).max(64).optional(),
   containerMemoryMb: z.number().int().min(256).max(262_144).optional(),
   containerNetwork: z.enum(["proxy", "none"]).optional(),

@@ -3,6 +3,8 @@
  * Tasks are private to the person who started them; a task in a project can be shared to it,
  * which lets the project's people read (not change) it.
  */
+import { forgetUsage, mb, userTaskBytes } from "../services/work-storage";
+import { fileProblem } from "../services/file-check";
 import { and, asc, codeWorkspace, desc, document, eq, ilike, isNull, project, projectSource, user, workApproval, workEvent, workTask } from "@aatmiq/db";
 import { isOrgAdmin, workMessageSchema, workTaskCreateSchema } from "@aatmiq/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
@@ -25,7 +27,7 @@ import { webSearchReady } from "../services/web-search";
 import { browseFolders, busyMessage, folderBusy, resolveWorkFolder } from "../services/work-folder";
 import { changesSince, undoChanges } from "../services/work-snapshot";
 import { getWorkSettings, superAiWindowProblem, titleFrom, type WorkStreamEvent } from "../services/work";
-import { localeOf, msg, tr } from "../i18n";
+import { fill, localeOf, msg, tr } from "../i18n";
 
 const MAX_FILES = 1000;
 // `.task` holds long requests saved for the agent (services/work.ts), not something it made.
@@ -151,6 +153,13 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     return r.listing;
   });
 
+  /** How much the person's tasks hold, and their limit (for the Work AI page). */
+  app.get("/api/work/storage", async (req) => {
+    const u = await requireUser(ctx, req);
+    const limitMb = (await getWorkSettings(db)).taskStorageMbPerUser;
+    return { usedMb: mb(await userTaskBytes(db, (id) => work.taskDir(id), u.id)), limitMb: limitMb ?? null };
+  });
+
   /** What Work AI can do here (for the UI). */
   app.get<{ Querystring: { workspaceId?: string } }>("/api/work/info", async (req) => {
     const u = await requireUser(ctx, req);
@@ -201,6 +210,17 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     const b = parse(workTaskCreateSchema, req.body);
     await requireWorkSection(ctx, u, b.workspaceId);
+    // A person over their storage limit frees space first.
+    const limitMb = (await getWorkSettings(db)).taskStorageMbPerUser;
+    if (limitMb) {
+      const used = await userTaskBytes(db, (id) => work.taskDir(id), u.id);
+      if (used >= limitMb * 1024 * 1024)
+        throw new HttpError(
+          413,
+          fill(msg("Your Work AI files use {used} MB of your {limit} MB. Delete tasks you no longer need (their files go with them), then try again."), { used: mb(used), limit: limitMb }),
+          "storage_full",
+        );
+    }
     if (b.engine === "claude") {
       if (!(await getWorkSettings(db)).superAi) throw badRequest("Super AI is turned off. An admin can turn it on under Admin → Work AI.");
       if (!(await claudeAvailable())) throw badRequest("Super AI isn't installed on this server.");
@@ -340,6 +360,7 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const t = await loadOwnTask(ctx, u, req.params.id);
     await work.remove(t.id);
     await db.delete(workTask).where(eq(workTask.id, t.id));
+    forgetUsage(u.id);
     return { ok: true };
   });
 
@@ -495,6 +516,8 @@ export async function workRoutes(app: FastifyInstance, ctx: AppContext) {
     const name = basename(full).slice(0, 200);
     if (!isSupported(name)) throw new HttpError(415, `This file type can't be a project source. Sources can be ${SUPPORTED_HINT}.`, "unsupported");
     const data = await readFile(full);
+    const bad = fileProblem(name, data);
+    if (bad) throw new HttpError(415, bad, "bad_file");
     const storageKey = `${p.workspaceId}/${randomToken(18)}`;
     await ctx.storage.put(storageKey, data);
     const [doc] = await db

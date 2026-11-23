@@ -1,6 +1,6 @@
 "use client";
 
-import { algebra, calculus, compileFn, matrix as M, stats } from "@aatmiq/calculators";
+import { algebra, calculus, compileFn, matrix as M, optionalNumber, readList, stats, strictNumber } from "@aatmiq/calculators";
 import { Play, Plus, Minus } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,15 +8,8 @@ import { msg, useT } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { attempt, ErrorLine, fmt, Panel, ResultRow, TextField, useSaveHistory } from "./shared";
 
-const nums = (s: string) =>
-  s
-    .split(/[\s,;]+/)
-    .filter(Boolean)
-    .map((x) => {
-      const n = Number(x);
-      if (!Number.isFinite(n)) throw new Error(`"${x}" isn't a number`);
-      return n;
-    });
+/** Numbers typed in one field, read strictly ("1,500, 2,200" and "0x10" are refused, not guessed). */
+const nums = (s: string) => readList(s, "The numbers");
 
 function Run({ onClick, children }: { onClick: () => void; children?: ReactNode }) {
   const t = useT();
@@ -127,8 +120,9 @@ export function LinearSystemTool() {
   };
   const run = () => {
     const [r, e] = attempt(() => {
-      const A = cells.map((row) => row.slice(0, n).map((x) => nums(x)[0] ?? 0));
-      const b = cells.map((row) => nums(row[n] ?? "0")[0] ?? 0);
+      // Each cell is one number, read strictly: a blank cell or "2,5" stops here instead of becoming 0 or 2.
+      const A = cells.map((row, i) => row.slice(0, n).map((x, j) => strictNumber(x, `Row ${i + 1}, column ${j + 1}`)));
+      const b = cells.map((row, i) => strictNumber(row[n] ?? "", `Row ${i + 1}, right-hand side`));
       return algebra.solveLinear(A, b);
     });
     setOut(r);
@@ -258,11 +252,11 @@ export function MatrixTool() {
         <Button size="sm" onClick={() => op("rank A", () => algebra.matrixRank(A()))}>rank A</Button>
         <Button size="sm" onClick={() => op("eig A", () => M.eigenvalues2(A()).map((z) => algebra.formatComplex(z, 8)).join(", "))}>{t("Eigenvalues (2×2)")}</Button>
         <span className="flex items-center gap-1">
-          <Button size="sm" onClick={() => op(`A^${k}`, () => M.power(A(), Number(k)))}>Aⁿ</Button>
+          <Button size="sm" onClick={() => op(`A^${k}`, () => M.power(A(), strictNumber(k, "n")))}>Aⁿ</Button>
           <input value={k} onChange={(e) => setK(e.target.value)} aria-label="n" className="h-7 w-12 rounded-md border border-border bg-surface px-2 font-mono text-[12.5px]" />
         </span>
         <span className="flex items-center gap-1">
-          <Button size="sm" onClick={() => op(`${k}·A`, () => M.scale(A(), Number(k)))}>k·A</Button>
+          <Button size="sm" onClick={() => op(`${k}·A`, () => M.scale(A(), strictNumber(k, "k")))}>k·A</Button>
         </span>
       </div>
       <ErrorLine>{err}</ErrorLine>
@@ -377,16 +371,12 @@ export function CalculusTool() {
   const [order, setOrder] = useState("1");
   const [out, setOut] = useState<{ rows: [string, string][]; steps?: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const num = (s: string) => {
-    const v = Number(s);
-    if (!Number.isFinite(v)) throw new Error(t("Limits and points must be numbers"));
-    return v;
-  };
+  const num = (s: string) => strictNumber(s, t("Limits and points"));
   const run = () => {
     const [r, e] = attempt((): { rows: [string, string][]; steps?: string[] } => {
       switch (mode) {
         case "derivative": {
-          const d = calculus.derivative(f, { order: Number(order) || 1, at: a.trim() ? num(a) : undefined });
+          const d = calculus.derivative(f, { order: optionalNumber(order, 1, t("Order")), at: a.trim() ? num(a) : undefined });
           return { rows: [[`d${d.order > 1 ? `^${d.order}` : ""}/dx${d.order > 1 ? `^${d.order}` : ""}`, d.derivative], ...(d.valueAt !== null ? ([[t("at x = {x}", { x: a }), fmt(d.valueAt)]] as [string, string][]) : [])], steps: d.steps };
         }
         case "integral": {
@@ -410,7 +400,7 @@ export function CalculusTool() {
           };
         }
         case "taylor": {
-          const r = calculus.taylor(f, num(a), Number(order) || 4);
+          const r = calculus.taylor(f, num(a), optionalNumber(order, 4, t("Order")));
           return { rows: [[t("Taylor polynomial"), r.polynomial]] };
         }
         case "sum": {
@@ -562,11 +552,7 @@ export function DistributionsTool() {
   const t = useT();
   const [d, setD] = useState<Dist>("normal");
   const [p, setP] = useState<Record<string, string>>({ x: "1.96", mu: "0", sigma: "1", df: "10", n: "10", k: "3", prob: "0.5", lambda: "2", obs: "10, 20, 30", exp: "20, 20, 20" });
-  const g = (k: string) => {
-    const v = Number(p[k]);
-    if (!Number.isFinite(v)) throw new Error(t("{k} must be a number", { k }));
-    return v;
-  };
+  const g = (k: string) => strictNumber(p[k] ?? "", k);
   const field = (k: string, label: string) => <TextField key={k} label={label} value={p[k] ?? ""} onChange={(v) => setP((x) => ({ ...x, [k]: v }))} mono />;
   const [rows, err] = attempt((): [string, string][] => {
     switch (d) {
@@ -659,7 +645,7 @@ export function FractionsTool() {
   });
   // What was typed, converted exactly; an approximation only when asked for or when it can't be exact.
   const [d2f, d2fError] = attempt(() => {
-    const den = maxDen.trim() ? Number(maxDen) : undefined;
+    const den = maxDen.trim() ? strictNumber(maxDen, t("Largest denominator")) : undefined;
     return algebra.decimalToFraction(dec, { maxDen: den });
   });
   // The converter's own messages, in the reader's language.
@@ -721,14 +707,14 @@ export function NumberTheoryTool() {
   const [list, setList] = useState("48, 180, 64");
   const [upto, setUpto] = useState("100");
   const [f, fErr] = attempt(() => {
-    const v = Number(n);
+    const v = strictNumber(n, t("Number"));
     return { prime: algebra.isPrime(v), factors: algebra.primeFactors(v) };
   });
   const [g, gErr] = attempt(() => {
     const v = nums(list);
     return { gcd: algebra.gcd(v), lcm: algebra.lcm(v) };
   });
-  const [p, pErr] = attempt(() => algebra.primesUpTo(Math.min(Number(upto), 100000)));
+  const [p, pErr] = attempt(() => algebra.primesUpTo(Math.min(strictNumber(upto, t("Up to")), 100000)));
   const sup = (k: number) => String(k).split("").map((x) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[Number(x)]).join("");
   return (
     <div className="space-y-4">
@@ -821,7 +807,7 @@ export function SequencesTool() {
   const [a1, setA1] = useState("2");
   const [d, setD] = useState("3");
   const [n, setN] = useState("10");
-  const [r, err] = attempt(() => (kind === "arith" ? algebra.arithmeticSequence(Number(a1), Number(d), Number(n)) : algebra.geometricSequence(Number(a1), Number(d), Number(n))));
+  const [r, err] = attempt(() => (kind === "arith" ? algebra.arithmeticSequence(strictNumber(a1, "a₁"), strictNumber(d, "d"), strictNumber(n, "n")) : algebra.geometricSequence(strictNumber(a1, "a₁"), strictNumber(d, "r"), strictNumber(n, "n"))));
   return (
     <div className="space-y-4">
       <Tabs value={kind} onChange={setKind} options={[{ v: "arith", l: t("Arithmetic") }, { v: "geo", l: t("Geometric") }]} />
@@ -849,7 +835,7 @@ export function RomanTool() {
   const t = useT();
   const [n, setN] = useState("2026");
   const [s, setS] = useState("MCMXCIV");
-  const [a, aErr] = attempt(() => algebra.toRoman(Number(n)));
+  const [a, aErr] = attempt(() => algebra.toRoman(strictNumber(n, t("Number"))));
   const [b, bErr] = attempt(() => algebra.fromRoman(s));
   return (
     <div className="grid gap-4 md:grid-cols-2">

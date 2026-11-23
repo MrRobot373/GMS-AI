@@ -652,6 +652,10 @@ d("Phase B", () => {
     const res = await app.inject({ method: "POST", url: path, headers: { origin: APP_URL, cookie: owner.cookie, "content-type": contentType }, payload: body });
     return res.json();
   }
+  async function uploadRaw(path: string, name: string, content: Buffer | string, fields: Record<string, string> = {}) {
+    const { body, contentType } = multipart(fields, { name, content });
+    return app.inject({ method: "POST", url: path, headers: { origin: APP_URL, cookie: owner.cookie, "content-type": contentType }, payload: body });
+  }
   async function waitDoc(id: string) {
     for (let i = 0; i < 100; i++) {
       const r = await call(owner, "GET", `/api/documents/${id}`);
@@ -785,11 +789,10 @@ d("Phase B", () => {
     expect((await call(owner, "PATCH", `/api/projects/${p.id}/sources/${v1.id}`, { supersededById: v1.id })).status).toBe(400);
   });
 
-  it("a broken image fails with a clear error instead of crashing", async () => {
-    const doc = await upload("/api/documents", "fake.png", "definitely not an image", { workspaceId, scope: "private" });
-    const r = await waitDoc(doc.id);
-    expect(r.status).toBe("failed");
-    expect(r.error).toContain("couldn't be read");
+  it("a file that isn't the image its name says is refused at upload with a clear error", async () => {
+    const bad = await uploadRaw("/api/documents", "fake.png", "definitely not an image", { workspaceId, scope: "private" });
+    expect(bad.statusCode).toBe(415);
+    expect(bad.json().error).toMatch(/isn't that kind of image/);
   });
 
   it("answers from an Excel workbook", async () => {

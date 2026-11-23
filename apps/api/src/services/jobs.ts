@@ -17,7 +17,7 @@ import { Redis } from "ioredis";
 import { hostname } from "node:os";
 import type { SecretBox } from "../crypto";
 import { purgeTemporaryChats } from "../routes/chat";
-import { processDocument } from "./documents";
+import { fillMissingVectors, processDocument } from "./documents";
 import type { LicenseService } from "./license";
 import type { Storage } from "./storage";
 
@@ -62,26 +62,53 @@ export const redisConnection = (url: string): ConnectionOptions => ({ url, maxRe
 
 /* ───────────── In-process ───────────── */
 
-export function createInProcessJobs(deps: JobDeps, concurrency = 2): Jobs {
+/** In-process retries: 6 tries over about 15 minutes (30 s, 1, 2, 4, 8 min), so a model server restart is ridden out. */
+export const IN_PROCESS_ATTEMPTS = 6;
+
+export function createInProcessJobs(deps: JobDeps, concurrency = 2, opts: { retryDelayMs?: number } = {}): Jobs {
   const queued = new Set<string>();
   const waiting: string[] = [];
+  const attempts = new Map<string, number>();
+  const delayed = new Map<string, NodeJS.Timeout>();
   let active = 0;
   let timer: NodeJS.Timeout | undefined;
+  const base = opts.retryDelayMs ?? 30_000;
 
   const pump = () => {
     while (active < concurrency && waiting.length) {
       const id = waiting.shift()!;
       active++;
-      void processDocument(deps.db, deps.box, deps.storage, id)
+      const n = (attempts.get(id) ?? 0) + 1;
+      attempts.set(id, n);
+      let again = false;
+      void processDocument(deps.db, deps.box, deps.storage, id, { willRetry: n < IN_PROCESS_ATTEMPTS })
+        .then((r) => {
+          // A temporary failure (the embedding model or storage didn't answer): tried again after a growing wait.
+          if (r !== "retry") return;
+          again = true;
+          const t = setTimeout(() => {
+            delayed.delete(id);
+            waiting.push(id);
+            pump();
+          }, base * 2 ** (n - 1));
+          t.unref();
+          delayed.set(id, t);
+        })
         .catch((e) => deps.log("processing a document failed", e))
         .finally(() => {
           active--;
-          queued.delete(id);
+          if (!again) {
+            queued.delete(id);
+            attempts.delete(id);
+          }
           pump();
         });
     }
   };
-  const purge = () => void purgeTemporaryChats(deps.db).catch((e) => deps.log("purging temporary chats failed", e));
+  const purge = () => {
+    void purgeTemporaryChats(deps.db).catch((e) => deps.log("purging temporary chats failed", e));
+    void fillMissingVectors(deps.db, deps.box).catch((e) => deps.log("adding missing vectors failed", e));
+  };
 
   return {
     mode: "in-process",
@@ -99,10 +126,12 @@ export function createInProcessJobs(deps: JobDeps, concurrency = 2): Jobs {
       for (const d of await stuckDocuments(deps.db)) await this.document(d.id);
     },
     async status() {
-      return { mode: "in-process", workers: [], counts: { waiting: waiting.length, active, delayed: 0, failed: 0 }, stalled: false };
+      return { mode: "in-process", workers: [], counts: { waiting: waiting.length, active, delayed: delayed.size, failed: 0 }, stalled: false };
     },
     async close() {
       clearInterval(timer);
+      for (const t of delayed.values()) clearTimeout(t);
+      delayed.clear();
       deps.license.stop();
     },
   };
@@ -169,7 +198,10 @@ export async function runWorker(deps: JobDeps, url: string, opts: { concurrency?
         if (r === "retry") throw new Error("temporary failure, will retry");
         return r;
       }
-      if (job.name === "purge-temporary-chats") return purgeTemporaryChats(deps.db);
+      if (job.name === "purge-temporary-chats") {
+        await purgeTemporaryChats(deps.db);
+        return fillMissingVectors(deps.db, deps.box);
+      }
       if (job.name === "license-check-in") return deps.license.checkInIfDue();
       throw new Error(`Unknown job ${job.name}`);
     },

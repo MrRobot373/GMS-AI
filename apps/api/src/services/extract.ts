@@ -2,6 +2,8 @@
  * Text extraction and chunking for uploaded documents. Everything runs locally.
  */
 
+import { fill, msg } from "../i18n";
+
 export interface PageText {
   page: number | null;
   text: string;
@@ -90,6 +92,11 @@ async function extractSheets(data: Buffer): Promise<PageText[]> {
 async function extractPdf(data: Buffer): Promise<PageText[]> {
   const { extractText: pdfText, getDocumentProxy, renderPageAsImage } = await import("unpdf");
   const pdf = await getDocumentProxy(new Uint8Array(data));
+  const { maxPdfPages } = await import("./file-check");
+  if (pdf.numPages > maxPdfPages()) {
+    await pdf.loadingTask.destroy();
+    throw new UnsupportedFileError(fill(msg("This PDF has {pages} pages; documents can have up to {max}. Split it into parts."), { pages: pdf.numPages, max: maxPdfPages() }));
+  }
   const { text } = await pdfText(pdf, { mergePages: false });
   const pages = (text as string[]).map((t, i) => ({ page: i + 1, text: t }));
   const { ocrEnabled, ocrImage } = await import("./ocr");
@@ -145,6 +152,9 @@ export async function pdfText(data: Buffer, opts: { maxChars: number; maxPages?:
 
 export async function extractText(name: string, data: Buffer): Promise<PageText[]> {
   const ext = extensionOf(name);
+  const { fileProblem } = await import("./file-check");
+  const problem = fileProblem(name, data);
+  if (problem) throw new UnsupportedFileError(problem);
   if (ext === "pdf") return extractPdf(data);
   if (SHEET_EXTENSIONS.has(ext)) return extractSheets(data);
   if (IMAGE_EXTENSIONS.has(ext)) {

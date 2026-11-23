@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { recordConversation } from "../services/conversation-log";
+import { readableCitations } from "../services/citation-access";
 import { existsSync } from "node:fs";
 import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
 import { fitToWindow, GatewayError, streamChat, type ChatMessage } from "@aatmiq/model-gateway";
@@ -112,8 +114,10 @@ async function branchPath(db: DB, leafId: string | null) {
  */
 export async function purgeTemporaryChats(db: DB) {
   await db.execute(sql`delete from chat where temporary and updated_at < now() - interval '24 hours'`);
-  const [org] = await db.select({ days: organization.retentionDays }).from(organization).limit(1);
+  const [org] = await db.select({ days: organization.retentionDays, logDays: organization.conversationLogDays }).from(organization).limit(1);
   if (org?.days && org.days > 0) await db.execute(sql`delete from chat where updated_at < now() - make_interval(days => ${org.days})`);
+  // Recorded conversations are kept for their own period, independent of the chats.
+  if (org?.logDays && org.logDays > 0) await db.execute(sql`delete from conversation_log where created_at < now() - make_interval(days => ${org.logDays})`);
 }
 
 function titleFrom(text: string): string {
@@ -236,11 +240,13 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       db.select({ productName: organization.productName }).from(organization).limit(1),
     ]);
     const assistant = org?.productName ?? PRODUCT_NAME;
-    const messages: ExportMessage[] = picked.map((m) => ({
+    // Cited passages only from sources the person exporting can still open.
+    const cites = await readableCitations(db, u.id, picked.map((m) => m.citations));
+    const messages: ExportMessage[] = picked.map((m, k) => ({
       role: m.role as "user" | "assistant",
       author: m.role === "user" ? (author?.name ?? "User") : assistant,
       content: m.content,
-      citations: m.citations,
+      citations: cites[k] ?? null,
     }));
     const subtitle = `${req.query.messageId ? "Answer from" : "Chat with"} ${assistant} · exported ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`;
     const title = c.title;
@@ -485,6 +491,12 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       db.select({ ci: user.customInstructions, name: user.name }).from(user).where(eq(user.id, u.id)),
     ]);
     const product = org?.productName ?? PRODUCT_NAME;
+    // Recording for compliance (the notice everyone sees says so): the question now, the answer once it's saved.
+    const record = async (role: "user" | "assistant", text: string, modelName: string | null) => {
+      if (!org?.promptLogging) return;
+      await recordConversation(db, { workspaceId: c.workspaceId, chatId: c.id, chatTitle: c.title, user: { id: u.id, email: u.email, name: u.name }, role, content: text, model: modelName }).catch(() => undefined);
+    };
+    if (!regenerateOf) await record("user", content, null);
     // Project instructions take precedence over the user's personal ones.
     const instructions = proj?.instructions?.trim()
       ? `\nThis chat is in the project "${proj.name}". Follow the project's instructions (they take precedence over the user's personal ones):\n${proj.instructions.trim()}`
@@ -840,6 +852,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       })
       .returning({ id: message.id });
     await db.update(chat).set({ leafMessageId: assistant!.id }).where(eq(chat.id, c.id));
+    await record("assistant", error ? `[error] ${error}` : text, m.displayName);
     researching.delete(c.id);
     await db.insert(usageEvent).values({
       workspaceId: c.workspaceId,

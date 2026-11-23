@@ -162,6 +162,27 @@ const jar = (): Jar => ({ cookie: "" });
     expect(log).toHaveLength(1);
   });
 
+  it("a cited passage is exported only while the person can still open its source", async () => {
+    const c = await call(xavi, "POST", "/api/chats", { workspaceId });
+    await call(xavi, "POST", `/api/chats/${c.json.id}/messages`, { content: "What is our travel rule?" });
+    // An answer citing a document Xavi can read (shared with the workspace) and one he can't (Mira's private one).
+    await db.execute(sql`update message set citations = ${JSON.stringify([
+      { n: 1, kind: "document", documentId: ids.sharedDoc, name: "travel-policy.txt", page: null, snippet: "Economy class under 6 hours" },
+      { n: 2, kind: "document", documentId: ids.privateDoc, name: "salary-slip.txt", page: null, snippet: "Mira's salary slip: 92,000" },
+      { n: 3, kind: "web", documentId: null, url: "https://example.com", name: "Example", page: null, snippet: "A public page" },
+    ])}::jsonb where chat_id = ${c.json.id} and role = 'assistant'`);
+    const z = unzip((await call(xavi, "GET", "/api/me/export")).raw);
+    expect(z.all).toContain("Economy class under 6 hours");
+    expect(z.all).toContain("A public page");
+    expect(z.all).not.toContain("92,000");
+    expect(z.all).not.toContain("salary-slip.txt");
+    // The chat's own Word/Markdown export follows the same rule.
+    const md = await call(xavi, "GET", `/api/chats/${c.json.id}/export?format=md`);
+    // (It lists sources by name: the readable one, and no name for the other.)
+    expect(md.raw.toString()).toContain("travel-policy.txt");
+    expect(md.raw.toString()).not.toContain("salary-slip.txt");
+  });
+
   it("an admin can download it for them; nobody else can", async () => {
     expect((await call(xavi, "GET", `/api/admin/users/${ids["Mira Shah"]}/export`)).status).toBe(403);
     const r = await call(owner, "GET", `/api/admin/users/${ids["Mira Shah"]}/export`);

@@ -71,6 +71,8 @@ export const organization = pgTable("organization", {
   loginMessage: text("login_message"),
   budgetPeriod: budgetPeriodEnum("budget_period").notNull().default("month"),
   promptLogging: boolean("prompt_logging").notNull().default(false),
+  /** How long recorded conversations are kept (days). */
+  conversationLogDays: integer("conversation_log_days").notNull().default(365),
   /** Interface language for people who haven't picked one. */
   defaultLocale: text("default_locale").notNull().default("en"),
   retentionDays: integer("retention_days"),
@@ -593,6 +595,31 @@ export const auditLog = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("audit_time_idx").on(t.createdAt)],
+);
+
+/**
+ * Conversation record for compliance (Admin → Settings → Record conversations): when it is on, every chat question and
+ * answer is copied here as it happens. Plain values, no links to the chat or the person, so deleting a chat (or the
+ * chat being deleted by the retention setting) leaves the record; admins download it. Kept for
+ * `conversationLogDays` (organization setting), then removed.
+ */
+export const conversationLog = pgTable(
+  "conversation_log",
+  {
+    id: id(),
+    workspaceId: text("workspace_id"),
+    workspaceName: text("workspace_name"),
+    chatId: text("chat_id"),
+    chatTitle: text("chat_title"),
+    userId: text("user_id"),
+    userEmail: text("user_email"),
+    userName: text("user_name"),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    model: text("model"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("conversation_log_time_idx").on(t.createdAt), index("conversation_log_user_idx").on(t.userId, t.createdAt)],
 );
 
 /* ───────────── Documents ───────────── */

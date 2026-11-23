@@ -27,6 +27,9 @@ interface OrgSettings {
   loginMessage: string | null;
   budgetPeriod: "day" | "week" | "month";
   promptLogging: boolean;
+  /** How long recorded conversations are kept, and how many there are. */
+  conversationLogDays: number;
+  recordedMessages: number;
   retentionDays: number | null;
   defaultLocale: "en" | "hi";
   illustrations: boolean;
@@ -180,7 +183,7 @@ export default function SettingsPage() {
             <div>
               <div className="text-sm font-medium">{t("Record conversations for compliance")}</div>
               <p className="mt-1 max-w-lg text-[13px] text-fg-muted">
-                {t("Off by default. When on, everyone sees a notice in the app that conversations are recorded.")}
+                {t("Off by default. When on, every chat question and answer is kept in a separate record that stays when people delete their chats, and everyone sees a notice in chat. Admins can download the record.")}
               </p>
             </div>
             <Switch
@@ -189,6 +192,22 @@ export default function SettingsPage() {
               label={t("Record conversations")}
             />
           </div>
+          {(form.promptLogging || (form.recordedMessages ?? 0) > 0) && (
+            <div className="flex flex-wrap items-end justify-between gap-4 p-5" data-testid="conversation-log">
+              <Field label={t("Keep recorded conversations for")} hint={t("{count} messages recorded. Older ones are removed after this many days (30 to 3650).", { count: (form.recordedMessages ?? 0).toLocaleString() })} className="max-w-md">
+                <div className="flex items-center gap-2">
+                  <Input inputMode="numeric" value={form.conversationLogDays ?? ""} onChange={(e) => set("conversationLogDays", Number(e.target.value.replace(/\D/g, "")) || 0)} className="w-24" />
+                  <span className="text-sm text-fg-muted">{t("days")}</span>
+                </div>
+              </Field>
+              <div className="flex gap-2">
+                <Button variant="ghost" asChild>
+                  <a href="/api/admin/conversation-log/export" data-testid="conversation-log-download">{t("Download (CSV)")}</a>
+                </Button>
+                <Button onClick={() => save.mutate({ conversationLogDays: form.conversationLogDays })}>{t("Save")}</Button>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap items-end justify-between gap-4 p-5">
             <Field label={t("Delete chats automatically after")} hint={t("Chats nobody has touched for this many days are deleted. Leave empty to keep chats until people delete them.")} className="max-w-md">
               <div className="flex items-center gap-2">

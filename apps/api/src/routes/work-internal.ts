@@ -14,6 +14,7 @@
  *   POST /api/internal/work/calculators/run            run one by id; the number comes from the calculator code
  *   POST /api/internal/work/recall                     search this task's own full record, word for word (task_recall)
  */
+import { fileProblem } from "../services/file-check";
 import { contextRequest } from "../services/model-context";
 import { and, document, eq, sql, usageEvent, user, workspaceMember, workTask } from "@aatmiq/db";
 import { estimateUsage, fetchWithKeys, openAiBase, thinkingParams } from "@aatmiq/model-gateway";
@@ -482,6 +483,8 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     if (b.name && !isSupported(name)) name = `${name}.${file.split(".").pop()}`.slice(0, 200);
     if (!isSupported(name)) throw new HttpError(415, `This file type can't be a document. Documents can be ${SUPPORTED_HINT}.`, "unsupported");
     const data = await readFile(full);
+    const bad = fileProblem(name, data);
+    if (bad) throw new HttpError(415, bad, "bad_file");
     const storageKey = `${t.workspaceId}/${randomToken(18)}`;
     await ctx.storage.put(storageKey, data);
     const [doc] = await db

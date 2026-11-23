@@ -2,6 +2,8 @@
  * Personal data (DPDP Act, GDPR): everything Aatmiq holds about one person, as a ZIP they or an
  * admin can download, and erasing a person with their data. See docs/12-personal-data.md.
  */
+import { readableCitations } from "./citation-access";
+import { citationReadable } from "./knowledge";
 import {
   account,
   and,
@@ -10,6 +12,7 @@ import {
   calculatorFavorite,
   calculatorHistory,
   chat,
+  conversationLog,
   codeWorkspace,
   connector,
   connectorAccount,
@@ -168,7 +171,10 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
     // Chats: every message of every branch, as JSON and readable Markdown.
     const chats = await db.select().from(chat).where(eq(chat.userId, userId)).orderBy(asc(chat.createdAt));
     for (const [i, c] of chats.entries()) {
-      const msgs = await db.select().from(message).where(eq(message.chatId, c.id)).orderBy(asc(message.createdAt));
+      const stored = await db.select().from(message).where(eq(message.chatId, c.id)).orderBy(asc(message.createdAt));
+      // A cited passage only while the person can still open its source (a document they lost access to is blanked).
+      const cites = await readableCitations(db, userId, stored.map((m) => m.citations));
+      const msgs = stored.map((m, k) => ({ ...m, citations: cites[k] ?? null }));
       const base = `chats/${String(i + 1).padStart(3, "0")} ${safeName(c.title, "Chat")}`;
       await zip.json(`${base}.json`, {
         title: c.title,
@@ -276,15 +282,35 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
     );
     await zip.json("calculators/history.json", await db.select().from(calculatorHistory).where(eq(calculatorHistory.userId, userId)).orderBy(asc(calculatorHistory.createdAt)));
     await zip.json("calculators/favorites.json", await db.select().from(calculatorFavorite).where(eq(calculatorFavorite.userId, userId)));
-    await zip.json(
-      "knowledge-questions.json",
-      await db
-        .select({ project: project.name, question: knowledgeQuery.question, answer: knowledgeQuery.answer, status: knowledgeQuery.status, citations: knowledgeQuery.citations, createdAt: knowledgeQuery.createdAt })
-        .from(knowledgeQuery)
-        .innerJoin(project, eq(project.id, knowledgeQuery.projectId))
-        .where(eq(knowledgeQuery.userId, userId))
-        .orderBy(asc(knowledgeQuery.createdAt)),
-    );
+    const questions = await db
+      .select({
+        project: project.name,
+        projectId: knowledgeQuery.projectId,
+        workspaceId: knowledgeQuery.workspaceId,
+        includeGeneral: knowledgeQuery.includeGeneral,
+        question: knowledgeQuery.question,
+        answer: knowledgeQuery.answer,
+        status: knowledgeQuery.status,
+        citations: knowledgeQuery.citations,
+        createdAt: knowledgeQuery.createdAt,
+      })
+      .from(knowledgeQuery)
+      .innerJoin(project, eq(project.id, knowledgeQuery.projectId))
+      .where(eq(knowledgeQuery.userId, userId))
+      .orderBy(asc(knowledgeQuery.createdAt));
+    // The same rule as the Knowledge page: a passage the person can no longer open is blanked.
+    const answered = [];
+    for (const q of questions) {
+      const citations = [];
+      for (const c of q.citations)
+        citations.push(
+          (await citationReadable(db, { workspaceId: q.workspaceId, userId, projectId: q.projectId, includeGeneral: q.includeGeneral, chunkId: c.chunkId, documentId: c.documentId }))
+            ? c
+            : { n: c.n, name: "(no longer available)", page: null, excerpt: "", scope: c.scope, unavailable: true },
+        );
+      answered.push({ project: q.project, question: q.question, answer: q.answer, status: q.status, citations, createdAt: q.createdAt });
+    }
+    await zip.json("knowledge-questions.json", answered);
     await zip.json("skills.json", skills);
     await zip.json("schedules.json", schedules);
     await zip.json("connected-apps.json", connections);
@@ -400,6 +426,8 @@ export async function erasePerson(ctx: AppContext, actor: SessionUser, targetId:
   // The account and everything that hangs off it: sessions, sign-in methods, memberships, chats,
   // tasks, schedules, personal skills, connected apps, code workspaces, notifications. Usage
   // events lose the name (the totals stay right).
+  // Their recorded conversations (compliance recording) go too.
+  await db.delete(conversationLog).where(eq(conversationLog.userId, target.id));
   await db.delete(user).where(eq(user.id, target.id));
 
   const result: Erased = {

@@ -28,6 +28,8 @@ interface WorkSettings {
   computerAi: boolean;
   browserAllowedHosts: string[];
   folderRoots: string[];
+  taskRetentionDays: number | null;
+  taskStorageMbPerUser: number | null;
   containerCpus: number;
   containerMemoryMb: number;
   containerNetwork: "proxy" | "none";
@@ -287,6 +289,27 @@ export default function AdminWorkPage() {
             </Field>
             <Field label={t("Keep a finished task ready (minutes)")} hint={t("Follow-ups within this time are instant.")}>
               <Input type="number" min={1} max={240} value={form.idleMinutes} onChange={(e) => setForm({ ...form, idleMinutes: Math.max(1, Math.min(240, Number(e.target.value) || 1)) })} />
+            </Field>
+          </div>
+          <div className="grid gap-4 p-5 sm:grid-cols-2" data-testid="work-storage">
+            <Field label={t("Remove finished tasks after (days)")} hint={t("Empty: keep them. Pinned tasks, tasks still working and people's own folders are never removed.")}>
+              <Input
+                type="number"
+                min={1}
+                max={3650}
+                value={form.taskRetentionDays ?? ""}
+                onChange={(e) => setForm({ ...form, taskRetentionDays: e.target.value ? Math.max(1, Math.min(3650, Number(e.target.value) || 1)) : null })}
+                data-testid="task-retention-days"
+              />
+            </Field>
+            <Field label={t("Storage per person (MB)")} hint={t("Empty: no limit. Over it, new tasks wait until the person deletes old ones.")}>
+              <Input
+                type="number"
+                min={10}
+                value={form.taskStorageMbPerUser ?? ""}
+                onChange={(e) => setForm({ ...form, taskStorageMbPerUser: e.target.value ? Math.max(10, Number(e.target.value) || 10) : null })}
+                data-testid="task-storage-mb"
+              />
             </Field>
           </div>
         </Card>

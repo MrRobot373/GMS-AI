@@ -27,6 +27,8 @@ export interface Harness {
   upload: (j: Jar, url: string, fields: Record<string, string>, file: { name: string; type: string; data: Buffer }) => Promise<{ status: number; json: any }>;
   /** Wait until no document is still processing. */
   settle: () => Promise<void>;
+  /** The in-memory file storage the app uses. */
+  storage: Storage;
   signIn: (j: Jar, email: string, password: string) => Promise<unknown>;
   close: () => Promise<void>;
 }
@@ -69,7 +71,8 @@ export async function startHarness(
         execute 'truncate table "' || r.tablename || '" cascade';
       end loop;
     end $$;`);
-  const app = await buildApp(db, cfg, { storage: memoryStorage(), fetch: opts.fetch, resolve: opts.resolve, ytDlp: opts.ytDlp, workEngine: opts.workEngine, opencodeEngine: opts.opencodeEngine });
+  const storage = memoryStorage();
+  const app = await buildApp(db, cfg, { storage, fetch: opts.fetch, resolve: opts.resolve, ytDlp: opts.ytDlp, workEngine: opts.workEngine, opencodeEngine: opts.opencodeEngine });
   await app.ready();
 
   const absorb = (j: Jar, set: unknown) => {
@@ -149,6 +152,7 @@ export async function startHarness(
     call,
     upload,
     settle,
+    storage,
     signIn,
     close: async () => {
       await app.close();

@@ -40,6 +40,7 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" | "open
   const computerAi = engine === "computer";
   const approvals = usePendingApprovals(workspaceId);
   const info = useWorkInfo(workspaceId);
+  const storage = useQuery({ queryKey: ["work-storage"], queryFn: () => get<{ usedMb: number; limitMb: number | null }>("/api/work/storage"), staleTime: 60_000 });
   const models = useQuery({
     queryKey: ["models", workspaceId, "work"],
     queryFn: () => get<AvailableModel[]>(`/api/workspaces/${workspaceId}/models?section=work`),
@@ -188,6 +189,13 @@ export function WorkHome({ engine = "dsh" }: { engine?: "dsh" | "claude" | "open
               </div>
             )}
           </motion.div>
+          {storage.data?.limitMb ? (
+            <p className={cn("mt-2 text-center text-[12px]", storage.data.usedMb >= storage.data.limitMb ? "text-danger" : "text-fg-subtle")} data-testid="work-storage-used">
+              {storage.data.usedMb >= storage.data.limitMb
+                ? t("Your task files use {used} of {limit} MB: delete tasks you no longer need to start new ones.", { used: storage.data.usedMb, limit: storage.data.limitMb })
+                : t("Your task files: {used} of {limit} MB", { used: storage.data.usedMb, limit: storage.data.limitMb })}
+            </p>
+          ) : null}
           <div className="mt-3 flex flex-wrap justify-center gap-2">
             {STARTERS.map((s, i) => (
               <motion.button

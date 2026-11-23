@@ -13,6 +13,7 @@
  *  - The runtime reaches back to /api/internal/work with a per-task token for models,
  *    approvals and web search; nothing else from this server is visible to it.
  */
+import { forgetUsage, oldTasks } from "./work-storage";
 import {
   and,
   asc,
@@ -619,6 +620,7 @@ export class WorkRunner {
   /** The Claude Code engine of Super AI (docs/20-super-ai.md), made when the first such task starts. */
   private claudeEngine: HarnessEngine | null = null;
   private opencodeEngine: HarnessEngine | null = null;
+  private cleanupTimer: NodeJS.Timeout | null = null;
   private computerEngine: HarnessEngine | null = null;
   /** Container mode: Work AI tasks run here (Aatmiq Code's agent stays in the person's IDE workspace). */
   private containerEngine: HarnessEngine | null = null;
@@ -1709,8 +1711,33 @@ export class WorkRunner {
       .slice(0, 8);
   }
 
+  /**
+   * Storage housekeeping (hourly, and once at start): finished tasks past the organization's retention are removed with
+   * their private folders (services/work-storage.ts).
+   */
+  async cleanUpOldTasks(): Promise<number> {
+    const days = (await getWorkSettings(this.ctx.db)).taskRetentionDays;
+    if (!days) return 0;
+    let removed = 0;
+    for (const t of await oldTasks(this.ctx.db, days)) {
+      if (this.live.has(t.id)) continue;
+      await this.remove(t.id);
+      await this.ctx.db.delete(workTask).where(eq(workTask.id, t.id));
+      forgetUsage(t.userId);
+      removed++;
+    }
+    if (removed) this.opts.log?.(`work: removed ${removed} finished task(s) older than ${days} days`);
+    return removed;
+  }
+
   /** After a restart nothing is running: unfinished tasks fail visibly, queued ones start again. */
   async recover() {
+    if (!this.cleanupTimer) {
+      const run = () => void this.cleanUpOldTasks().catch((e) => this.opts.log?.("work: removing old tasks failed", e));
+      run();
+      this.cleanupTimer = setInterval(run, 60 * 60_000);
+      this.cleanupTimer.unref();
+    }
     if (this.containerEngine) await removeStaleContainers(this.ctx.cfg.workContainer?.docker);
     const stale = await this.ctx.db
       .select({ id: workTask.id })
@@ -1725,6 +1752,7 @@ export class WorkRunner {
 
   async stopAll() {
     this.stopped = true;
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     await Promise.all([...this.live.keys()].map((id) => this.release(id)));
   }
 

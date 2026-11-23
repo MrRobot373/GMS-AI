@@ -9,6 +9,23 @@ without one.
 
 ## Unreleased
 
+- **Personal-data export and chat export no longer leak passages.** A stored citation is included only while the person
+  can still open its source; otherwise it keeps its number but loses its name and text (as the Knowledge page already did).
+- **Hostile uploads are refused.** A file must be what its name says (PDF, Word, Excel, image; a "text" file can't be a
+  program or archive). Word and Excel files that would unpack to over 200 MB, hold over 5,000 parts or look like a zip bomb
+  are refused from their index without unpacking. PDFs over 2,000 pages (`DOC_MAX_PDF_PAGES`) are refused.
+- **Calculator tools read typed numbers strictly.** A blank field, "2,5", "0x10" or "1,500, 2,200" now says what to type
+  instead of becoming 0, 2, 16 or four numbers (math, statistics, finance, number and date tools; the linear system).
+- **Recording conversations now really records.** With Admin → Settings → Record conversations on, every chat question and
+  answer is kept in a separate record that stays when chats are deleted, for a set period (default 365 days); admins
+  download it as CSV (each download is logged). Erasing a person removes theirs. Migration `0037`.
+- **Documents no longer stall without Redis.** In-process jobs retry a temporary failure 6 times over about 15 minutes; if
+  the embedding model is still down, the document is saved searchable by keywords and its vectors are added hourly once
+  the model answers again (Redis mode too).
+- **Work AI storage.** Admin → Work AI: remove finished tasks after N days (pinned and working tasks, and people's own
+  folders, are kept), and a storage limit per person (new tasks wait until old ones are deleted). The Work AI page shows a
+  person's usage when there is a limit.
+
 - **Computer AI** (docs/23-computer-ai.md): tasks that use the screen, mouse and keyboard of the computer Aatmiq runs on,
   with a vision model; Windows (PowerShell, nothing to install) and Linux desktops (xdotool). Admins only, off by default,
   one task at a time; the screen shows live in the task page; risky keys and commands ask first; moving the mouse to the

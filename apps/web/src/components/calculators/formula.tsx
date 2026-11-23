@@ -67,7 +67,11 @@ export function FormulaCalculator({ c, prefill }: { c: CatalogEntry; prefill?: R
           if (r && "value" in r) return r.value;
           throw new FieldError(r?.error === "comma" ? t("Use a point for decimals and no thousands separators: 2.5, 1000.") : t("Enter a number"), i.key);
         };
-        if (i.list) inputs[i.key] = { value: raw.split(/[,;\s]+/).filter(Boolean).map(read), unit: v.unit || undefined };
+        if (i.list) {
+          // "1,500, 2,200" is two numbers with thousands separators, not four: refused, not guessed.
+          if (/,\s|;/.test(raw) && /\d,\d{3}(?!\d)/.test(raw.replace(/,\s+/g, " "))) throw new FieldError(t("Use a point for decimals and no thousands separators: 2.5, 1000."), i.key);
+          inputs[i.key] = { value: raw.split(/[,;\s]+/).filter(Boolean).map(read), unit: v.unit || undefined };
+        }
         else inputs[i.key] = { value: read(raw), unit: i.options ? undefined : v.unit || undefined };
       }
       return post<RunResult & { historyId: string }>("/api/calculators/run", { workspaceId, calculatorId: c.id, inputs, outputUnits: units });

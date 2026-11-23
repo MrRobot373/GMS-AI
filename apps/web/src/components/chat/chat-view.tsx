@@ -714,7 +714,7 @@ export function ChatView({
       />
       {me.org.promptLogging && (
         <div className="flex items-center justify-center gap-2 border-b border-border px-4 py-1.5 text-center text-xs text-warning">
-          <TriangleAlert className="size-3.5 shrink-0" /> {t("Your organization records chat conversations for compliance.")}
+          <TriangleAlert className="size-3.5 shrink-0" /> {t("Your organization records chat conversations for compliance: your questions and the answers are kept, even if you delete the chat.")}
         </div>
       )}
 

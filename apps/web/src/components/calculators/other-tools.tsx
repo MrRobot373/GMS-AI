@@ -1,6 +1,6 @@
 "use client";
 
-import { algebra, CONSTANTS, finance, tools } from "@aatmiq/calculators";
+import { algebra, CONSTANTS, finance, optionalNumber, readList, readNumber, strictNumber, tools } from "@aatmiq/calculators";
 import { Dices } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -28,15 +28,14 @@ export function BaseNTool() {
     return BigInt(r);
   };
   const [bw, bwErr] = attempt(() => {
-    const w = Number(bits);
+    const w = strictNumber(bits, t("Width"));
     if (!Number.isInteger(w) || w < 1 || w > 64) throw new Error(t("Width from 1 to 64 bits"));
     const r = algebra.bitwise(op, toBig(a), toBig(b), w);
     return { dec: r.toString(), hex: r.toString(16), bin: r.toString(2).padStart(w, "0") };
   });
-  const [tc, tcErr] = attempt(() => algebra.twosComplement(Number(signed), Number(bits)));
+  const [tc, tcErr] = attempt(() => algebra.twosComplement(strictNumber(signed, t("Signed value")), strictNumber(bits, t("Width"))));
   const [ie, ieErr] = attempt(() => {
-    const v = Number(float);
-    if (!Number.isFinite(v)) throw new Error(t("Enter a number"));
+    const v = strictNumber(float, t("Number"));
     return { s: algebra.ieee754(v, 32), d: algebra.ieee754(v, 64) };
   });
   return (
@@ -167,8 +166,8 @@ export function ResistorColorTool() {
   const [bands, setBands] = useState<tools.Color[]>(["yellow", "violet", "red", "gold"]);
   const [value, setValue] = useState("4700");
   const [r, err] = attempt(() => tools.decodeResistor(bands));
-  const [enc, encErr] = attempt(() => tools.encodeResistor(Number(value), 4));
-  const [enc5] = attempt(() => tools.encodeResistor(Number(value), 5, "brown"));
+  const [enc, encErr] = attempt(() => tools.encodeResistor(strictNumber(value, t("Resistance")), 4));
+  const [enc5] = attempt(() => tools.encodeResistor(strictNumber(value, t("Resistance")), 5, "brown"));
   const ohms = (v: number) => (v >= 1e6 ? `${fmt(v / 1e6, 4)} MΩ` : v >= 1e3 ? `${fmt(v / 1e3, 4)} kΩ` : `${fmt(v, 4)} Ω`);
   const Strip = ({ cs }: { cs: tools.Color[] }) => (
     <div className="flex h-12 items-center rounded-full bg-[#e8d5b0] px-6" aria-hidden>
@@ -304,7 +303,7 @@ export function AmortizationTool() {
   const [rate, setRate] = useState("8.5");
   const [years, setYears] = useState("20");
   const [extra, setExtra] = useState("0");
-  const [r, err] = attempt(() => finance.amortize(Number(p), Number(rate), Number(years), 12, Number(extra) || 0));
+  const [r, err] = attempt(() => finance.amortize(strictNumber(p, t("Loan amount")), strictNumber(rate, t("Interest rate")), strictNumber(years, t("Years")), 12, optionalNumber(extra, 0, t("Extra payment"))));
   const money = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   return (
     <div className="space-y-4">
@@ -367,9 +366,8 @@ export function CashFlowsTool() {
   const [flows, setFlows] = useState("-100000, 30000, 35000, 40000, 45000");
   const [rate, setRate] = useState("10");
   const [r, err] = attempt(() => {
-    const f = flows.split(/[\s,;]+/).filter(Boolean).map(Number);
-    if (f.some((x) => !Number.isFinite(x))) throw new Error(t("Every cash flow must be a number"));
-    return { npv: finance.npv(Number(rate), f), irr: attempt(() => finance.irr(f)) };
+    const f = readList(flows, t("Cash flows"));
+    return { npv: finance.npv(strictNumber(rate, t("Discount rate")), f), irr: attempt(() => finance.irr(f)) };
   });
   return (
     <div className="space-y-4">
@@ -401,7 +399,7 @@ export function DatesTool() {
   const [durs, setDurs] = useState("1:45, 0:30, 2h 15m");
   const [clock, setClock] = useState("14:30");
   const [diff, diffErr] = attempt(() => tools.dateDifference(a, b));
-  const [added, addErr] = attempt(() => tools.addToDate(base, { years: Number(add.years) || 0, months: Number(add.months) || 0, days: Number(add.days) || 0 }));
+  const [added, addErr] = attempt(() => tools.addToDate(base, { years: optionalNumber(add.years, 0, t("Years")), months: optionalNumber(add.months, 0, t("Months")), days: optionalNumber(add.days, 0, t("Days")) }));
   const [age, ageErr] = attempt(() => tools.age(birth, today));
   const [sum, sumErr] = attempt(() => tools.formatDuration(durs.split(",").filter((x) => x.trim()).reduce((s, x) => s + tools.parseDuration(x), 0)));
   const [cl, clErr] = attempt(() => tools.convertClock(clock));
@@ -480,11 +478,12 @@ export function RandomTool() {
         <div className="mt-3">
           <Button
             onClick={() => {
-              const a = Number(lo);
-              const b = Number(hi);
-              if (!Number.isInteger(a) || !Number.isInteger(b) || b < a) return setErr(t("Use two whole numbers, the first not larger"));
+              const a = readNumber(lo);
+              const b = readNumber(hi);
+              if (!a || !b || "error" in a || "error" in b) return setErr(t("Use two whole numbers, the first not larger"));
+              if (!Number.isInteger(a.value) || !Number.isInteger(b.value) || b.value < a.value) return setErr(t("Use two whole numbers, the first not larger"));
               setErr(null);
-              setNum(String(a + Math.floor(rnd() * (b - a + 1))));
+              setNum(String(a.value + Math.floor(rnd() * (b.value - a.value + 1))));
             }}
           >
             {t("Draw")}
@@ -500,7 +499,7 @@ export function RandomTool() {
         <div className="mt-3">
           <Button
             onClick={() => {
-              const [r, e] = attempt(() => tools.rollDice(Number(n), Number(sides), rnd));
+              const [r, e] = attempt(() => tools.rollDice(strictNumber(n, t("Dice")), strictNumber(sides, t("Sides")), rnd));
               setDice(r);
               setErr(e);
             }}

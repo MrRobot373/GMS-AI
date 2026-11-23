@@ -83,24 +83,35 @@ export async function processDocument(
     const charCount = pages.reduce((n, p) => n + p.text.length, 0);
     if (chunks.length === 0) throw new NoTextError("No readable text was found. Scanned PDFs need OCR, which is coming soon.");
 
-    const emb = await embeddingModelFor(db, box, doc.workspaceId);
+    let emb = await embeddingModelFor(db, box, doc.workspaceId);
     let vectors: (number[] | null)[] = chunks.map(() => null);
+    let note: string | null = null;
     if (emb) {
-      let tokens = 0;
-      vectors = [];
-      for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
-        const r = await embed(emb.cfg, emb.key, chunks.slice(i, i + EMBED_BATCH).map((c) => forEmbedding(emb.documentPrefix, doc.name, c.content)));
-        vectors.push(...r.vectors);
-        tokens += r.inputTokens;
+      try {
+        let tokens = 0;
+        const got: (number[] | null)[] = [];
+        for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
+          const r = await embed(emb.cfg, emb.key, chunks.slice(i, i + EMBED_BATCH).map((c) => forEmbedding(emb!.documentPrefix, doc.name, c.content)));
+          got.push(...r.vectors);
+          tokens += r.inputTokens;
+        }
+        vectors = got;
+        await db.insert(usageEvent).values({
+          workspaceId: doc.workspaceId,
+          userId: doc.ownerId,
+          modelId: emb.id,
+          section: "system",
+          inputTokens: tokens,
+          outputTokens: 0,
+        });
+      } catch (e) {
+        // Tried again later while retries are left; on the last try the text is still saved, searchable by keywords,
+        // and the vectors are added once the embedding model answers again (fillMissingVectors).
+        if (opts.willRetry) throw e;
+        emb = null;
+        vectors = chunks.map(() => null);
+        note = `Searchable by keywords for now: the embedding model didn't answer (${e instanceof Error ? e.message : "error"}). Meaning-based search is added automatically when it's back.`.slice(0, 500);
       }
-      await db.insert(usageEvent).values({
-        workspaceId: doc.workspaceId,
-        userId: doc.ownerId,
-        modelId: emb.id,
-        section: "system",
-        inputTokens: tokens,
-        outputTokens: 0,
-      });
     }
 
     await db.transaction(async (tx) => {
@@ -121,7 +132,7 @@ export async function processDocument(
         .update(document)
         .set({
           status: "ready",
-          error: null,
+          error: note,
           chunkCount: chunks.length,
           charCount,
           pageCount: pages.some((p) => p.page !== null) ? pages.length : null,
@@ -423,4 +434,37 @@ export async function documentText(db: DB, workspaceId: string, userId: string, 
     parts.push(c.content);
   }
   return { ...doc, text: parts.join("\n").replace(/\n{3,}/g, "\n\n").trim() };
+}
+
+/**
+ * Documents saved while the embedding model was down (or before one was set up) get their vectors now: a few documents
+ * per run, called hourly by housekeeping. A document whose model still doesn't answer is left for the next run.
+ */
+export async function fillMissingVectors(db: DB, box: SecretBox, opts: { limit?: number } = {}): Promise<number> {
+  const rows = await db
+    .select({ id: document.id, workspaceId: document.workspaceId, name: document.name, ownerId: document.ownerId })
+    .from(document)
+    .where(and(eq(document.status, "ready"), isNull(document.embeddingModelId), sql`exists (select 1 from document_chunk dc where dc.document_id = "document"."id" and dc.embedding is null)`))
+    .limit(opts.limit ?? 20);
+  let done = 0;
+  for (const d of rows) {
+    const emb = await embeddingModelFor(db, box, d.workspaceId);
+    if (!emb) continue;
+    const chunks = await db.select({ id: documentChunk.id, content: documentChunk.content }).from(documentChunk).where(eq(documentChunk.documentId, d.id)).orderBy(documentChunk.ordinal);
+    try {
+      let tokens = 0;
+      for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
+        const part = chunks.slice(i, i + EMBED_BATCH);
+        const r = await embed(emb.cfg, emb.key, part.map((c) => forEmbedding(emb.documentPrefix, d.name, c.content)));
+        tokens += r.inputTokens;
+        for (const [k, c] of part.entries()) await db.update(documentChunk).set({ embedding: r.vectors[k] ?? null }).where(eq(documentChunk.id, c.id));
+      }
+      await db.update(document).set({ embeddingModelId: emb.id, error: null }).where(eq(document.id, d.id));
+      await db.insert(usageEvent).values({ workspaceId: d.workspaceId, userId: d.ownerId, modelId: emb.id, section: "system", inputTokens: tokens, outputTokens: 0 });
+      done++;
+    } catch {
+      /* still down: next run */
+    }
+  }
+  return done;
 }

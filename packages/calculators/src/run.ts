@@ -166,3 +166,37 @@ export function readNumber(text: string): { value: number } | { error: "comma" |
   const value = Number(s);
   return Number.isFinite(value) ? { value } : { error: "invalid" };
 }
+
+/** Why a typed value can't be used: blank, a comma, or not a plain number. */
+export class InputError extends Error {}
+
+/**
+ * A number typed on a tool screen, read strictly (see readNumber): blank, "2,5", "0x10" or "abc" throw an InputError
+ * that says what to type, instead of becoming 0, 2, 16 or NaN.
+ */
+export function strictNumber(text: string, what = "This field"): number {
+  const r = readNumber(text);
+  if (!r) throw new InputError(`${what} is empty: enter a number.`);
+  if ("error" in r) throw new InputError(r.error === "comma" ? `${what}: use a point for decimals and no thousands separators (2.5, 1500).` : `${what}: "${text.trim()}" isn't a number.`);
+  return r.value;
+}
+
+/** An optional typed number: its default when left blank, strict otherwise. */
+export const optionalNumber = (text: string, fallback: number, what?: string) => (text.trim() ? strictNumber(text, what) : fallback);
+
+/**
+ * A list of numbers typed in one field ("10, 20, 30", "10 20 30" or "10; 20; 30"). A comma that looks like a thousands
+ * separator next to list commas ("1,500, 2,200") is refused instead of being read as four numbers.
+ */
+export function readList(text: string, what = "The list"): number[] {
+  const s = text.trim();
+  if (!s) throw new InputError(`${what} is empty: enter numbers separated by commas or spaces.`);
+  // Comma+space or semicolons separate items; then a digit,3-digits group inside an item is a thousands separator.
+  const spaced = /,\s|;/.test(s);
+  if (spaced && /\d,\d{3}(?!\d)/.test(s.replace(/,\s+/g, " ")))
+    throw new InputError(`${what}: don't use commas inside numbers (1500, not 1,500). Separate the numbers with commas or spaces.`);
+  return s
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((x) => strictNumber(x, what));
+}

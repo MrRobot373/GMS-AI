@@ -2,12 +2,14 @@ import {
   and,
   asc,
   auditLog,
+  conversationLog,
   desc,
   document,
   eq,
   gte,
   inArray,
   isNotNull,
+  lte,
   model,
   modelProvider,
   organization,
@@ -41,7 +43,7 @@ import { audit, getOrg, parse, requireOrgCap, requireUser, type AppContext } fro
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { chooseModel, routingSettings } from "../services/router";
 import { LOGO_TYPES, logoUrl, MAX_LOGO_BYTES, newLogoVersion, sniffLogo, svgProblem } from "../services/branding";
-import { localeOf, tr } from "../i18n";
+import { localeOf, msg, tr } from "../i18n";
 
 export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db, box, cfg } = ctx;
@@ -437,6 +439,41 @@ export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
     return { ...(await ctx.jobs.status()), documentsProcessing: processing[0]?.n ?? 0 };
   });
 
+  /* ───────────── Recorded conversations ───────────── */
+
+  /** Download the recorded conversations (CSV), optionally for one person or from a date. Every download is logged. */
+  app.get<{ Querystring: { from?: string; to?: string; email?: string } }>("/api/admin/conversation-log/export", async (req, reply) => {
+    const u = await requireUser(ctx, req);
+    requireOrgCap(u, "org.audit.view");
+    const from = req.query.from ? new Date(req.query.from) : null;
+    const to = req.query.to ? new Date(req.query.to) : null;
+    if ((from && Number.isNaN(+from)) || (to && Number.isNaN(+to))) throw badRequest(msg("Use dates like 2026-11-01."));
+    const rows = await db
+      .select()
+      .from(conversationLog)
+      .where(
+        and(
+          from ? gte(conversationLog.createdAt, from) : undefined,
+          to ? lte(conversationLog.createdAt, to) : undefined,
+          req.query.email ? eq(sql`lower(${conversationLog.userEmail})`, req.query.email.trim().toLowerCase()) : undefined,
+        ),
+      )
+      .orderBy(asc(conversationLog.createdAt))
+      .limit(500_000);
+    await audit(ctx, { actor: u, action: "conversation_log.exported", targetType: "organization", meta: { rows: rows.length, from: req.query.from ?? null, to: req.query.to ?? null, email: req.query.email ?? null } });
+    const cell = (v: unknown) => {
+      const t = v instanceof Date ? v.toISOString() : String(v ?? "");
+      // Quoted, and a leading = + - @ can't run as a formula when opened in Excel.
+      return `"${(/^[=+\-@]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`;
+    };
+    const csv = [
+      "time,workspace,person,email,chat,role,model,content",
+      ...rows.map((r) => [r.createdAt, r.workspaceName, r.userName, r.userEmail, r.chatTitle, r.role, r.model, r.content].map(cell).join(",")),
+    ].join("\n");
+    reply.header("content-disposition", `attachment; filename="conversations-${new Date().toISOString().slice(0, 10)}.csv"`);
+    return reply.type("text/csv; charset=utf-8").send(`\ufeff${csv}`);
+  });
+
   /* ───────────── Audit log ───────────── */
 
   app.get<{ Querystring: { limit?: string; action?: string } }>("/api/admin/audit", async (req) => {
@@ -464,6 +501,8 @@ export async function adminSystemRoutes(app: FastifyInstance, ctx: AppContext) {
       loginMessage: org.loginMessage,
       budgetPeriod: org.budgetPeriod,
       promptLogging: org.promptLogging,
+      conversationLogDays: org.conversationLogDays,
+      recordedMessages: (await db.select({ n: sql<number>`count(*)::int` }).from(conversationLog))[0]?.n ?? 0,
       retentionDays: org.retentionDays,
       defaultLocale: org.defaultLocale,
       illustrations: org.illustrations,

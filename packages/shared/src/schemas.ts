@@ -130,6 +130,8 @@ export const LOCALE_NAMES: Record<Locale, string> = { en: "English", hi: "हि
 
 export const orgSettingsSchema = z.object({
   promptLogging: z.boolean().optional(),
+  /** How long recorded conversations are kept, in days (30 days to 10 years). */
+  conversationLogDays: z.number().int().min(30).max(3650).optional(),
   /** The language for people who haven't picked one. */
   defaultLocale: z.enum(LOCALES).optional(),
   retentionDays: z.number().int().positive().nullable().optional(),

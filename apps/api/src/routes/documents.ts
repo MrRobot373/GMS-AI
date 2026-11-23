@@ -1,4 +1,5 @@
 import { and, desc, document, eq, isNull, user, type DB } from "@aatmiq/db";
+import { fileProblem } from "../services/file-check";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
@@ -91,6 +92,8 @@ export async function documentRoutes(app: FastifyInstance, ctx: AppContext) {
     const name = file.name.replace(/[\\/]/g, "_").slice(0, 200) || "Untitled";
     if (!isSupported(name)) throw new HttpError(415, `This file type isn't supported yet. Upload ${SUPPORTED_HINT}.`, "unsupported");
     if (file.data.length === 0) throw badRequest("The file is empty");
+    const bad = fileProblem(name, file.data);
+    if (bad) throw new HttpError(415, bad, "bad_file");
 
     const storageKey = `${workspaceId}/${randomToken(18)}`;
     await storage.put(storageKey, file.data);
