@@ -5,7 +5,7 @@ ship (production dependencies). CI fails when it's out of date or a license need
 license texts go into each image as `THIRD_PARTY_NOTICES.txt`; container images, system packages,
 fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 
-575 packages: MIT 481, Apache-2.0 41, ISC 26, BSD-3-Clause 8, BSD-2-Clause 6, OFL-1.1 3, LGPL-3.0-or-later 1, CC-BY-4.0 1, BSD 1, SIL OPEN FONT LICENSE 1, (MIT OR GPL-3.0-or-later) 1, MIT-0 1, (MIT AND Zlib) 1, Unlicense 1, BlueOak-1.0.0 1, 0BSD 1.
+577 packages: MIT 481, Apache-2.0 41, ISC 26, BSD-3-Clause 10, BSD-2-Clause 6, OFL-1.1 3, LGPL-3.0-or-later 1, CC-BY-4.0 1, BSD 1, SIL OPEN FONT LICENSE 1, (MIT OR GPL-3.0-or-later) 1, MIT-0 1, (MIT AND Zlib) 1, Unlicense 1, BlueOak-1.0.0 1, 0BSD 1.
 
 | Package | Version | License |
 |---|---|---|
@@ -98,6 +98,8 @@ fonts and models are in [../THIRD-PARTY.md](../THIRD-PARTY.md).
 | @deepseek-ai/dsh-util-time | 0.2.0-rc.2 | MIT |
 | @deepseek-ai/dsh-util-values | 0.2.0-rc.2 | MIT |
 | @deepseek-ai/dsh-workspace | 0.2.0-rc.2 | MIT |
+| @deepseek-ai/node-addon-system | 0.1.2 | BSD-3-Clause |
+| @deepseek-ai/node-addon-system-* | (per platform) | BSD-3-Clause |
 | @deepseek-ai/schemastery | 3.18.4 | MIT |
 | @eslint-community/regexpp | 4.12.2 | MIT |
 | @fast-csv/format | 4.3.5 | MIT |
