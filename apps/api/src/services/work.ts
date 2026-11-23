@@ -120,6 +120,9 @@ interface Live {
   wroteCode?: boolean;
   /** The agent was already sent back once to check its work against the request. */
   verifyNudged?: boolean;
+  /** Files the request names (report.md, sales.xlsx…): checked when the agent says it's done. */
+  askedFiles?: string[];
+  filesNudged?: boolean;
   /** The model's context window, in tokens: long requests and restart history are sized to it. */
   contextWindow?: number;
   /** What the request asked for as checkable items (build tasks; .task/acceptance.json). */
@@ -879,6 +882,8 @@ export class WorkRunner {
     l.untried = false;
     l.wroteCode = false;
     l.verifyNudged = false;
+    l.filesNudged = false;
+    if (!opts.review) l.askedFiles = namedFiles(prompt);
     l.pageUntried = false;
     l.pageNudged = false;
     // The answer to show is this turn's; the plan stays (the runtime keeps its todo list too).
@@ -962,6 +967,8 @@ export class WorkRunner {
         .where(and(eq(workEvent.taskId, taskId), eq(workEvent.kind, "user")))
         .orderBy(asc(workEvent.seq));
       const request = [asked[0], asked.at(-1)].map((e) => String(e?.data.text ?? "")).join("\n");
+      // Only the latest message: a follow-up question isn't held to the files the first one asked for.
+      l.askedFiles = namedFiles(String(asked.at(-1)?.data.text ?? ""));
       const skillsDir = await this.writeSkills(task.userId, join(homeDir, "skills"), settings.disabledLibrarySkills, code ? CODE_LIBRARY : undefined, {
         request,
         budget: Math.floor(l.contextWindow * SKILL_LIST_SHARE),
@@ -1515,7 +1522,11 @@ export class WorkRunner {
         // limit, cut off, or announcing a next step it didn't take) or calls a page it built done untried.
         const outputLimit = !!l.plain && OUTPUT_LIMIT.test(e.error ?? "");
         const pageUntried = !!l.plain && e.reason === "completed" && !!l.pageUntried && !!l.browser && !l.pageNudged && !l.parentId;
-        const nudge = l.plain
+        // Files the request named that aren't in the folder (a model that printed a report instead of saving it).
+        const missing = e.reason === "completed" && !l.parentId && !l.filesNudged && l.askedFiles?.length && l.workdir ? await missingFiles(l.workdir, l.askedFiles) : [];
+        const nudge = missing.length && !hanging && !cutOff
+          ? missingFilesNudge(missing)
+          : l.plain
           ? outputLimit
             ? OUTPUT_LIMIT_NUDGE
             : hanging || cutOff
@@ -1532,6 +1543,7 @@ export class WorkRunner {
           l.idleNudge = !l.usedTools;
           if (nudge === TRY_NUDGE || nudge === VERIFY_NUDGE) l.verifyNudged = true;
           if (nudge === PAGE_NUDGE) l.pageNudged = true;
+          if (missing.length) l.filesNudged = true;
           l.busy = true;
           l.usedTools = false;
           await this.setStatus(taskId, "running");
@@ -1899,3 +1911,32 @@ export class WorkRunner {
   }
 
 }
+
+/** File names a request asks for ("write report.md", "make sales.xlsx"): a name with a document, data or image extension. */
+export function namedFiles(request: string): string[] {
+  const out: string[] = [];
+  for (const word of request.split(/\s+/)) {
+    const w = word.replace(/^["'`(\[<]+|["'`)\]>,;:!?.]+$/g, "");
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(w)) continue;
+    const name = w.split(/[\\/]/).at(-1) ?? "";
+    if (/^[\w][\w.-]*\.(md|xlsx|xls|docx|pptx|pdf|csv|png|jpe?g|svg|html|txt|json)$/i.test(name) && !out.includes(name)) out.push(name);
+  }
+  return out.slice(0, 20);
+}
+
+/** Which of `names` aren't anywhere in the folder (by name, a few levels down). */
+export async function missingFiles(dir: string, names: string[]): Promise<string[]> {
+  const seen = new Set<string>();
+  const walk = async (d: string, depth: number) => {
+    for (const e of await readdir(d, { withFileTypes: true }).catch(() => [])) {
+      if (e.isDirectory()) {
+        if (depth < 3 && !["node_modules", ".git", ".task"].includes(e.name)) await walk(join(d, e.name), depth + 1);
+      } else seen.add(e.name.toLowerCase());
+    }
+  };
+  await walk(dir, 0);
+  return names.filter((n) => !seen.has(n.toLowerCase()));
+}
+
+const missingFilesNudge = (missing: string[]) =>
+  `You said the task is done, but ${missing.length === 1 ? "this file the person asked for isn't" : "these files the person asked for aren't"} in the folder: ${missing.join(", ")}. Create ${missing.length === 1 ? "it" : "them"} now and save ${missing.length === 1 ? "it" : "them"} as a file (printing the content isn't enough), then finish.`;

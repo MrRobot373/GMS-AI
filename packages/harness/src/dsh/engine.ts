@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, chmod, chown, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { stripReminders } from "../../dsh-plugin/tooling.mjs";
 import { resolveFromHarness } from "../files";
 import type { HarnessEngine, HarnessEvent, TaskRuntime, TaskSpec } from "../types";
@@ -295,6 +296,24 @@ export async function windowsPathExtras(): Promise<string[]> {
   return extras;
 }
 
+/**
+ * Where programs keep settings and caches (matplotlib, pip, fontconfig…). The sandbox lets commands write only the task
+ * folder and /tmp, and HOME (the runtime folder) isn't writable to them: a private folder per task in /tmp, owned by the
+ * task's user, so these programs don't fail or warn.
+ */
+async function cacheEnv(spec: TaskSpec): Promise<NodeJS.ProcessEnv> {
+  if (process.platform === "win32") return {};
+  const dir = join(tmpdir(), `aatmiq-task-${basename(dirname(spec.homeDir))}`);
+  try {
+    await mkdir(join(dir, "config"), { recursive: true, mode: 0o700 });
+    await mkdir(join(dir, "cache"), { recursive: true, mode: 0o700 });
+    if (spec.uid !== undefined) for (const d of [dir, join(dir, "config"), join(dir, "cache")]) await chown(d, spec.uid, spec.gid ?? spec.uid);
+  } catch {
+    return {};
+  }
+  return { XDG_CONFIG_HOME: join(dir, "config"), XDG_CACHE_HOME: join(dir, "cache"), MPLCONFIGDIR: join(dir, "config", "matplotlib"), PIP_CACHE_DIR: join(dir, "cache", "pip"), PYTHONUSERBASE: join(dir, "local"), npm_config_cache: join(dir, "cache", "npm") };
+}
+
 /** Environment for the runtime: nothing from the API process leaks in (no database URL, no secrets). */
 async function runtimeEnv(spec: TaskSpec): Promise<NodeJS.ProcessEnv> {
   const sep = process.platform === "win32" ? ";" : ":";
@@ -320,6 +339,7 @@ async function runtimeEnv(spec: TaskSpec): Promise<NodeJS.ProcessEnv> {
           ...(process.env.LOCALAPPDATA ? { LOCALAPPDATA: process.env.LOCALAPPDATA } : {}),
         }
       : {}),
+    ...(await cacheEnv(spec)),
     ...(await networkEnv({ uid: spec.uid, gid: spec.gid, dir: join(spec.homeDir, "ca") })),
   };
 }

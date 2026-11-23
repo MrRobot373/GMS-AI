@@ -9,6 +9,12 @@ without one.
 
 ## Unreleased
 
+- **Work AI and Super AI: programs can save their settings and caches.** Commands inside a task couldn't write their home
+  folder, so matplotlib warned, and `pip install --user` failed. Each task now has a private settings and cache folder.
+- **A task that says it's done without the files it was asked for is reminded once.** If a request names files (for example
+  `report.md`) and they aren't in the folder when the agent finishes, it is told to create them. This covers Super AI too,
+  which has no checklist.
+
 - **Long chats no longer fail.** Each chat request is kept inside the model's context window: the oldest turns are left
   out first, then large tool results (web pages, files, Python output) are shortened. Chat also asks Ollama for the model's
   full window (`num_ctx`), as Work AI already did, instead of the server's default.
