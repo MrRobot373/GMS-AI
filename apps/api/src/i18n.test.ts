@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 import { fill, tr } from "./i18n";
 import { HI } from "./i18n/hi";
 
-const ROOT = join(__dirname, "../../..");
+// Forward slashes on every system: the skip list and the reported paths use them (Windows paths have backslashes).
+const ROOT = join(__dirname, "../../..").replace(/\\/g, "/");
 const SOURCES = ["apps/api/src", "packages/license/src/index.ts", "packages/model-gateway/src/index.ts"];
 // The agent's own endpoints answer the model, not a person.
 const SKIP = [/\.test\.ts$/, /\/i18n\//, /routes\/work-internal\.ts$/];
@@ -31,7 +32,7 @@ function files(p: string): string[] {
 function collect() {
   const keys = new Map<string, string>();
   const problems: string[] = [];
-  for (const file of SOURCES.flatMap(files).filter((f) => !SKIP.some((r) => r.test(f)))) {
+  for (const file of SOURCES.flatMap(files).map((f) => f.replace(/\\/g, "/")).filter((f) => !SKIP.some((r) => r.test(f)))) {
     const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
     const at = (n: ts.Node) => `${file.replace(`${ROOT}/`, "")}:${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}`;
     const hasWords = (s: string) => /[A-Za-z]{2,}/.test(s);

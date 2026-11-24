@@ -13,6 +13,7 @@
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { chown, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { classifyRisk } from "../../dsh-plugin/policy.mjs";
@@ -33,18 +34,24 @@ export interface ClaudeSdk {
 
 export class ClaudeUnavailable extends Error {}
 
+const requireHarness = createRequire(import.meta.url);
+let cachedSdk: ClaudeSdk | null = null;
+
 async function loadSdk(): Promise<ClaudeSdk> {
+  if (cachedSdk) return cachedSdk;
   try {
-    return (await import("@anthropic-ai/claude-agent-sdk")) as unknown as ClaudeSdk;
+    cachedSdk = requireHarness("@anthropic-ai/claude-agent-sdk") as unknown as ClaudeSdk;
+    return cachedSdk;
   } catch (e) {
-    throw new ClaudeUnavailable(`The Claude Code engine isn't installed here (${e instanceof Error ? e.message.split("\n")[0] : "import failed"}).`);
+    cachedSdk = null;
+    throw new ClaudeUnavailable(`The Claude Code engine isn't installed here (${e instanceof Error ? e.message.split("\n")[0] : "require failed"}).`);
   }
 }
 
 /** Whether the Claude Code engine can start here (its SDK, with the native program, is installed). */
 export async function claudeAvailable(): Promise<boolean> {
   try {
-    await loadSdk();
+    requireHarness.resolve("@anthropic-ai/claude-agent-sdk");
     return true;
   } catch {
     return false;
@@ -189,7 +196,6 @@ export function briefFor(spec: TaskSpec): string {
     `You are working inside ${spec.productName}, a workplace AI platform, doing a task for a person in their organization. Your working folder is where the task's files live: what you make there is what the person receives, so name files plainly and keep scratch work in scratch/.`,
     "",
     "Doing the work:",
-    "- Research only as much as the task needs: usually under 10 searches and the few pages you rely on, then build. Don't keep searching for a missing detail: put what you found in the file, mark anything unconfirmed (\"unverified\" or \"not found\"), and say so. A saved file with marked gaps beats no file.",
     "- Finish what was asked, completely, and keep to the requirements as written. If something is genuinely unclear and a wrong guess would waste the work, ask in your reply and stop; otherwise choose sensibly and say what you chose.",
     "- Check your work by running it, not by reading it: run scripts and tests, and open a document or spreadsheet again after writing it. Syntax checks and searching your own code do not show that something works.",
     ...(spec.browser
@@ -260,7 +266,7 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
 
       // Aatmiq's own tools, in-process: private web search and page reading, and Work AI's browser, documents and
       // calculators (the same definitions as Work AI's, dsh-plugin/).
-      const { z } = await import("zod");
+      const { z } = requireHarness("zod") as { z: typeof import("zod").z };
       const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], ...(isError ? { isError: true } : {}) });
       const tools: unknown[] = [];
       if (spec.webSearch) {

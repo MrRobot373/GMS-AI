@@ -125,6 +125,9 @@ interface Live {
   askedFiles?: string[];
   /** Commands that failed before running (the machine's command runner is broken), in a row. */
   brokenShell?: number;
+  /** Web searches and page reads this turn, and the reminders to build sent so far. */
+  research?: number;
+  researchNudges?: number;
   filesNudged?: boolean;
   /** The model's context window, in tokens: long requests and restart history are sized to it. */
   contextWindow?: number;
@@ -889,6 +892,8 @@ export class WorkRunner {
     l.wroteCode = false;
     l.verifyNudged = false;
     l.filesNudged = false;
+    l.research = 0;
+    l.researchNudges = 0;
     if (!opts.review) l.askedFiles = namedFiles(prompt);
     l.pageUntried = false;
     l.pageNudged = false;
@@ -1492,6 +1497,16 @@ export class WorkRunner {
           }
         }
         if (e.name === "write" || e.name === "edit" || e.name === "bash" || e.name === "pwsh") l.changed = true;
+        // Research without end (the one missing figure, pages that fail): told to build with what it has, twice at most.
+        if (RESEARCH_TOOLS.has(e.name) && !l.parentId) {
+          l.research = (l.research ?? 0) + 1;
+          const due = RESEARCH_BUDGET * ((l.researchNudges ?? 0) + 1);
+          if (l.research >= due && (l.researchNudges ?? 0) < 2 && l.runtime?.alive) {
+            l.researchNudges = (l.researchNudges ?? 0) + 1;
+            await this.sendTo(l, researchNudge(l.research, l.researchNudges));
+            await this.record(taskId, "context", { researchNudge: l.research });
+          }
+        }
         if (writesCode(e.name, e.args)) {
           l.untried = true;
           l.wroteCode = true;
@@ -2004,3 +2019,13 @@ const missingFilesNudge = (missing: string[]) =>
 
 /** Failures of the command runner itself (nothing ran), as opposed to a command that ran and failed. */
 const BROKEN_SHELL = /subprocess-local:|Windows Job runner|ripgrep provider failure|spawn \S+ ENOENT|EPERM: operation not permitted, spawn/i;
+
+/** Tools that look things up on the web. */
+const RESEARCH_TOOLS = new Set(["web_search", "web_fetch", "browser_open", "browser_read"]);
+/** Web searches and page reads in a turn before the agent is told to build. */
+export const RESEARCH_BUDGET = 15;
+
+const researchNudge = (n: number, nth: number) =>
+  nth === 1
+    ? `You've made ${n} web searches and page reads. Stop researching now and build what the person asked for with what you have. Mark anything you couldn't confirm ("not found", "unverified") and say where you looked. A finished file with marked gaps is what they need.`
+    : `${n} web searches and page reads, and the deliverable isn't done. No more research: write it now from what you have, mark the gaps, and finish.`;

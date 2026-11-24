@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { computerRisk, createComputerEngine } from "./computer/engine";
-import { sendKeysText, windowsKeys, xdotoolKeys, type Driver } from "./computer/driver";
+import { windowsKeys, xdotoolKeys, type Driver } from "./computer/driver";
 import type { HarnessEvent, TaskSpec } from "./types";
 
 type Call = { name: string; args: Record<string, unknown> };
@@ -156,6 +156,5 @@ describe("Computer AI", () => {
     expect(() => windowsKeys("ctrl+banana")).toThrow(/Unknown key/);
     expect(xdotoolKeys("ctrl+enter")).toBe("ctrl+Return");
     expect(xdotoolKeys("win+pageup")).toBe("super+Prior");
-    expect(sendKeysText("50% off (today) {x}\n")).toBe("50{%} off {(}today{)} {{}x{}}{ENTER}");
   });
 });

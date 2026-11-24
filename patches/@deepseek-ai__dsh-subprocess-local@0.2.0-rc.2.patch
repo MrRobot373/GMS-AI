@@ -1,5 +1,5 @@
 diff --git a/lib/index.js b/lib/index.js
-index b4530537ab2b5e79e131fe4e801da51368fa75e4..e9e7b5953974b331f085779a61ff6e5744a869fe 100644
+index b4530537ab2b5e79e131fe4e801da51368fa75e4..8b93438b77e9afec6857bc134e604abed0dddaea 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -1390,7 +1390,9 @@ var LocalSubprocessRuntime = class extends SubprocessRuntime {
@@ -13,3 +13,28 @@ index b4530537ab2b5e79e131fe4e801da51368fa75e4..e9e7b5953974b331f085779a61ff6e57
  			if (probeWindowsJob()) return "windows-job";
  		}
  		this.warnFallback(platform, kind, fallbackReason);
+diff --git a/lib/runner.js b/lib/runner.js
+index f2639d643e20bba1d45b33595c94ef0dacc418cb..75e72fc680bd5b2957d759d45e4719b68cd26a13 100644
+--- a/lib/runner.js
++++ b/lib/runner.js
+@@ -427,7 +427,19 @@ async function runSelectedSubprocessRunner(selection) {
+ 		await reportSpawnRunnerFailure(selection, error);
+ 	}
+ }
+-if (import.meta.main) {
++// Aatmiq: import.meta.main only exists from Node 22.18 / 24.2; on older Node it is undefined, this runner did nothing
++// and exited 0, and every command failed ("Windows Job runner exited with exit code 0 before proving its managed range
++// empty"). The script's own path in argv says the same thing on every Node.
++const ranDirectly = import.meta.main ?? (await (async () => {
++	try {
++		const { realpathSync } = await import("node:fs");
++		const { fileURLToPath } = await import("node:url");
++		return process.argv[1] !== void 0 && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
++	} catch {
++		return false;
++	}
++})());
++if (ranDirectly) {
+ 	const selection = consumeRunnerSelection();
+ 	if (selection === void 0) process.exitCode = 127;
+ 	else runSelectedSubprocessRunner(selection);

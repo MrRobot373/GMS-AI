@@ -24,6 +24,7 @@ export interface SdkMessage {
 
 const NAMES: Record<string, string> = {
   Bash: "bash",
+  PowerShell: "bash",
   Read: "read",
   Write: "write",
   Edit: "edit",

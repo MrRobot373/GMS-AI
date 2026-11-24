@@ -20,6 +20,14 @@ __pycache__/
 # Redis snapshots from a local redis-server
 dump.rdb
 
+# Local visual-plan bridge token. Not shareable.
+.plan-url
+
+# Notes about this PC's model server and search gateway: they hold keys. Never commit them.
+ACCESS-FROM-ANOTHER-PC.md
+RUNBOOK.md
+SETUP-DOCUMENTATION.md
+
 # Generated in the web image (scripts/third-party-notices.mjs)
 apps/web/public/third-party-notices.txt
 

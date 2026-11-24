@@ -8,4 +8,4 @@ export { SUPER_AI_MIN_WINDOW, claudeAvailable, createClaudeEngine, extraSettings
 export { createOpencodeEngine, opencodeAvailable, opencodeBin, opencodeConfig } from "./opencode/engine";
 export { mapOpencodeEvent, newOpencodeState, permissionCall, toolName as opencodeToolName } from "./opencode/map";
 export { computerAvailable, computerRisk, createComputerEngine } from "./computer/engine";
-export { computerSupport, createDriver, sendKeysText, windowsKeys, xdotoolKeys, type Driver, type Shot } from "./computer/driver";
+export { computerSupport, createDriver, windowsKeys, xdotoolKeys, type Driver, type Shot } from "./computer/driver";

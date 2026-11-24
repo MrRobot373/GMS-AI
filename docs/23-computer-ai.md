@@ -19,7 +19,7 @@ shows the screen live.
 
 | Machine | How |
 |---|---|
-| Windows | one PowerShell process per task: System.Drawing for screenshots, user32 for mouse and keys, SendKeys for text. Nothing to install. The API must run in the signed-in desktop session (as `pnpm dev` does), not as a Windows service. |
+| Windows | a small helper program, compiled once with the C# compiler every Windows has (.NET Framework 4, `csc.exe`) into the temp folder, then run for each action (screenshot with the grid, mouse, Unicode typing, keys). Nothing to install. Not a PowerShell script: Windows Defender blocks a screen-capturing script as malicious. The API must run in the signed-in desktop session (as `pnpm dev` does), not as a Windows service. |
 | Linux | an X11 desktop (`DISPLAY`) with `xdotool` and ImageMagick (`apt install xdotool imagemagick`). |
 | Others, and container mode | not available |
 

@@ -1,14 +1,15 @@
 /**
  * Computer AI's hands and eyes (docs/23-computer-ai.md): screenshots, mouse and keyboard on the machine Aatmiq runs on.
- * - Windows: one PowerShell process per task (nothing to install): System.Drawing for screenshots, user32 for the mouse
- *   and keys, SendKeys for text.
+ * - Windows: a small helper compiled once with the C# compiler Windows already has (nothing to install).
  * - Linux: an X11 display (DISPLAY) with xdotool and ImageMagick's import.
  *
  * Screenshots are scaled to at most 1280 px wide (JPEG); the model gives coordinates on that image and they are mapped
  * back to the screen here.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -68,53 +69,132 @@ export function createDriver(): Driver {
 
 /* ───────────── Windows ───────────── */
 
-const psString = (s: string) => `'${s.replace(/'/g, "''")}'`;
+/**
+ * The Windows hands and eyes: a small program compiled once with the C# compiler every Windows has (.NET Framework's
+ * csc.exe), then run for each action. Not a PowerShell script: Windows Defender's script scanner (AMSI) blocks a
+ * screen-capturing script as malicious, which made every task fail with "didn't answer in time".
+ *   screen                         → "W H"
+ *   cursor                         → "X Y"
+ *   shot <maxW> <grid 0|1> <norm 0|1> <out.jpg>  → "w h", the JPEG written to out.jpg
+ *   move X Y | click X Y <left|right|middle> N | drag X1 Y1 X2 Y2 | scroll X Y N
+ *   key VK[,VK…]                   (pressed in order, released in reverse)
+ *   type <base64 UTF-8 text>       (typed as Unicode characters; a line break presses Enter)
+ */
+const HELPER_SOURCE = String.raw`
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
 
-/** The mouse and keyboard calls (user32), compiled once into a DLL next to the task's files. */
-const INPUT_TYPE = `using System; using System.Runtime.InteropServices;
-public static class AatmiqInput {
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, int d, UIntPtr e);
-  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, UIntPtr e);
-  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
-}`;
+static class AatmiqScreen {
+  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+  [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+  [DllImport("user32.dll")] static extern void mouse_event(uint f, uint dx, uint dy, int d, UIntPtr e);
+  [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint f, UIntPtr e);
+  [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+  [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
+  [StructLayout(LayoutKind.Sequential)] struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public uint data, flags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Explicit)] struct UNION { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public UNION u; }
 
-/** What every run starts with: the .NET parts, the helper DLL, and the screen in real pixels (not scaled by DPI). */
-const psPrelude = (dll: string) => `$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-Add-Type -Path ${psString(dll)}
-[AatmiqInput]::SetProcessDPIAware() | Out-Null
-`;
+  static int W() { return GetSystemMetrics(0); }
+  static int H() { return GetSystemMetrics(1); }
+  static int I(string s) { return (int)Math.Round(double.Parse(s, System.Globalization.CultureInfo.InvariantCulture)); }
 
-const PS_SHOT = `function Aatmiq-Shot($maxW, $grid, $norm) {
-  $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-  $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-  $g = [System.Drawing.Graphics]::FromImage($bmp)
-  $g.CopyFromScreen($b.X, $b.Y, 0, 0, $bmp.Size)
-  $s = [Math]::Min(1.0, $maxW / $b.Width)
-  $w = [int]($b.Width * $s); $h = [int]($b.Height * $s)
-  $out = New-Object System.Drawing.Bitmap $w, $h
-  $g2 = [System.Drawing.Graphics]::FromImage($out)
-  $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-  $g2.DrawImage($bmp, 0, 0, $w, $h)
-  if ($grid) {
-    $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(70, 255, 0, 160)), 1
-    $font = New-Object System.Drawing.Font 'Arial', 9
-    $bg = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(190, 255, 255, 255))
-    $fg = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 200, 0, 120))
-    if ($norm) { $xs = 1..9 | ForEach-Object { ,@([int]($_ * $w / 10), ($_ * 100)) }; $ys = 1..9 | ForEach-Object { ,@([int]($_ * $h / 10), ($_ * 100)) } }
-    else { $xs = for ($x = 100; $x -lt $w; $x += 100) { ,@($x, $x) }; $ys = for ($y = 100; $y -lt $h; $y += 100) { ,@($y, $y) } }
-    foreach ($p in $xs) { $x = $p[0]; $g2.DrawLine($pen, $x, 0, $x, $h); $g2.FillRectangle($bg, $x + 1, 0, 26, 13); $g2.DrawString("$($p[1])", $font, $fg, $x + 1, 0) }
-    foreach ($p in $ys) { $y = $p[0]; $g2.DrawLine($pen, 0, $y, $w, $y); $g2.FillRectangle($bg, 0, $y + 1, 26, 13); $g2.DrawString("$($p[1])", $font, $fg, 0, $y + 1) }
+  static void Unicode(char c) {
+    var down = new INPUT { type = 1 }; down.u.ki = new KEYBDINPUT { wScan = c, dwFlags = 4 };
+    var up = new INPUT { type = 1 }; up.u.ki = new KEYBDINPUT { wScan = c, dwFlags = 4 | 2 };
+    SendInput(2, new[] { down, up }, Marshal.SizeOf(typeof(INPUT)));
   }
-  $enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
-  $p = New-Object System.Drawing.Imaging.EncoderParameters 1
-  $p.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 75L
-  $ms = New-Object System.IO.MemoryStream
-  $out.Save($ms, $enc, $p)
-  $g.Dispose(); $g2.Dispose(); $bmp.Dispose(); $out.Dispose()
-  "$w $h " + [Convert]::ToBase64String($ms.ToArray())
+
+  static void Shot(int maxW, bool grid, bool norm, string path) {
+    int sw = W(), sh = H();
+    using (var bmp = new Bitmap(sw, sh)) {
+      using (var g = Graphics.FromImage(bmp)) g.CopyFromScreen(0, 0, 0, 0, new Size(sw, sh));
+      double s = Math.Min(1.0, (double)maxW / sw);
+      int w = (int)Math.Round(sw * s), h = (int)Math.Round(sh * s);
+      using (var outBmp = new Bitmap(w, h)) {
+        using (var g = Graphics.FromImage(outBmp)) {
+          g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+          g.DrawImage(bmp, 0, 0, w, h);
+          if (grid) {
+            using (var pen = new Pen(Color.FromArgb(70, 255, 0, 160), 1))
+            using (var font = new Font("Arial", 8))
+            using (var bg = new SolidBrush(Color.FromArgb(190, 255, 255, 255)))
+            using (var fg = new SolidBrush(Color.FromArgb(255, 200, 0, 120))) {
+              for (int k = 1; ; k++) {
+                int x = norm ? (int)Math.Round(k * w / 10.0) : k * 100; if (norm ? k > 9 : x >= w) break;
+                g.DrawLine(pen, x, 0, x, h); g.FillRectangle(bg, x + 1, 0, 26, 13); g.DrawString((k * 100).ToString(), font, fg, x + 1, 0);
+              }
+              for (int k = 1; ; k++) {
+                int y = norm ? (int)Math.Round(k * h / 10.0) : k * 100; if (norm ? k > 9 : y >= h) break;
+                g.DrawLine(pen, 0, y, w, y); g.FillRectangle(bg, 0, y + 1, 26, 13); g.DrawString((k * 100).ToString(), font, fg, 0, y + 1);
+              }
+            }
+          }
+        }
+        ImageCodecInfo jpeg = null;
+        foreach (var c in ImageCodecInfo.GetImageEncoders()) if (c.MimeType == "image/jpeg") jpeg = c;
+        var p = new EncoderParameters(1);
+        p.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 75L);
+        outBmp.Save(path, jpeg, p);
+        Console.Write(w + " " + h);
+      }
+    }
+  }
+
+  [STAThread]
+  static int Main(string[] a) {
+    try {
+      SetProcessDPIAware();
+      switch (a[0]) {
+        case "screen": Console.Write(W() + " " + H()); break;
+        case "cursor": { POINT p; GetCursorPos(out p); Console.Write(p.X + " " + p.Y); break; }
+        case "shot": Shot(I(a[1]), a[2] == "1", a[3] == "1", a[4]); break;
+        case "move": SetCursorPos(I(a[1]), I(a[2])); break;
+        case "click": {
+          uint dn = a[3] == "right" ? 8u : a[3] == "middle" ? 32u : 2u, upf = dn * 2;
+          SetCursorPos(I(a[1]), I(a[2])); Thread.Sleep(60);
+          for (int k = 0; k < I(a[4]); k++) { if (k > 0) Thread.Sleep(80); mouse_event(dn, 0, 0, 0, UIntPtr.Zero); mouse_event(upf, 0, 0, 0, UIntPtr.Zero); }
+          break;
+        }
+        case "drag": {
+          int x1 = I(a[1]), y1 = I(a[2]), x2 = I(a[3]), y2 = I(a[4]);
+          SetCursorPos(x1, y1); mouse_event(2, 0, 0, 0, UIntPtr.Zero);
+          for (int k = 1; k <= 12; k++) { SetCursorPos(x1 + (x2 - x1) * k / 12, y1 + (y2 - y1) * k / 12); Thread.Sleep(20); }
+          mouse_event(4, 0, 0, 0, UIntPtr.Zero); break;
+        }
+        case "scroll": SetCursorPos(I(a[1]), I(a[2])); mouse_event(0x0800, 0, 0, -I(a[3]) * 120, UIntPtr.Zero); break;
+        case "key": {
+          var vks = a[1].Split(',');
+          foreach (var v in vks) keybd_event((byte)int.Parse(v), 0, 0, UIntPtr.Zero);
+          Thread.Sleep(40);
+          for (int k = vks.Length - 1; k >= 0; k--) keybd_event((byte)int.Parse(vks[k]), 0, 2, UIntPtr.Zero);
+          break;
+        }
+        case "type": {
+          string text = Encoding.UTF8.GetString(Convert.FromBase64String(a[1])).Replace("\r\n", "\n");
+          foreach (char c in text) {
+            if (c == '\n') { keybd_event(0x0D, 0, 0, UIntPtr.Zero); keybd_event(0x0D, 0, 2, UIntPtr.Zero); }
+            else Unicode(c);
+            Thread.Sleep(8);
+          }
+          break;
+        }
+        default: Console.Error.Write("unknown command " + a[0]); return 2;
+      }
+      return 0;
+    } catch (Exception e) {
+      Console.Error.Write(e.Message);
+      return 1;
+    }
+  }
 }
 `;
 
@@ -141,50 +221,54 @@ export function windowsKeys(keys: string): number[] {
     });
 }
 
-/** Text as SendKeys reads it: its special characters in braces. */
-export const sendKeysText = (text: string) => text.replace(/[+^%~(){}[\]]/g, (c) => `{${c}}`).replace(/\r?\n/g, "{ENTER}");
+/** .NET Framework's C# compiler, present on every Windows 10 and 11. */
+function cscPath(): string | null {
+  const root = process.env.WINDIR ?? process.env.SystemRoot ?? "C:\\Windows";
+  for (const fw of ["Framework64", "Framework"]) {
+    const p = join(root, "Microsoft.NET", fw, "v4.0.30319", "csc.exe");
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
 
+const runHelper = (file: string, args: string[], timeoutMs = 30_000) =>
+  new Promise<string>((resolve, reject) => {
+    execFile(file, args, { windowsHide: true, timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(`${String(stderr || stdout || err.message).replace(/\s+/g, " ").trim().slice(0, 400)}`));
+      else resolve(String(stdout).trim());
+    });
+  });
 
 class WindowsDriver implements Driver {
-  private dll: string;
+  private exe: string;
   private ready: Promise<void> | null = null;
 
   constructor() {
-    this.dll = join(tmpdir(), `aatmiq-input-${process.pid}.dll`);
+    // One helper per version of its source, shared by every task on this machine.
+    this.exe = join(tmpdir(), `aatmiq-screen-${createHash("sha1").update(HELPER_SOURCE).digest("hex").slice(0, 10)}.exe`);
   }
 
-  /** Run one PowerShell script and return what it printed. Each action is its own short run: nothing is left waiting. */
-  private ps(script: string, timeoutMs = 30_000): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const encoded = Buffer.from(script, "utf16le").toString("base64");
-      const child = spawn("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-      let out = "";
-      let err = "";
-      child.stdout.setEncoding("utf8");
-      child.stderr.setEncoding("utf8");
-      child.stdout.on("data", (d: string) => (out += d));
-      child.stderr.on("data", (d: string) => (err = (err + d).slice(-2000)));
-      const timer = setTimeout(() => {
-        child.kill();
-        reject(new Error("The computer didn't answer in time (PowerShell took longer than 30 seconds)."));
-      }, timeoutMs);
-      child.on("error", (e) => {
-        clearTimeout(timer);
-        reject(new Error(`PowerShell couldn't start: ${e.message}`));
-      });
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        if (code === 0) resolve(out.trim());
-        else reject(new Error(`The screen command failed: ${(err || out).replace(/\s+/g, " ").trim().slice(0, 300)}`));
-      });
-    });
-  }
-
-  /** The helper DLL, compiled on first use (a few seconds), then loaded by every run. */
+  /** The helper, compiled on first use (a second or two). */
   private prepare(): Promise<void> {
     this.ready ??= (async () => {
-      if (existsSync(this.dll)) return;
-      await this.ps(`Add-Type -TypeDefinition @"\n${INPUT_TYPE}\n"@ -OutputAssembly ${psString(this.dll)} -OutputType Library`, 120_000);
+      if (existsSync(this.exe)) return;
+      const csc = cscPath();
+      if (!csc) throw new Error("The C# compiler (.NET Framework 4, csc.exe) isn't on this Windows, so the screen can't be used.");
+      const src = join(tmpdir(), `aatmiq-screen-${process.pid}.cs`);
+      await writeFile(src, HELPER_SOURCE);
+      const tmp = `${this.exe}.${process.pid}.tmp`;
+      try {
+        await runHelper(csc, ["/nologo", "/optimize", "/target:exe", "/platform:anycpu", "/r:System.Drawing.dll", `/out:${tmp}`, src], 120_000);
+        await rename(tmp, this.exe).catch(async () => {
+          // Another task compiled it at the same time: theirs is used.
+          if (!existsSync(this.exe)) throw new Error("Couldn't save the screen helper.");
+          await rm(tmp, { force: true });
+        });
+      } catch (e) {
+        throw new Error(`Couldn't build the screen helper: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        await rm(src, { force: true });
+      }
     })().catch((e) => {
       this.ready = null;
       throw e;
@@ -192,50 +276,56 @@ class WindowsDriver implements Driver {
     return this.ready;
   }
 
-  private async exec(script: string) {
+  private async exec(...args: (string | number)[]) {
     await this.prepare();
-    return this.ps(`${psPrelude(this.dll)}${script}`);
+    try {
+      return await runHelper(this.exe, args.map(String));
+    } catch (e) {
+      throw new Error(`The screen command failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  private pair(s: string) {
+    const [a, b] = s.split(/\s+/).map(Number);
+    return [a!, b!] as const;
   }
 
   async screen() {
-    const [w, h] = (await this.exec("$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; \"$($b.Width) $($b.Height)\"")).split(" ").map(Number);
-    return { width: w!, height: h! };
+    const [width, height] = this.pair(await this.exec("screen"));
+    return { width, height };
   }
   async screenshot(): Promise<Shot> {
-    const [w, h, b64] = (await this.exec(`${PS_SHOT}\nAatmiq-Shot ${MAX_SHOT_WIDTH} $${GRID ? "true" : "false"} $${COORDS === "normalized" ? "true" : "false"}`)).split(" ");
-    return { image: Buffer.from(b64 ?? "", "base64"), width: Number(w), height: Number(h) };
+    const file = join(tmpdir(), `aatmiq-shot-${process.pid}-${Date.now()}.jpg`);
+    try {
+      const [width, height] = this.pair(await this.exec("shot", MAX_SHOT_WIDTH, GRID ? 1 : 0, COORDS === "normalized" ? 1 : 0, file));
+      return { image: await readFile(file), width, height };
+    } finally {
+      await rm(file, { force: true });
+    }
   }
   async cursor() {
-    const [x, y] = (await this.exec('$p=[System.Windows.Forms.Cursor]::Position; "$($p.X) $($p.Y)"')).split(" ").map(Number);
-    return { x: x!, y: y! };
+    const [x, y] = this.pair(await this.exec("cursor"));
+    return { x, y };
   }
   async move(x: number, y: number) {
-    await this.exec(`[AatmiqInput]::SetCursorPos(${Math.round(x)}, ${Math.round(y)}) | Out-Null`);
+    await this.exec("move", Math.round(x), Math.round(y));
   }
   async click(x: number, y: number, button: "left" | "right" | "middle", count: number) {
-    const [down, up] = button === "right" ? [0x08, 0x10] : button === "middle" ? [0x20, 0x40] : [0x02, 0x04];
-    const one = `[AatmiqInput]::mouse_event(${down},0,0,0,[UIntPtr]::Zero); [AatmiqInput]::mouse_event(${up},0,0,0,[UIntPtr]::Zero)`;
-    await this.exec(`[AatmiqInput]::SetCursorPos(${Math.round(x)}, ${Math.round(y)}) | Out-Null; Start-Sleep -Milliseconds 60; ${Array(count).fill(one).join("; Start-Sleep -Milliseconds 80; ")}`);
+    await this.exec("click", Math.round(x), Math.round(y), button, count);
   }
   async drag(x1: number, y1: number, x2: number, y2: number) {
-    const steps = 12;
-    const moves = Array.from({ length: steps }, (_, i) => `[AatmiqInput]::SetCursorPos(${Math.round(x1 + ((x2 - x1) * (i + 1)) / steps)}, ${Math.round(y1 + ((y2 - y1) * (i + 1)) / steps)}) | Out-Null; Start-Sleep -Milliseconds 20`).join("; ");
-    await this.exec(`[AatmiqInput]::SetCursorPos(${Math.round(x1)}, ${Math.round(y1)}) | Out-Null; [AatmiqInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero); ${moves}; [AatmiqInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero)`);
+    await this.exec("drag", Math.round(x1), Math.round(y1), Math.round(x2), Math.round(y2));
   }
   async type(text: string) {
-    await this.exec(`[System.Windows.Forms.SendKeys]::SendWait(${psString(sendKeysText(text))})`);
+    await this.exec("type", Buffer.from(text, "utf8").toString("base64"));
   }
   async key(keys: string) {
-    const vks = windowsKeys(keys);
-    const down = vks.map((k) => `[AatmiqInput]::keybd_event(${k},0,0,[UIntPtr]::Zero)`);
-    const up = [...vks].reverse().map((k) => `[AatmiqInput]::keybd_event(${k},0,2,[UIntPtr]::Zero)`);
-    await this.exec([...down, "Start-Sleep -Milliseconds 40", ...up].join("; "));
+    await this.exec("key", windowsKeys(keys).join(","));
   }
   async scroll(x: number, y: number, amount: number) {
-    await this.exec(`[AatmiqInput]::SetCursorPos(${Math.round(x)}, ${Math.round(y)}) | Out-Null; [AatmiqInput]::mouse_event(0x0800,0,0,${Math.round(-amount * 120)},[UIntPtr]::Zero)`);
+    await this.exec("scroll", Math.round(x), Math.round(y), Math.round(amount));
   }
   close() {}
-
 }
 
 /* ───────────── Linux (X11) ───────────── */

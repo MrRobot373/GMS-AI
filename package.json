@@ -22,7 +22,8 @@
       "uuid@<11.1.1": "11.1.1"
     },
     "patchedDependencies": {
-      "@deepseek-ai/dsh-subprocess-local@0.2.0-rc.2": "patches/@deepseek-ai__dsh-subprocess-local@0.2.0-rc.2.patch"
+      "@deepseek-ai/dsh-subprocess-local@0.2.0-rc.2": "patches/@deepseek-ai__dsh-subprocess-local@0.2.0-rc.2.patch",
+      "@deepseek-ai/dsh@0.2.0-rc.2": "patches/@deepseek-ai__dsh@0.2.0-rc.2.patch"
     }
   },
   "devDependencies": {

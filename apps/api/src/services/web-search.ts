@@ -600,12 +600,19 @@ export async function webSearch(deps: WebSearchDeps, query: string, opts: { max?
   const key = [deps.provider, deps.url ?? "", max, maxChars, q.toLowerCase()].join("\n");
   const hit = opts.cache === false ? undefined : cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.results.map((r) => ({ ...r }));
-  let results = clean(await PROVIDERS[deps.provider!](deps, q, max), max, maxChars);
+  // A connection that failed (a reused connection the server had closed, a network blip) is tried once more.
+  const ask = () =>
+    PROVIDERS[deps.provider!](deps, q, max).catch(async (e) => {
+      if (!(e instanceof WebSearchError) || e.kind !== "unavailable") throw e;
+      await new Promise((r) => setTimeout(r, deps.retryDelayMs ?? 1200));
+      return PROVIDERS[deps.provider!](deps, q, max);
+    });
+  let results = clean(await ask(), max, maxChars);
   // Nothing found is often the search engine's moment (its sources timed out or limited it): asked once more, and an
   // empty answer is never kept, so the same question isn't stuck on "no results".
   if (!results.length) {
     await new Promise((r) => setTimeout(r, deps.retryDelayMs ?? 1200));
-    results = clean(await PROVIDERS[deps.provider!](deps, q, max), max, maxChars);
+    results = clean(await ask(), max, maxChars);
     if (!results.length) return [];
   }
   cache.delete(key);
@@ -985,12 +992,22 @@ export function clearFetchCache() {
  * on, `chars` at a time. Public addresses only, each redirect checked; at most 1.5 MB of a page or
  * 10 MB of a PDF (60 pages), 30 seconds. A page read in the last 10 minutes isn't downloaded again.
  */
+/** Errors that mean the connection never opened (not a page that answered with an error). */
+const CONNECT_FAILED = /(ETIMEDOUT|ECONNRESET|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|socket hang up)/;
+
 export async function fetchPage(deps: WebSearchDeps, href: string, opts: { offset?: number; chars?: number } = {}): Promise<FetchedPage> {
   const key = safeUrl(href.trim())?.href;
   if (!key) throw new PageRefused("not an http(s) link");
   let hit = fetched.get(key);
   if (!hit || Date.now() - hit.at > FETCH_CACHE_MS) {
-    const page = await loadPage(deps, key, { maxChars: FETCH_MAX_CHARS, timeoutMs: FETCH_TIMEOUT_MS, pdfMaxBytes: FETCH_PDF_MAX_BYTES, pdfMaxPages: 60, anyText: true });
+    const load = () => loadPage(deps, key, { maxChars: FETCH_MAX_CHARS, timeoutMs: FETCH_TIMEOUT_MS, pdfMaxBytes: FETCH_PDF_MAX_BYTES, pdfMaxPages: 60, anyText: true });
+    // A connection that didn't open (a moment's network trouble, one of a site's addresses down) is tried once more:
+    // the same pages load a minute later, and an agent otherwise gives up on a source it needs.
+    const page = await load().catch(async (e) => {
+      if (!(e instanceof Error) || !CONNECT_FAILED.test(e.message)) throw e;
+      await new Promise((r) => setTimeout(r, deps.retryDelayMs ?? 1200));
+      return load();
+    });
     hit = { at: Date.now(), page };
     fetched.delete(key);
     fetched.set(key, hit);

@@ -480,7 +480,10 @@ describe("step results", () => {
   });
 });
 
-describe("network settings for tasks", () => {
+// These run the agent as Linux does (bash, Unix users and groups, containers); Windows runs PowerShell and has no task users.
+const linuxOnly = process.platform === "win32" ? describe.skip : describe;
+
+linuxOnly("network settings for tasks", () => {
   const saved = { ...process.env };
   afterAll(() => {
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
@@ -523,7 +526,7 @@ describe("network settings for tasks", () => {
   });
 });
 
-describe("container mode", () => {
+linuxOnly("container mode", () => {
   const opts: ContainerOptions = {
     image: "aatmiq-api:1.2",
     network: "aatmiq_tasks",
@@ -675,7 +678,7 @@ describe("shell path", () => {
   });
 });
 
-describe("DeepSeek Harness engine", () => {
+linuxOnly("DeepSeek Harness engine", () => {
   it("runs a command in the task folder and reports each step", async () => {
     const { events, spec: s } = await runTurn("run: echo hello-aatmiq > note.txt && cat note.txt");
     const call = events.find((e) => e.type === "tool_call");

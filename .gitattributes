@@ -1,0 +1,2 @@
+# Dependency patches apply to files with Unix line endings: keep them that way on Windows checkouts too.
+patches/*.patch text eol=lf

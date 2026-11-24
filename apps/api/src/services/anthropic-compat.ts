@@ -107,7 +107,7 @@ export function toOpenAi(req: AnthropicRequest): Record<string, unknown> {
   const choice = req.tool_choice?.type;
   const body: Record<string, unknown> = {
     messages,
-    ...(req.max_tokens ? { max_tokens: req.max_tokens } : {}),
+    ...(req.max_tokens ? { max_tokens: Math.min(req.max_tokens, 16384) } : {}),
     ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
     ...(req.top_p !== undefined ? { top_p: req.top_p } : {}),
     ...(req.stop_sequences?.length ? { stop: req.stop_sequences } : {}),

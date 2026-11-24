@@ -1,0 +1,23 @@
+diff --git a/lib/bin.js b/lib/bin.js
+index 491719e55fa6b69a816412df4a50c62f93a5a049..25e37249e0c1784cbe3808e0bdbda6cbc3bbdc7b 100644
+--- a/lib/bin.js
++++ b/lib/bin.js
+@@ -249,6 +249,17 @@ async function runCli(options = {}) {
+ 		default: throw new Error(`dsh: unhandled invocation mode ${JSON.stringify(invocation)}`);
+ 	}
+ }
+-if (import.meta.main) await runCli();
++// Aatmiq: import.meta.main only exists from Node 22.18 / 24.2; on older Node the CLI exited at once without running.
++// The script's own path in argv says the same thing on every Node.
++const ranDirectly = import.meta.main ?? (await (async () => {
++	try {
++		const { realpathSync } = await import("node:fs");
++		const { fileURLToPath } = await import("node:url");
++		return process.argv[1] !== void 0 && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
++	} catch {
++		return false;
++	}
++})());
++if (ranDirectly) await runCli();
+ //#endregion
+ export { runCli };

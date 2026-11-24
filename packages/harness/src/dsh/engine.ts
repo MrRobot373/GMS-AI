@@ -336,10 +336,9 @@ async function runtimeEnv(spec: TaskSpec): Promise<NodeJS.ProcessEnv> {
           SystemRoot: systemRoot,
           ComSpec: join(systemRoot, "System32", "cmd.exe"),
           PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD",
-          // Commands run under the plain process-tree runner: DSH's Windows Job runner can exit before reporting on some
-          // setups, and then every command fails ("Windows Job runner exited … before proving its managed range empty").
-          // AATMIQ_WINDOWS_JOB=on goes back to it (see patches/ for the switch).
-          ...(process.env.AATMIQ_WINDOWS_JOB === "on" ? {} : { DSH_SUBPROCESS_CONTAINMENT: "fallback" }),
+          // Commands run in a Windows Job (everything a command starts is stopped with it). On Node before 22.18 the Job
+          // runner never started (patches/ fixes that); AATMIQ_WINDOWS_JOB=off uses the plain process-tree runner instead.
+          ...(process.env.AATMIQ_WINDOWS_JOB === "off" ? { DSH_SUBPROCESS_CONTAINMENT: "fallback" } : {}),
           ...(process.env.LOCALAPPDATA ? { LOCALAPPDATA: process.env.LOCALAPPDATA } : {}),
         }
       : {}),
