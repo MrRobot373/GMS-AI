@@ -209,7 +209,11 @@ describe("web search providers", () => {
     expect(r[1]!.snippet.length).toBeLessThanOrEqual(600);
     // A server under a path keeps its path.
     await webSearch(deps("searxng", { url: "http://searx.test/searxng", key: null }), "ohm");
-    expect(web.calls[1]!.url.pathname).toBe("/searxng/search");
+    expect(web.calls[1]!.url.pathname).toBe("/searxng/search");    // No key: no header. A key is for a gate in front of SearXNG, sent as x-api-key (never in the address).
+    expect(web.calls[0]!.headers.get("x-api-key")).toBeNull();
+    await webSearch(deps("searxng", { url: "http://searx.test/", key: "gate-key" }), "ohm gate");
+    expect(web.calls[2]!.headers.get("x-api-key")).toBe("gate-key");
+    expect(web.calls[2]!.url.href).not.toContain("gate-key");
   });
 
   it("Ollama: POST with the key as a bearer token; its page text is kept and trimmed", async () => {
@@ -758,7 +762,7 @@ d("web search settings and the Test button", () => {
     expect(searx.json).toMatchObject({ ok: true, results: 2 });
   });
 
-  it("SearXNG: the URL set here, else Work AI's; a key can't be saved for it", async () => {
+  it("SearXNG: the URL set here, else Work AI's; an optional key for a gate in front of it", async () => {
     await h.db.update(organization).set({ workSettings: { searxngUrl: "http://searx.test" } });
     await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "searxng", webUrl: "" });
     expect((await gem()).web).toEqual({ provider: "searxng", providerFrom: "settings", url: "http://searx.test", urlFrom: "work", key: "none", ready: true });
@@ -766,8 +770,12 @@ d("web search settings and the Test button", () => {
     await h.call(h.owner, "PUT", "/api/admin/gem", { webUrl: "http://searx.test/own" });
     expect((await gem()).web).toMatchObject({ url: "http://searx.test/own", urlFrom: "settings" });
     expect((await gem()).webUrl).toBe("http://searx.test/own");
-    const bad = await h.call(h.owner, "PUT", "/api/admin/gem", { webKey: "pointless" });
-    expect(bad.status).toBe(400);
+    // A key for a gate in front of SearXNG: stored encrypted, never shown, removed with "".
+    expect((await h.call(h.owner, "PUT", "/api/admin/gem", { webKey: "gate-key-123" })).status).toBe(200);
+    expect((await gem()).web).toMatchObject({ provider: "searxng", key: "settings" });
+    expect(JSON.stringify(await gem())).not.toContain("gate-key-123");
+    await h.call(h.owner, "PUT", "/api/admin/gem", { webKey: "" });
+    expect((await gem()).web).toMatchObject({ key: "none" });
     expect((await h.call(h.owner, "PUT", "/api/admin/gem", { webUrl: "ftp://searx.test" })).status).toBe(400);
     expect((await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "bing" })).status).toBe(400);
   });

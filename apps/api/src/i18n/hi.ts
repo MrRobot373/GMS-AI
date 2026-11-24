@@ -422,7 +422,7 @@ export const HI: Record<string, string> = {
   "The search provider answered {status}.": "खोज प्रोवाइडर ने {status} जवाब दिया।",
   "The search provider's answer couldn't be read.": "खोज प्रोवाइडर का जवाब पढ़ा नहीं जा सका।",
   "Web search isn't set up. An admin can choose a provider in Admin → Settings → GEM AI.": "वेब खोज सेट नहीं है। एडमिन, एडमिन → सेटिंग → GEM AI में प्रोवाइडर चुन सकते हैं।",
-  "Choose Ollama, Brave, Tavily or Serper before adding a key.": "कुंजी जोड़ने से पहले Ollama, Brave, Tavily या Serper चुनें।",
+  "Choose a search provider before adding a key.": "कुंजी जोड़ने से पहले कोई सर्च प्रोवाइडर चुनें।",
   "Choose a provider first.": "पहले कोई प्रोवाइडर चुनें।",
   "Add your SearXNG server's address first, then test it.": "पहले अपने SearXNG सर्वर का पता जोड़ें, फिर उसे जाँचें।",
   "Add the API key for {name} first, then test it.": "पहले {name} की API कुंजी जोड़ें, फिर उसे जाँचें।",

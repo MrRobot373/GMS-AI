@@ -267,6 +267,13 @@
       "when": 1795464056918,
       "tag": "0037_conversation_log",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795523323646,
+      "tag": "0038_message_reasoning",
+      "breakpoints": true
     }
   ]
 }

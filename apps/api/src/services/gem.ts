@@ -109,7 +109,8 @@ export async function webSearchSetup(ctx: AppContext, provider?: WebProvider): P
   const [url, urlFrom] = g.webUrl ? [g.webUrl, "settings" as const] : env.url ? [env.url, "environment" as const] : work ? [work, "work" as const] : [null, "none" as const];
   let key: string | null = null;
   let keyFrom: WebSearchSetup["keyFrom"] = "none";
-  if (p && p !== "searxng") {
+  // SearXNG needs no key, but one behind a gate that checks x-api-key (a Caddy or nginx in front of it) gets one.
+  if (p) {
     const enc = storedWebKeys(g)[p];
     if (enc) {
       try {

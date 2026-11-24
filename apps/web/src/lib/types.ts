@@ -211,7 +211,9 @@ export interface ChatMessageRow {
   /** The answer searched the web (its sources are among the citations). */
   web?: MessageWeb | null;
   /** Tools Chat AI used for this answer, and the files Python made in the chat's folder. */
-  steps?: { tool: string; detail: string; outcome?: string }[] | null;
+  steps?: { tool: string; detail: string; outcome?: string; why?: string }[] | null;
+  /** The model's thinking before this answer. */
+  reasoning?: string | null;
   files?: { path: string; size: number }[] | null;
   createdAt: string;
 }

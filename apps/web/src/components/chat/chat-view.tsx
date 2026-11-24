@@ -57,7 +57,7 @@ import { chatTitle, greeting, routingReason, timeAgo, TIER_NAMES } from "@/lib/f
 import type { ChatCalculation } from "./calculation-card";
 import type { Routing } from "@aatmiq/shared";
 import type { AvailableModel, ChatDetail, Citation, DocumentRow, MessageWeb, QuotaStatus } from "@/lib/types";
-import { ApprovalCard, ChatFiles, SourcesRow, ToolSteps, useSourceDialog, WebSearchLine, type PendingApproval, type ToolStep } from "./citations";
+import { ApprovalCard, ChatFiles, SourcesRow, ThinkingBlock, ToolSteps, UncheckedNote, useSourceDialog, WebSearchLine, webCheck, type PendingApproval, type ToolStep } from "./citations";
 import { CalculationCard } from "./calculation-card";
 import { Composer, type Attachment, type ComposerHandle } from "./composer";
 import { Markdown } from "./markdown";
@@ -85,6 +85,8 @@ interface UiMessage {
   web?: (MessageWeb & { searching?: boolean }) | null;
   /** Tools the model used for this answer, in order. */
   steps?: ToolStep[];
+  /** The model's thinking before the answer. */
+  reasoning?: string;
   /** Files Python made in the chat's folder for this answer. */
   files?: { path: string; size: number }[];
   /** A connected app's action waiting for the person's OK (docs/09-connectors.md, "In chat"). */
@@ -222,6 +224,7 @@ export function ChatView({
           calculation: m.calculation ?? null,
           web: m.web ?? null,
           steps: m.steps ?? undefined,
+          reasoning: m.reasoning ?? undefined,
           files: m.files ?? undefined,
         })),
     );
@@ -426,6 +429,8 @@ export function ChatView({
               const cites = [...(m.citations ?? []), ...((ev.data.citations ?? []) as Citation[])];
               return { ...m, web: { queries: ev.data.queries ?? [], provider: ev.data.provider ?? null, note: ev.data.note ?? null }, citations: cites.length ? cites : null };
             });
+          } else if (ev.event === "reasoning") {
+            patchAsst((m) => ({ ...m, reasoning: (m.reasoning ?? "") + String(ev.data.text ?? "") }));
           } else if (ev.event === "step") {
             const step = ev.data as ToolStep;
             patchAsst((m) => {
@@ -1064,6 +1069,7 @@ function MessageBlock({
             {t("Deep research takes a few minutes. You can leave this page: the report will be here.")}
           </p>
         )}
+        {!!m.reasoning?.trim() && <ThinkingBlock text={m.reasoning} live={!!m.streaming && !m.content} />}
         {!!m.steps?.length && <ToolSteps steps={m.steps} />}
         {m.approval && m.streaming && chatId && <ApprovalCard chatId={chatId} approval={m.approval} />}
         {!!m.files?.length && chatId && <ChatFiles chatId={chatId} files={m.files} />}
@@ -1071,6 +1077,10 @@ function MessageBlock({
         {m.content ? <Markdown content={m.content} citations={m.citations} onCite={onCite} plainLinks={!!m.web || !!m.steps?.some((x) => x.tool === "web_search" || x.tool === "read_page")} /> : null}
         {m.streaming && m.content && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] animate-caret bg-fg" />}
         {!m.streaming && m.citations && m.citations.length > 0 && <SourcesRow citations={m.citations} onOpen={onCite} />}
+        {!m.streaming && !!m.content && (() => {
+          const check = webCheck(m.steps);
+          return check ? <UncheckedNote kind={check} /> : null;
+        })()}
         {m.error && (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-danger">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />

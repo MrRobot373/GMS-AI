@@ -57,8 +57,8 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
     let webKey: Pick<GemSettingsStored, "webKeysEnc" | "webKeyEnc" | "webKeyProvider"> | null = null;
     if (body.webKey !== undefined) {
       const p = body.webProvider ?? (await webSearchSetup(ctx)).provider;
-      const paid = p && p !== "off" && p !== "searxng" ? p : null;
-      if (body.webKey && !paid) throw badRequest("Choose Ollama, Brave, Tavily or Serper before adding a key.");
+      const paid = p && p !== "off" ? p : null;
+      if (body.webKey && !paid) throw badRequest("Choose a search provider before adding a key.");
       const keys = storedWebKeys(prev);
       if (paid && body.webKey) keys[paid] = ctx.box.encrypt(body.webKey);
       else if (paid) delete keys[paid];
@@ -114,7 +114,7 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
     const deps: WebSearchDeps = {
       provider,
       url: provider === "searxng" ? (b.url ?? saved.url) : null,
-      key: provider && provider !== "searxng" ? b.key || saved.key : null,
+      key: provider ? b.key || saved.key : null,
       fetch: ctx.fetch,
     };
     const locale = localeOf(req);

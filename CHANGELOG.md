@@ -9,6 +9,15 @@ without one.
 
 ## Unreleased
 
+- **Chat shows its thinking and its tool calls.** The model's thinking streams into a folded "Thinking" block above the
+  answer and is kept with it (migration `0038`); a failed step says why; a step over the limit says so.
+- **Chat searches less and says what it couldn't verify.** At most 6 searches and 8 page reads per answer (24 and 40 in
+  deep research); a figure from the web must come from a page it read, and when no page was read, or search failed, a
+  note under the answer says the figures aren't verified. Work AI, Super AI and Agent AI may name only sources they read,
+  and must say when figures come from memory (Agent AI had labelled figures with a "spec sheet" it never opened).
+- **SearXNG behind a gate:** an optional API key (Admin → Settings → GEM AI, or `WEB_SEARCH_KEY`) is sent as `x-api-key`,
+  so a gated SearXNG needs no local proxy.
+
 - **Task files open beside the conversation** (Work AI, Super AI, Agent AI, Computer AI): tabs for open files, the folder
   tree with a filter, code with line numbers and colours, Markdown formatted or raw, a web page the agent made running in
   a sealed frame (its scripts work; it can't reach Aatmiq or your sign-in), CSV as a table, images and PDFs. It can widen

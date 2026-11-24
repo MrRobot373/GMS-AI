@@ -19,12 +19,14 @@ import { quotaFor, quotaMessage } from "../services/quota";
 import { localeOf, msg, tr } from "../i18n";
 import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
 import { awaitApproval, callConnectorTool, chatConnectorTools, decideApproval, waitingApprovals } from "../services/chat-connectors";
-import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS, RESEARCH_CALLS_PER_ROUND, RESEARCH_ROUNDS, researchPrompt, runChatTool, type ChatToolSet } from "../services/chat-tools";
+import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_PAGE_READS, MAX_TOOL_ROUNDS, MAX_WEB_SEARCHES, RESEARCH_CALLS_PER_ROUND, RESEARCH_PAGE_READS, RESEARCH_ROUNDS, RESEARCH_WEB_SEARCHES, researchPrompt, runChatTool, type ChatToolSet } from "../services/chat-tools";
 import { getGemSettings, webSearchDeps } from "../services/gem";
 import { MAX_UPLOAD_BYTES } from "./documents";
 import { asData, chatWebSearch, domainOf, dropModelImages, dropUnknownCitations, queryModel } from "../services/chat-web";
 import { webSearchReady, type WebSearchDeps } from "../services/web-search";
 
+/** The thinking kept with an answer (a long one is cut; the answer is what matters). */
+const MAX_REASONING_CHARS = 30_000;
 const MAX_HISTORY = 40;
 
 async function loadOwnChat(db: DB, u: SessionUser, chatId: string) {
@@ -689,6 +691,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const pending: ChatMessage[] = [];
     let thought = false;
     const maxRounds = research ? RESEARCH_ROUNDS : MAX_TOOL_ROUNDS;
+    // Searches and page reads for this answer, against their limits.
+    const used = { web_search: 0, read_page: 0 };
+    const limits = { web_search: research ? RESEARCH_WEB_SEARCHES : MAX_WEB_SEARCHES, read_page: research ? RESEARCH_PAGE_READS : MAX_PAGE_READS };
+    let reasoning = "";
     const maxCalls = research ? RESEARCH_CALLS_PER_ROUND : MAX_CALLS_PER_ROUND;
     if (research) researching.set(c.id, Date.now());
     // Every request is kept inside the model's window: a long chat drops its oldest turns, large tool results are shortened.
@@ -709,9 +715,14 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
             text += ev.text;
             send("delta", { text: ev.text });
           } else if (ev.type === "reasoning") {
-            // Thinking isn't shown, but people see that the model is working on it.
+            // The model's thinking is shown as it comes, folded above the answer, and kept with it.
             if (!thought) send("thinking", {});
             thought = true;
+            if (reasoning.length < MAX_REASONING_CHARS) {
+              const piece = ev.text.slice(0, MAX_REASONING_CHARS - reasoning.length);
+              reasoning += piece;
+              send("reasoning", { text: piece });
+            }
           } else if (ev.type === "tool_calls") {
             calls = ev.calls;
           } else {
@@ -774,6 +785,17 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
           await audit(ctx, { actor: u, action: "chat.connector_used", workspaceId: c.workspaceId, targetType: "connector", targetId: app.connector.id, meta: { chatId: c.id, tool: app.tool.name, decision: decided, ok: result.ok } });
           pending.push({ role: "tool", tool_call_id: callId, content: asData(result.text) });
           continue;
+        }
+        if (call.name === "web_search" || call.name === "read_page") {
+          if (used[call.name] >= limits[call.name]) {
+            const what = call.name === "web_search" ? "searches" : "page reads";
+            const step = { tool: call.name, detail: typeof args.query === "string" ? args.query : typeof args.url === "string" ? domainOf(args.url) : "", outcome: "limit" };
+            send("step", { ...step, running: false });
+            steps.push(step);
+            pending.push({ role: "tool", tool_call_id: callId, content: `Not run: this answer already used its ${limits[call.name]} ${what}. Answer now from what you found, and say which facts you couldn't verify.` });
+            continue;
+          }
+          used[call.name]++;
         }
         send("step", { tool: call.name, detail: typeof args.query === "string" ? args.query : typeof args.url === "string" ? domainOf(args.url) : "", running: true });
         const before = citations.length;
@@ -851,6 +873,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         web,
         steps: steps.length ? steps : null,
         files: madeFiles.size ? [...madeFiles.values()] : null,
+        reasoning: reasoning.trim() ? reasoning : null,
       })
       .returning({ id: message.id });
     await db.update(chat).set({ leafMessageId: assistant!.id }).where(eq(chat.id, c.id));

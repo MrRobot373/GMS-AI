@@ -181,10 +181,10 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
           </div>
         </Field>
       )}
-      {p !== "off" && p !== "searxng" && (
+      {p !== "off" && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-[12.5px] font-medium text-fg-muted">
-            {t("API key")}
+            {p === "searxng" ? t("API key (optional)") : t("API key")}
             <Badge tone={g.web.key === "none" ? "neutral" : "success"}>{g.web.key === "settings" ? t("Stored encrypted") : g.web.key === "environment" ? t("From WEB_SEARCH_KEY") : t("Not set")}</Badge>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -204,7 +204,11 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
               </Button>
             )}
           </div>
-          <p className="text-[12px] text-fg-subtle">{t("Each provider keeps its own key, and a key is only ever sent to its provider.")}</p>
+          <p className="text-[12px] text-fg-subtle">
+            {p === "searxng"
+              ? t("Only for a SearXNG behind a gate that checks an x-api-key header. Leave it empty for a plain SearXNG.")
+              : t("Each provider keeps its own key, and a key is only ever sent to its provider.")}
+          </p>
         </div>
       )}
       {p !== "off" && (

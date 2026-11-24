@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Calculator, Download, FileText, FolderSearch, Globe, MessageSquare, Plug, Terminal, TriangleAlert, Workflow, Wrench } from "lucide-react";
+import { ArrowUpRight, Brain, Calculator, ChevronDown, ChevronRight, Download, FileText, FolderSearch, Globe, MessageSquare, Plug, ShieldAlert, Terminal, TriangleAlert, Workflow, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FileIcon } from "@/components/documents/use-documents";
@@ -150,9 +150,57 @@ export function SourcesRow({ citations, onOpen }: { citations: Citation[]; onOpe
 export interface ToolStep {
   tool: string;
   detail: string;
-  /** A number of results, "0", "failed", "off" or "empty". */
+  /** A number of results, "0", "failed", "off", "empty" or "limit". */
   outcome?: string;
+  /** Why it didn't work. */
+  why?: string;
   running?: boolean;
+}
+
+/** The model's thinking: open while it thinks, folded once the answer starts (click to read it). */
+export function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
+  const t = useT();
+  const [open, setOpen] = useState<boolean | null>(null);
+  const shown = open ?? live;
+  return (
+    <div className="mb-3" data-testid="thinking-block">
+      <button type="button" onClick={() => setOpen(!shown)} className="flex items-center gap-1.5 text-[12.5px] text-fg-subtle hover:text-fg-muted" aria-expanded={shown}>
+        <Brain className={cn("size-3.5", live && "animate-pulse")} />
+        {live ? t("Thinking") : t("Thought process")}
+        {shown ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+      </button>
+      {shown && (
+        <div className="mt-1.5 max-h-72 overflow-y-auto border-l-2 border-border pl-3 text-[12.5px] leading-relaxed whitespace-pre-wrap text-fg-subtle italic">
+          {live ? text.slice(-4000) : text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Whether an answer that used the web was checked against a page: no page read (or none worked) means its figures
+ * come from search snippets or the model's memory, and the person is told so.
+ */
+export function webCheck(steps: ToolStep[] | undefined): "unchecked" | "search-failed" | null {
+  const web = (steps ?? []).filter((x) => x.tool === "web_search" || x.tool === "read_page");
+  if (!web.length) return null;
+  const searched = web.filter((x) => x.tool === "web_search");
+  if (searched.length && searched.every((x) => x.outcome === "failed" || x.outcome === "off" || x.outcome === "limit")) return "search-failed";
+  const read = web.some((x) => x.tool === "read_page" && !x.running && !["failed", "off", "empty", "limit"].includes(x.outcome ?? ""));
+  return read ? null : "unchecked";
+}
+
+export function UncheckedNote({ kind }: { kind: "unchecked" | "search-failed" }) {
+  const t = useT();
+  return (
+    <p className="mt-3 flex items-start gap-1.5 rounded-md bg-warning-soft px-2.5 py-1.5 text-[12.5px] text-warning" data-testid="unchecked-note">
+      <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+      {kind === "search-failed"
+        ? t("Web search didn't work for this answer, so it comes from the model's own knowledge. Check figures before you rely on them.")
+        : t("No web page was read for this answer: figures come from search snippets or the model's memory and aren't verified.")}
+    </p>
+  );
 }
 
 /** The steps an answer took: searches, pages read, documents searched, calculators run. */
@@ -165,10 +213,18 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
       case "web_search":
         return {
           icon: Globe,
-          label: x.running ? t("Searching the web") : n !== null ? t.n(n, "Searched the web · {n} result", "Searched the web · {n} results") : failed ? t("Web search didn't work") : t("Searched the web"),
+          label: x.running
+            ? t("Searching the web")
+            : x.outcome === "limit"
+              ? t("Search limit reached, not searched")
+              : n !== null
+                ? t.n(n, "Searched the web · {n} result", "Searched the web · {n} results")
+                : failed
+                  ? t("Web search didn't work")
+                  : t("Searched the web"),
         };
       case "read_page":
-        return { icon: FileText, label: x.running ? t("Reading") : failed ? t("Couldn't read") : t("Read") };
+        return { icon: FileText, label: x.running ? t("Reading") : x.outcome === "limit" ? t("Page limit reached, not read") : failed ? t("Couldn't read") : t("Read") };
       case "search_documents":
         return {
           icon: FolderSearch,
@@ -212,15 +268,19 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
     <ol className="mb-3 space-y-1" data-testid="tool-steps">
       {steps.map((x, i) => {
         const { icon: Icon, label } = line(x);
+        const bad = !x.running && ["failed", "off", "empty", "limit", "0", "timeout"].includes(x.outcome ?? "");
         return (
-          <li key={i} className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-subtle" data-tool={x.tool}>
-            <Icon className={cn("size-3.5 shrink-0", x.running && "animate-pulse")} />
-            <span className="shrink-0">{label}</span>
-            {x.detail && (
-              <span className="truncate text-fg-muted" title={x.detail}>
-                {x.detail}
-              </span>
-            )}
+          <li key={i} className="text-[12.5px] text-fg-subtle" data-tool={x.tool}>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Icon className={cn("size-3.5 shrink-0", x.running && "animate-pulse", bad && "text-warning")} />
+              <span className={cn("shrink-0", bad && "text-warning")}>{label}</span>
+              {x.detail && (
+                <span className="truncate text-fg-muted" title={x.detail}>
+                  {x.detail}
+                </span>
+              )}
+            </div>
+            {x.why && <div className="pl-5 text-[11.5px] text-fg-subtle">{x.why}</div>}
           </li>
         );
       })}

@@ -483,6 +483,8 @@ export const message = pgTable(
     web: jsonb("web").$type<MessageWeb>(),
     /** Tools Chat AI used for this answer, in order (docs/15-gem-ai.md, "Tools in chat"). */
     steps: jsonb("steps").$type<MessageStep[]>(),
+    /** The model's thinking before this answer, shown folded above it (models that think out loud). */
+    reasoning: text("reasoning"),
     /** Files this answer made in the chat's folder (Python in chat), to download. */
     files: jsonb("files").$type<MessageFile[]>(),
     createdAt: createdAt(),
@@ -646,8 +648,10 @@ export interface Citation {
 export interface MessageStep {
   tool: string;
   detail: string;
-  /** A number of results, or "failed", "off", "empty"; for run_python the exit code. */
+  /** A number of results, or "failed", "off", "empty", "limit"; for run_python the exit code. */
   outcome?: string;
+  /** Why it didn't work, in words a person reads ("the search provider couldn't be reached"). */
+  why?: string;
 }
 
 export interface MessageFile {
@@ -1499,7 +1503,7 @@ export interface GemSettingsStored {
    * Each paid provider's API key, encrypted (WEB_SEARCH_KEY in the environment also works). A key
    * is only ever sent to its own provider; switching to another and back finds it again.
    */
-  webKeysEnc?: Partial<Record<"ollama" | "brave" | "tavily" | "serper", string>>;
+  webKeysEnc?: Partial<Record<"searxng" | "ollama" | "brave" | "tavily" | "serper", string>>;
   /** One key and the provider it's for, as saved before keys were kept per provider (still read; folded into webKeysEnc at the next key change). */
   webKeyEnc?: string | null;
   webKeyProvider?: "ollama" | "brave" | "tavily" | "serper" | null;

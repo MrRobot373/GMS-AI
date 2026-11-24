@@ -9,7 +9,7 @@ import { eq, message } from "@aatmiq/db";
 import { createServer, type Server } from "node:http";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { startHarness, type Harness } from "../test/gem-harness";
-import { MAX_TOOL_ROUNDS, RESEARCH_ROUNDS } from "./services/chat-tools";
+import { MAX_TOOL_ROUNDS, MAX_WEB_SEARCHES, RESEARCH_ROUNDS } from "./services/chat-tools";
 import { clearWebSearchCache } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
 
@@ -58,7 +58,7 @@ d("tools in chat", () => {
   let modelId = "";
 
   /** The scripted model: what it does next depends on the person's message and on the tool results so far. */
-  function next(r: Req): { text?: string; call?: { name: string; args: object } } {
+  function next(r: Req): { text?: string; reasoning?: string; call?: { name: string; args: object } } {
     const user = r.messages.filter((m) => m.role === "user").at(-1)?.content ?? "";
     const results = r.messages.filter((m) => m.role === "tool").map((m) => m.content);
     const cited = [...results.join("\n").matchAll(/^\[(\d+)\]/gm)].map((m) => Number(m[1]));
@@ -68,6 +68,7 @@ d("tools in chat", () => {
       if (r.tools.length) return { text: "" };
       return { text: "I searched once; nothing useful came back." };
     }
+    if (user.includes("THINK")) return { reasoning: "91 = 7 × 13, so it isn't prime.", text: "No: 91 = 7 × 13." };
     if (!r.tools.length) return { text: cited.length ? `From what I found: 570 kHz [${cited[0]}][${cited.at(-1)}]. Invented [99].` : "Answered without tools." };
     if (user.includes("LOOP")) return { call: { name: "web_search", args: { query: `again ${results.length}` } } };
     if (user.includes("WEB")) {
@@ -94,6 +95,7 @@ d("tools in chat", () => {
         seen.push(r);
         const out = next(r);
         res.writeHead(200, { "content-type": "text/event-stream" });
+        if (out.reasoning) for (const piece of out.reasoning.split(" ")) res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: `${piece} ` } }] })}\n\n`);
         if (out.text) res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: out.text } }] })}\n\n`);
         if (out.call)
           res.write(
@@ -212,8 +214,20 @@ d("tools in chat", () => {
     expect(r.sent.at(-1)!.messages.at(-1)!.content).toMatch(/wrote no answer/);
   });
 
+  it("shows the model's thinking as it comes and keeps it with the answer, apart from it", async () => {
+    const r = await ask("THINK: is 91 prime?");
+    const thought = r.ev.filter((e) => e.event === "reasoning").map((e) => e.data.text).join("");
+    expect(thought.trim()).toBe("91 = 7 × 13, so it isn't prime.");
+    expect(r.saved.reasoning?.trim()).toBe("91 = 7 × 13, so it isn't prime.");
+    expect(r.saved.content).toBe("No: 91 = 7 × 13.");
+  });
+
   it("stops after the last round and answers from what it has", async () => {
     const r = await ask("LOOP forever");
+    // Searches stop at the limit; the rest are marked, not run.
+    expect(web.searches).toHaveLength(MAX_WEB_SEARCHES);
+    const steps = r.saved.steps ?? [];
+    expect(steps.filter((x) => x.tool === "web_search" && x.outcome === "limit").length).toBe(MAX_TOOL_ROUNDS - MAX_WEB_SEARCHES);
     expect(r.sent).toHaveLength(MAX_TOOL_ROUNDS + 1);
     expect(r.sent.at(-1)!.tools).toEqual([]);
     expect(r.saved.content).toMatch(/^From what I found: 570 kHz \[1\]\[\d+\]\. Invented\.$/);

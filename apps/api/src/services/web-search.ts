@@ -555,7 +555,8 @@ const PROVIDERS: Record<WebProvider, (deps: WebSearchDeps, q: string, max: numbe
     u.searchParams.set("format", "json");
     u.searchParams.set("safesearch", "1");
     u.searchParams.set("language", "en");
-    const r = await call(deps, u, { headers: { accept: "application/json" } });
+    // A key, when set, is for a gate in front of SearXNG (it checks x-api-key); SearXNG itself ignores it.
+    const r = await call(deps, u, { headers: { accept: "application/json", ...(deps.key ? { "x-api-key": deps.key } : {}) } });
     return arr(r?.results).map((x) => ({ title: x.title, url: x.url, snippet: x.content }));
   },
   async ollama(deps, q, max) {
