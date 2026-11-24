@@ -170,7 +170,8 @@ export function useWorkInfo(workspaceId: string) {
 /** A task-folder path as the person thinks of it: relative to the task (or Code workspace) folder. */
 export function shortPath(p: unknown): string | undefined {
   if (typeof p !== "string" || !p) return undefined;
-  const m = /\/(?:files|workspaces\/[^/]+)\/(.+)$/.exec(p);
+  // Windows paths too (E:\…\files\report.md).
+  const m = /\/(?:files|workspaces\/[^/]+)\/(.+)$/.exec(p.replace(/\\/g, "/"));
   return m ? m[1] : p;
 }
 

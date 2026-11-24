@@ -56,6 +56,7 @@ import { cn } from "@/lib/cn";
 import { formatTokens, routingReason, timeAgo, TIER_NAMES } from "@/lib/format";
 import { ACTIVE, describeCall, type ChecklistItem, type TaskStatus, type WorkEvent, type WorkFile, type WorkTaskDetail, type WorkVerification } from "@/lib/work";
 import { FolderChanges } from "./folder-changes";
+import { FileViewer } from "./file-viewer";
 import { StatusPill, WorkComposer, type WorkComposerHandle } from "./parts";
 import { useT } from "@/i18n";
 
@@ -209,7 +210,23 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [panel, setPanel] = useState<"progress" | "files" | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [preview, setPreview] = useState<WorkFile | null>(null);
+  // Files open in the viewer (tabs), the one shown, and whether the viewer is widened over the conversation.
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [viewerWide, setViewerWide] = useState(false);
+  const openFile = (path: string) => {
+    setOpenFiles((o) => (o.includes(path) ? o : [...o, path]));
+    setActiveFile(path);
+  };
+  const closeFile = (path: string) => {
+    setOpenFiles((o) => {
+      const next = o.filter((p) => p !== path);
+      setActiveFile((a) => (a === path ? (next[Math.max(0, o.indexOf(path) - 1)] ?? null) : a));
+      if (!next.length) setViewerWide(false);
+      return next;
+    });
+  };
+  const viewing = openFiles.length > 0;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const afterRef = useRef(0);
   const loadedRef = useRef<string | null>(null);
@@ -557,7 +574,37 @@ export function TaskView({ taskId }: { taskId: string }) {
 
         {/* Side panel */}
         <AnimatePresence initial={false}>
-          {panel && (
+          {viewing && (
+            <motion.aside
+              key="viewer"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 12 }}
+              transition={{ duration: 0.18 }}
+              className={cn(
+                "absolute inset-y-0 right-0 z-30 flex flex-col border-l border-border bg-bg shadow-soft",
+                viewerWide ? "w-full" : "w-full lg:w-[min(62%,1100px)] xl:relative xl:shadow-none",
+              )}
+            >
+              <FileViewer
+                taskId={taskId}
+                files={files.data?.files}
+                open={openFiles}
+                active={activeFile}
+                onActivate={openFile}
+                onClose={closeFile}
+                onCloseAll={() => {
+                  setOpenFiles([]);
+                  setActiveFile(null);
+                  setViewerWide(false);
+                }}
+                expanded={viewerWide}
+                onToggleExpand={() => setViewerWide((w) => !w)}
+                onSave={proj?.canEdit ? (f) => saveFile.mutate(f.path) : undefined}
+              />
+            </motion.aside>
+          )}
+          {panel && !viewing && (
             <motion.aside
               initial={{ opacity: 0, x: 12 }}
               animate={{ opacity: 1, x: 0 }}
@@ -584,7 +631,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     taskId={taskId}
                     files={files.data?.files}
                     truncated={files.data?.truncated}
-                    onPreview={setPreview}
+                    onPreview={(f) => openFile(f.path)}
                     onUpload={own && !code && !workFolder ? () => uploadRef.current?.click() : undefined}
                     onSave={proj?.canEdit ? (f) => saveFile.mutate(f.path) : undefined}
                     projectName={proj?.name}
@@ -599,7 +646,6 @@ export function TaskView({ taskId }: { taskId: string }) {
         </AnimatePresence>
       </div>
 
-      <FilePreview taskId={taskId} file={preview} onClose={() => setPreview(null)} />
       <Dialog
         open={renaming}
         onOpenChange={setRenaming}
@@ -1141,48 +1187,3 @@ function LiveScreen({ taskId, status }: { taskId: string; status: string }) {
   );
 }
 
-const TEXT_EXT = /\.(txt|md|csv|json|log|py|js|ts|tsx|jsx|html|css|svg|ya?ml|sh|sql|xml|toml|ini|env|tsv)$/i;
-const IMG_EXT = /\.(png|jpe?g|gif|webp)$/i;
-
-function FilePreview({ taskId, file, onClose }: { taskId: string; file: WorkFile | null; onClose: () => void }) {
-  const t = useT();
-  const url = file ? `/api/work/tasks/${taskId}/files/content?path=${encodeURIComponent(file.path)}` : "";
-  const isText = !!file && TEXT_EXT.test(file.path) && file.size < 2_000_000;
-  const isImage = !!file && IMG_EXT.test(file.path);
-  const text = useQuery({
-    queryKey: ["work-file", taskId, file?.path, file?.modifiedAt],
-    queryFn: async () => (await fetch(url, { credentials: "include" })).text(),
-    enabled: isText,
-  });
-  return (
-    <Dialog
-      open={!!file}
-      onOpenChange={(o) => !o && onClose()}
-      title={
-        <span className="flex items-center gap-2">
-          <FileIcon name={file?.path ?? ""} className="size-4" /> {file?.path}
-        </span>
-      }
-      description={file ? t("{size} · changed {modifiedAt}", { size: formatBytes(file.size), modifiedAt: timeAgo(file.modifiedAt, t) }) : undefined}
-      className="max-w-3xl"
-      footer={
-        <a href={`${url}&download=1`} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-fg">
-          <Download className="size-3.5" /> {t("Download")}
-        </a>
-      }
-    >
-      {isText ? (
-        <pre className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-bg p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-fg" data-testid="file-preview">
-          {text.data ?? "Loading…"}
-        </pre>
-      ) : isImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={file?.path} className="max-h-[60vh] w-full rounded-lg border border-border object-contain" />
-      ) : (
-        <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-6 text-[13px] text-fg-subtle">
-          <Eye className="size-4" /> {t("No preview for this file type. Download it to open it.")}
-        </div>
-      )}
-    </Dialog>
-  );
-}

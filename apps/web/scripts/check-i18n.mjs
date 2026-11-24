@@ -8,10 +8,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
-const SRC = new URL("../src/", import.meta.url).pathname;
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
 function files(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -63,7 +64,7 @@ for (const file of files(SRC)) {
 
 // The connector catalog's texts (packages/shared/src/connectors.ts), shown with t(): its categories,
 // descriptions, setup steps and token labels.
-const shared = new URL("../../../packages/shared/src/connectors.ts", import.meta.url).pathname;
+const shared = fileURLToPath(new URL("../../../packages/shared/src/connectors.ts", import.meta.url));
 const csf = ts.createSourceFile(shared, readFileSync(shared, "utf8"), ts.ScriptTarget.Latest, true);
 csf.forEachChild(function visit(n) {
   const where = () => `packages/shared/src/connectors.ts:${csf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
@@ -76,7 +77,7 @@ csf.forEachChild(function visit(n) {
 
 // Auto's reasons (apps/api/src/services/router.ts), shown with routingReason(): the `reason:` texts
 // and the second part of each [pattern, reason] pair.
-const router = new URL("../../api/src/services/router.ts", import.meta.url).pathname;
+const router = fileURLToPath(new URL("../../api/src/services/router.ts", import.meta.url));
 const rsf = ts.createSourceFile(router, readFileSync(router, "utf8"), ts.ScriptTarget.Latest, true);
 rsf.forEachChild(function visit(n) {
   const where = () => `apps/api/src/services/router.ts:${rsf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;

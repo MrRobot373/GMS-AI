@@ -9,6 +9,25 @@ without one.
 
 ## Unreleased
 
+- **Task files open beside the conversation** (Work AI, Super AI, Agent AI, Computer AI): tabs for open files, the folder
+  tree with a filter, code with line numbers and colours, Markdown formatted or raw, a web page the agent made running in
+  a sealed frame (its scripts work; it can't reach Aatmiq or your sign-in), CSV as a table, images and PDFs. It can widen
+  over the conversation. Replaces the pop-up preview.
+- **Research budget for every engine.** Tasks were researching for an hour without building (the one missing figure,
+  pages that fail). The shared rules now say: usually under 10 searches, then build and mark gaps; and Work AI is told to
+  build after 15 web searches and page reads in a turn (and again at 30).
+- **Web search and page reading retry once** when the connection fails to open (a moment's network trouble).
+
+- **Work AI on Windows, the real cause:** the agent runtime starts its programs only when `import.meta.main` is true, and
+  Node before 22.18 doesn't have it. On Node 22.14 its command runner exited at once with code 0, so every command failed;
+  its CLI needed a wrapper (`AATMIQ_DSH_CLI`) for the same reason. Both are patched (`patches/`) to work on any Node 22,
+  so the Windows Job runner is the default again (`AATMIQ_WINDOWS_JOB=off` for the plain runner). Run `pnpm install`.
+- **Computer AI on Windows:** Windows Defender blocked the screenshot script as malicious ("Couldn't reach the screen").
+  The screen, mouse and keyboard now go through a small helper compiled once with Windows' own C# compiler; typing sends
+  Unicode characters, so any text works.
+- **Super AI on this setup:** the Claude Code SDK is loaded with `require`, its PowerShell tool is shown as a command, and
+  replies are capped at 16,384 tokens (the model server refused larger ones).
+
 - **Chat makes what you ask for.** Asked for a page, code, a document or a table, Chat researches briefly and writes it
   in the same answer (in full, or as a file with Python) instead of reporting progress and asking whether to go ahead; when
   its tool rounds run out it is told to deliver with what it has.
