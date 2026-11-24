@@ -231,7 +231,13 @@ export async function runChatTool(name: string, args: Record<string, unknown>, r
       return {
         text: asData(parts.join("\n\n")),
         files,
-        step: { tool: name, detail: purpose, outcome: out.timedOut ? "timeout" : out.exitCode === 0 ? `ok:${files.length}` : "failed" },
+        step: {
+          tool: name,
+          detail: purpose,
+          outcome: out.timedOut ? "timeout" : out.exitCode === 0 ? `ok:${files.length}` : "failed",
+          // The error's last line ("NameError: name 'x' is not defined") says why it stopped.
+          ...(out.exitCode !== 0 && !out.timedOut && out.stderr.trim() ? { why: out.stderr.trim().split("\n").at(-1)!.slice(0, 200) } : {}),
+        },
       };
     }
     if (name === "calculators_search" || name === "calculators_run") {

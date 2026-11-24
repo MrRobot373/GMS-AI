@@ -451,6 +451,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
         history.reduce((n, h) => n + estimateTokens(h.content), 0) + (chatDocIds.length || projectDocIds.length || body.documentIds?.length ? 3000 : 0) + (webDeps ? 5000 : 0),
       hasSources: Boolean(chatDocIds.length || projectDocIds.length || body.documentIds?.length),
       webSearch: !!webDeps,
+      research,
       follows: history.find((h) => h.role === "assistant")?.routing?.difficulty ?? null,
       unfinished: (() => {
         const last = history.find((h) => h.role === "assistant");

@@ -42,7 +42,13 @@ describe("rules", () => {
     expect(level("Write a Python function that finds the shortest path in a weighted graph and explain how fast it is")).toBe("hard");
     expect(level("Write a Python script that renames the files in a folder by date")).toBe("medium");
     // Summarizing what you paste is quick; "summarize the key points of…" asks for knowledge.
-    expect(level("Summarize the key points of a good customer service call")).not.toBe("easy");
+    expect(level("Summarize the key points of a good customer service call")).not.toBe("easy");    // Laws of science and maths aren't legal questions; legal ones still are.
+    for (const t of ["Explain Ohm's law in two sentences.", "What does Newton's second law say?", "Explain Kirchhoff's current law with an example", "State the second law of thermodynamics simply", "Explain the inverse-square law for light"])
+      expect(level(t), t).not.toBe("hard");
+    expect(level("Is it legal to record a phone call without consent in India?")).toBe("hard");
+    expect(level("What does the law say about overtime pay in Maharashtra?")).toBe("hard");
+    // Deep research is hard, whatever the words.
+    expect(judgeByRules({ text: "Write a short brief on IEC 61439 and what changed in 2020/2021", research: true }).difficulty).toBe("hard");
   });
 
   it("hard: code to debug, math, and analysis with several parts", () => {

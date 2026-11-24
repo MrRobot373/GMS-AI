@@ -44,6 +44,8 @@ export interface RuleInput {
   unfinished?: boolean;
   /** A Work AI or Code task: an agent that has to use tools well (web research, long jobs count as hard). */
   agent?: boolean;
+  /** Deep research in chat: many sources to read, compare and cite into a report. */
+  research?: boolean;
 }
 
 const SOCIAL =
@@ -59,12 +61,17 @@ const SIMPLE_LIST = /^(please\s+)?(list|name|give me|suggest|tell me)\s+(\d+|a f
 const WRITE_DOC =
   /\b(write|draft|prepare|compose|create|make)\b.{0,40}\b(e-?mail|mail|letter|application|memo|note|notice|announcement|description|post|agenda|minutes|report|proposal|summary|speech|invitation|message|faq|policy|sop|checklist|presentation|outline|cover letter|resume|cv)\b/i;
 const EXPLAIN = /^(please\s+|can you\s+)?(explain|describe|what (is|are) the differences?|how (does|do|can|should)|what should (i|we)|any tips|give me (some )?(tips|advice|ideas))\b/i;
+const LEGAL = /\b(law|laws|legal(ly)?|statut\w+|liabilit\w+|penalt(y|ies)|indemn\w+|compliance|jurisdiction|notice period)\b/i;
+/** Scientific and mathematical laws, taken out before looking for legal words. */
+const NOT_LEGAL =
+  /\b(ohm|newton|kirchhoff|faraday|lenz|coulomb|hooke|boyle|charles|gauss|amp[eè]re|snell|kepler|joule|fourier|fick|stefan|planck|moore|murphy|zipf|benford|beer[- ]lambert|biot[- ]savart|hess|henry|dalton|raoult|pascal|bernoulli|archimedes)['’]?s?\s+(current\s+|voltage\s+|first\s+|second\s+|third\s+)?laws?\b|\b(first|second|third|zeroth)\s+law\b|\blaws?\s+of\s+(physics|motion|thermodynamics|gravitation|gravity|conservation|reflection|refraction|large numbers|averages|diminishing returns|supply|demand|nature|sines|cosines|exponents|indices|logarithms|probability)\b|\b(inverse[- ]square|power|scaling|square[- ]cube|conservation|gas|rate|exponential)\s+laws?\b/gi;
+
 /** One of these is enough: the request needs careful, multi-step work. */
 const HARD_STRONG: [RegExp, string][] = [
   [/\bdesign (a|an|the|our|my)\b.{0,60}\b(system|schema|database|architecture|network|pipeline|api|data model|workflow)\b/i, "a system to design"],
   [/\b(plan|roadmap|strategy)\b.{0,80}\b(migrat\w*|rollout|roll out|launch|expansion|implementation|transition|restructur\w*)\b|\bmigrat(e|ion)\b.{0,60}\b(to|from|with)\b.{0,40}\b(downtime|staff|users|laptops|servers|cloud)\b/i, "a plan with many moving parts"],
   [/\b(analy[sz]e|investigate|figure out|work out|find out)\b.{0,20}\b(why|how come|causes?|what caused)\b|\broot cause\b|\blikely causes\b/i, "finding the causes of a problem"],
-  [/\b(law|laws|legal(ly)?|statut\w+|liabilit\w+|penalt(y|ies)|indemn\w+|compliance|jurisdiction|notice period)\b/i, "a question with legal consequences"],
+  [LEGAL, "a question with legal consequences"],
 ];
 const HARD_WORDS = [
   /\bstep[- ]by[- ]step\b/i,
@@ -146,10 +153,12 @@ export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null;
   const words = t.split(/\s+/).filter(Boolean).length;
   // "OK" after an answer that stopped halfway is a request to carry on, not a thank-you.
   if (SOCIAL.test(t) && !(input.unfinished && input.follows)) return { difficulty: "easy", reason: "a greeting or a thank-you" };
+  if (input.research) return { difficulty: "hard", reason: "deep research: many sources to read, compare and cite" };
 
   let found: { difficulty: Difficulty | null; reason: string };
   const code = CODE_BLOCK.test(t) || STACK_TRACE.test(t);
-  const strong = HARD_STRONG.find(([r]) => r.test(t));
+  // Laws of science and maths (Ohm's law, the laws of thermodynamics) aren't legal questions.
+  const strong = HARD_STRONG.find(([r]) => r.test(r === LEGAL ? t.replace(NOT_LEGAL, " ") : t));
   const hardHits = HARD_WORDS.filter((r) => r.test(t)).length;
   const questions = (t.match(/\?/g) ?? []).length;
   const listItems = (t.match(/^\s*(\d+[.)]|[-*•])\s+\S/gm) ?? []).length;
@@ -337,6 +346,8 @@ export interface ChooseInput {
   unfinished?: boolean;
   /** Images to look at: prefer models that read images. */
   needsVision?: boolean;
+  /** Deep research: Auto takes it as hard. */
+  research?: boolean;
   /** "auto" came from what was saved (a chat on Auto), not from the request: without Auto, use the default. */
   savedAuto?: boolean;
   /**
@@ -382,7 +393,7 @@ export async function chooseModel(db: DB, box: SecretBox, input: ChooseInput): P
   }
 
   const agent = input.section === "work" || input.section === "code";
-  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, webSearch: input.webSearch, follows: input.follows, unfinished: input.unfinished, agent });
+  let { difficulty, reason } = judgeByRules({ text: input.text, hasSources: input.hasSources, webSearch: input.webSearch, follows: input.follows, unfinished: input.unfinished, agent, research: input.research });
   let by: Routing["by"] = "rules";
   if (difficulty === null && settings.judge === "model") {
     const judge = await judgeModel(db, box, models, settings);
