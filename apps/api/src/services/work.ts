@@ -123,6 +123,8 @@ interface Live {
   verifyNudged?: boolean;
   /** Files the request names (report.md, sales.xlsx…): checked when the agent says it's done. */
   askedFiles?: string[];
+  /** Commands that failed before running (the machine's command runner is broken), in a row. */
+  brokenShell?: number;
   filesNudged?: boolean;
   /** The model's context window, in tokens: long requests and restart history are sized to it. */
   contextWindow?: number;
@@ -1510,6 +1512,15 @@ export class WorkRunner {
           ...(e.notRun ? { notRun: e.notRun } : {}),
         });
         this.pulse(taskId, "files", {});
+        // The machine can't run commands at all (not the command's own failure): after 3 in a row the task stops with
+        // the reason, instead of retrying for an hour.
+        if (e.isError && BROKEN_SHELL.test(e.text)) {
+          l.brokenShell = (l.brokenShell ?? 0) + 1;
+          if (l.brokenShell >= 3) {
+            await this.fail(taskId, `Commands can't run on this server, so the task stopped: ${clip(e.text.split("\n")[0] ?? "", 300)}. An admin should check the Work AI runtime (on Windows, restart the API after updating; see docs/06-work-ai.md).`);
+            return;
+          }
+        } else if (!e.isError) l.brokenShell = 0;
         return;
       case "plan":
         l.plan = e.items;
@@ -1990,3 +2001,6 @@ export async function missingFiles(dir: string, names: string[]): Promise<string
 
 const missingFilesNudge = (missing: string[]) =>
   `You said the task is done, but ${missing.length === 1 ? "this file the person asked for isn't" : "these files the person asked for aren't"} in the folder: ${missing.join(", ")}. Create ${missing.length === 1 ? "it" : "them"} now and save ${missing.length === 1 ? "it" : "them"} as a file (printing the content isn't enough), then finish.`;
+
+/** Failures of the command runner itself (nothing ran), as opposed to a command that ran and failed. */
+const BROKEN_SHELL = /subprocess-local:|Windows Job runner|ripgrep provider failure|spawn \S+ ENOENT|EPERM: operation not permitted, spawn/i;

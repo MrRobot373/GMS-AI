@@ -189,6 +189,7 @@ export function briefFor(spec: TaskSpec): string {
     `You are working inside ${spec.productName}, a workplace AI platform, doing a task for a person in their organization. Your working folder is where the task's files live: what you make there is what the person receives, so name files plainly and keep scratch work in scratch/.`,
     "",
     "Doing the work:",
+    "- Research only as much as the task needs: usually under 10 searches and the few pages you rely on, then build. Don't keep searching for a missing detail: put what you found in the file, mark anything unconfirmed (\"unverified\" or \"not found\"), and say so. A saved file with marked gaps beats no file.",
     "- Finish what was asked, completely, and keep to the requirements as written. If something is genuinely unclear and a wrong guess would waste the work, ask in your reply and stop; otherwise choose sensibly and say what you chose.",
     "- Check your work by running it, not by reading it: run scripts and tests, and open a document or spreadsheet again after writing it. Syntax checks and searching your own code do not show that something works.",
     ...(spec.browser
@@ -237,7 +238,7 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
       // The skill library, where Claude Code looks for a person's skills.
       const skillsLink = join(configDir, "skills");
       await rm(skillsLink, { recursive: true, force: true });
-      if (spec.skillsDir) await symlink(spec.skillsDir, skillsLink, "dir").catch(() => undefined);
+      if (spec.skillsDir) await symlink(spec.skillsDir, skillsLink, process.platform === "win32" ? "junction" : "dir").catch(() => undefined); // a junction needs no admin rights on Windows
       if (spec.uid !== undefined) {
         const gid = spec.gid ?? spec.uid;
         for (const p of [spec.workdir, spec.homeDir, configDir, join(configDir, "settings.json")]) await chown(p, spec.uid, gid).catch(() => undefined);

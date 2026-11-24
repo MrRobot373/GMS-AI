@@ -1,0 +1,15 @@
+diff --git a/lib/index.js b/lib/index.js
+index b4530537ab2b5e79e131fe4e801da51368fa75e4..e9e7b5953974b331f085779a61ff6e5744a869fe 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1390,7 +1390,9 @@ var LocalSubprocessRuntime = class extends SubprocessRuntime {
+ 			if (available) return "linux-scope";
+ 			fallbackReason = "the current user-systemd scope or private bootstrap is unavailable";
+ 		}
+-		if (kind === "ordinary" && platform === "win32") {
++		// Aatmiq: DSH_SUBPROCESS_CONTAINMENT=fallback skips the Windows Job runner (it can exit before reporting on some
++		// Windows setups, so every command fails); the plain process-tree runner is used instead, as on macOS.
++		if (kind === "ordinary" && platform === "win32" && process.env.DSH_SUBPROCESS_CONTAINMENT !== "fallback") {
+ 			if (probeWindowsJob()) return "windows-job";
+ 		}
+ 		this.warnFallback(platform, kind, fallbackReason);

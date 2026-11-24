@@ -65,6 +65,10 @@ box has a tick to use a private copy instead. **Browse** next to a path opens a 
 **Containers.** Working in a folder isn't available with `WORK_ISOLATION=container`. With Docker Compose, mount the folder
 into the `api` container: set `WORK_FOLDERS_HOST` in `.env` and add `-f deploy/docker-compose.folders.yml`.
 
+**On Windows.** Work AI runs commands with its runtime's plain process runner (Windows has no sandbox for them, so keep
+`WORK_SANDBOX=off` and use it on your own PC). If the runtime's Windows Job runner works on your machine you can switch to
+it with `AATMIQ_WINDOWS_JOB=on`. A task whose commands can't run at all stops after 3 tries and says why.
+
 ## For admins
 
 **Admin → Work AI**

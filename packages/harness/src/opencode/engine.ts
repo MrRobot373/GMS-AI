@@ -107,7 +107,7 @@ export function createOpencodeEngine(opts: { bin?: string } = {}): HarnessEngine
       const skills = join(dirs.config, "opencode", "skills");
       await mkdir(dirname(skills), { recursive: true });
       await rm(skills, { recursive: true, force: true });
-      if (spec.skillsDir) await symlink(spec.skillsDir, skills, "dir").catch(() => undefined);
+      if (spec.skillsDir) await symlink(spec.skillsDir, skills, process.platform === "win32" ? "junction" : "dir").catch(() => undefined); // a junction needs no admin rights on Windows
       const tools = [spec.webSearch && "web", spec.browser && "browser", spec.calculators && "calculators", !spec.review && "documents"].filter(Boolean).join(",");
       const mcpEnv = { AATMIQ_CONTROL_URL: spec.controlUrl, AATMIQ_TOKEN: spec.token, AATMIQ_TOOLS: tools };
       const configPath = join(home, "opencode.json");

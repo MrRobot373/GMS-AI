@@ -7,7 +7,10 @@
  * Screenshots are scaled to at most 1280 px wide (JPEG); the model gives coordinates on that image and they are mapped
  * back to the screen here.
  */
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export interface Shot {
   /** JPEG, scaled. */
@@ -65,20 +68,26 @@ export function createDriver(): Driver {
 
 /* ───────────── Windows ───────────── */
 
-const PS_INIT = `
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-Add-Type -TypeDefinition @"
-using System; using System.Runtime.InteropServices;
+const psString = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/** The mouse and keyboard calls (user32), compiled once into a DLL next to the task's files. */
+const INPUT_TYPE = `using System; using System.Runtime.InteropServices;
 public static class AatmiqInput {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, int d, UIntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, UIntPtr e);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
-}
-"@
+}`;
+
+/** What every run starts with: the .NET parts, the helper DLL, and the screen in real pixels (not scaled by DPI). */
+const psPrelude = (dll: string) => `$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -Path ${psString(dll)}
 [AatmiqInput]::SetProcessDPIAware() | Out-Null
-function Aatmiq-Shot($maxW, $grid, $norm) {
+`;
+
+const PS_SHOT = `function Aatmiq-Shot($maxW, $grid, $norm) {
   $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
   $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
   $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -135,48 +144,57 @@ export function windowsKeys(keys: string): number[] {
 /** Text as SendKeys reads it: its special characters in braces. */
 export const sendKeysText = (text: string) => text.replace(/[+^%~(){}[\]]/g, (c) => `{${c}}`).replace(/\r?\n/g, "{ENTER}");
 
-const psString = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 class WindowsDriver implements Driver {
-  private ps: ChildProcess;
-  private out = "";
-  private queue: Promise<unknown> = Promise.resolve();
-  private ready: Promise<void>;
+  private dll: string;
+  private ready: Promise<void> | null = null;
 
   constructor() {
-    this.ps = spawn("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-ExecutionPolicy", "Bypass", "-Command", "-"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-    this.ps.stdout!.setEncoding("utf8");
-    this.ps.stdout!.on("data", (d: string) => (this.out += d));
-    this.ready = this.run(PS_INIT).then(() => undefined);
+    this.dll = join(tmpdir(), `aatmiq-input-${process.pid}.dll`);
   }
 
-  /** Run a script and return what it printed (one command at a time). */
-  private run(script: string): Promise<string> {
-    const marker = `__AATMIQ_${Math.random().toString(36).slice(2)}__`;
-    const job = this.queue.then(
-      () =>
-        new Promise<string>((resolve, reject) => {
-          const b64 = Buffer.from(`${script}\nWrite-Output '${marker}'\n`, "utf8").toString("base64");
-          this.out = "";
-          const timer = setTimeout(() => reject(new Error("The computer didn't answer in time.")), 60_000);
-          const check = () => {
-            const i = this.out.indexOf(marker);
-            if (i < 0) return;
-            clearTimeout(timer);
-            this.ps.stdout!.off("data", check);
-            resolve(this.out.slice(0, i).trim());
-          };
-          this.ps.stdout!.on("data", check);
-          this.ps.stdin!.write(`Invoke-Expression ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')))\n`);
-        }),
-    );
-    this.queue = job.catch(() => undefined);
-    return job;
+  /** Run one PowerShell script and return what it printed. Each action is its own short run: nothing is left waiting. */
+  private ps(script: string, timeoutMs = 30_000): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const encoded = Buffer.from(script, "utf16le").toString("base64");
+      const child = spawn("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+      let out = "";
+      let err = "";
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (d: string) => (out += d));
+      child.stderr.on("data", (d: string) => (err = (err + d).slice(-2000)));
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error("The computer didn't answer in time (PowerShell took longer than 30 seconds)."));
+      }, timeoutMs);
+      child.on("error", (e) => {
+        clearTimeout(timer);
+        reject(new Error(`PowerShell couldn't start: ${e.message}`));
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve(out.trim());
+        else reject(new Error(`The screen command failed: ${(err || out).replace(/\s+/g, " ").trim().slice(0, 300)}`));
+      });
+    });
+  }
+
+  /** The helper DLL, compiled on first use (a few seconds), then loaded by every run. */
+  private prepare(): Promise<void> {
+    this.ready ??= (async () => {
+      if (existsSync(this.dll)) return;
+      await this.ps(`Add-Type -TypeDefinition @"\n${INPUT_TYPE}\n"@ -OutputAssembly ${psString(this.dll)} -OutputType Library`, 120_000);
+    })().catch((e) => {
+      this.ready = null;
+      throw e;
+    });
+    return this.ready;
   }
 
   private async exec(script: string) {
-    await this.ready;
-    return this.run(script);
+    await this.prepare();
+    return this.ps(`${psPrelude(this.dll)}${script}`);
   }
 
   async screen() {
@@ -184,7 +202,7 @@ class WindowsDriver implements Driver {
     return { width: w!, height: h! };
   }
   async screenshot(): Promise<Shot> {
-    const [w, h, b64] = (await this.exec(`Aatmiq-Shot ${MAX_SHOT_WIDTH} $${GRID ? "true" : "false"} $${COORDS === "normalized" ? "true" : "false"}`)).split(" ");
+    const [w, h, b64] = (await this.exec(`${PS_SHOT}\nAatmiq-Shot ${MAX_SHOT_WIDTH} $${GRID ? "true" : "false"} $${COORDS === "normalized" ? "true" : "false"}`)).split(" ");
     return { image: Buffer.from(b64 ?? "", "base64"), width: Number(w), height: Number(h) };
   }
   async cursor() {
@@ -216,10 +234,8 @@ class WindowsDriver implements Driver {
   async scroll(x: number, y: number, amount: number) {
     await this.exec(`[AatmiqInput]::SetCursorPos(${Math.round(x)}, ${Math.round(y)}) | Out-Null; [AatmiqInput]::mouse_event(0x0800,0,0,${Math.round(-amount * 120)},[UIntPtr]::Zero)`);
   }
-  close() {
-    this.ps.stdin?.end();
-    setTimeout(() => this.ps.kill(), 2000).unref();
-  }
+  close() {}
+
 }
 
 /* ───────────── Linux (X11) ───────────── */

@@ -9,6 +9,19 @@ without one.
 
 ## Unreleased
 
+- **Work AI on Windows: commands run again.** The Work AI runtime's Windows Job runner could exit before reporting, so every
+  command failed ("Windows Job runner exited with exit code 0 before proving its managed range empty"), and search tools
+  with it. On Windows, commands now use the runtime's plain runner (`AATMIQ_WINDOWS_JOB=on` goes back; a small patch in
+  `patches/` adds the switch). Run `pnpm install` after updating.
+- **A task whose commands can't run at all stops** after 3 such failures, with the reason, instead of retrying for an hour.
+- **Computer AI on Windows:** each action is its own short PowerShell run (the mouse and keyboard helper is compiled once),
+  instead of one long-lived PowerShell that could leave commands waiting ("The computer didn't answer in time"). A failure
+  now shows PowerShell's own message.
+- **Super AI and Agent AI on Windows find their skills:** the skill library is linked with a junction, which needs no admin
+  rights (a symbolic link failed silently, so "Unknown skill: ui-polish").
+- **Super AI and Agent AI research less and build sooner:** usually under 10 searches, then the file, with unconfirmed
+  figures marked.
+
 - **Personal-data export and chat export no longer leak passages.** A stored citation is included only while the person
   can still open its source; otherwise it keeps its number but loses its name and text (as the Knowledge page already did).
 - **Hostile uploads are refused.** A file must be what its name says (PDF, Word, Excel, image; a "text" file can't be a
