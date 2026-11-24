@@ -291,7 +291,7 @@ d("checked lessons", () => {
     expect(c.user).toContain("[4] Worked examples (docs.example.org)");
     expect(c.user).toContain("Reference 1: Engineering Circuit Analysis, Hayt, Kemmerly and Durbin\n- Engineering Circuit Analysis, 9th edition (books.example.org)");
     expect(c.user).toContain("Reference 2: The Imaginary Handbook of Volts, Nobody\n(nothing found)");
-    expect(web.searches.filter((s) => s.stage === "checking").map((s) => s.q)).toEqual(["Engineering Circuit Analysis Hayt, Kemmerly and Durbin", "The Imaginary Handbook of Volts Nobody"]);
+    expect(web.searches.filter((s) => s.stage === "checking").map((s) => s.q)).toEqual(["Engineering Circuit Analysis Hayt, Kemmerly and Durbin", "The Imaginary Handbook of Volts Nobody", "The Imaginary Handbook of Volts Nobody"]); // nothing found is asked once more
 
     // The corrected lesson is what's saved, with the issues, the arithmetic and the sources.
     expect(l.content.workedExample.answer).toBe("I = 3 A");

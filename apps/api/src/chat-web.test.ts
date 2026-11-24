@@ -348,7 +348,8 @@ d("chat web search", () => {
 
   it("nothing found is said too; a query writer that doesn't write JSON searches the message", async () => {
     const r = await ask(await newChat(), "QUERY-PROSE nothing matches this", { webSearch: true });
-    expect(web.searches).toEqual(["QUERY-PROSE nothing matches this"]);
+    // Nothing found is asked once more (the search engine's sources may just have timed out).
+    expect(web.searches).toEqual(["QUERY-PROSE nothing matches this", "QUERY-PROSE nothing matches this"]);
     expect(r.saved.web).toMatchObject({ queries: ["QUERY-PROSE nothing matches this"], note: "Web search found nothing for this question." });
     expect(r.answer.system).toMatch(/found nothing useful/);
   });

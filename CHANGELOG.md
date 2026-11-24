@@ -9,6 +9,12 @@ without one.
 
 ## Unreleased
 
+- **Chat makes what you ask for.** Asked for a page, code, a document or a table, Chat researches briefly and writes it
+  in the same answer (in full, or as a file with Python) instead of reporting progress and asking whether to go ahead; when
+  its tool rounds run out it is told to deliver with what it has.
+- **Web search: "nothing found" is asked once more and never cached.** An empty answer is often the search engine's
+  sources timing out; before, the same question then kept returning nothing for 10 minutes.
+
 - **Work AI on Windows: commands run again.** The Work AI runtime's Windows Job runner could exit before reporting, so every
   command failed ("Windows Job runner exited with exit code 0 before proving its managed range empty"), and search tools
   with it. On Windows, commands now use the runtime's plain runner (`AATMIQ_WINDOWS_JOB=on` goes back; a small patch in

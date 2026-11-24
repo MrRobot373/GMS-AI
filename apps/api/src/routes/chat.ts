@@ -698,8 +698,10 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     for (let round = 0; round <= maxRounds && !error && !abort.signal.aborted; round++) {
       let roundText = "";
       let calls: { id: string; name: string; arguments: string }[] = [];
-      // The last round has no tools: the model answers from what it found.
+      // The last round has no tools: the model answers from what it found, and delivers what was asked (not a progress report).
       const offer = allowTools && round < maxRounds ? tools : undefined;
+      if (!offer && round > 0 && pending.length)
+        pending.push({ role: "user", content: "No more tools: answer now with what you have. If the person asked you to make something (a page, code, a document, a table), write it in full in this answer. Don't ask whether to go ahead, and don't describe what you would do. Mark anything you couldn't confirm." });
       try {
         for await (const ev of streamChat(provider, m.modelKey, fit([...messages, ...pending]), { signal: abort.signal, thinking, tools: offer, extraBody })) {
           if (ev.type === "delta") {

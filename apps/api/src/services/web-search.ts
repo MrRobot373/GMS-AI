@@ -33,6 +33,8 @@ export interface WebSearchDeps {
   key: string | null;
   /** Outgoing HTTP (tests pass a fake one, which page reads then use too). */
   fetch?: typeof fetch;
+  /** The wait before asking again when a search finds nothing (tests shorten it). */
+  retryDelayMs?: number;
   /** Name lookups for page reads (tests replace it); `signal` is the page's time running out. */
   resolve?: (host: string, signal?: AbortSignal) => Promise<string[]>;
   /**
@@ -598,7 +600,14 @@ export async function webSearch(deps: WebSearchDeps, query: string, opts: { max?
   const key = [deps.provider, deps.url ?? "", max, maxChars, q.toLowerCase()].join("\n");
   const hit = opts.cache === false ? undefined : cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.results.map((r) => ({ ...r }));
-  const results = clean(await PROVIDERS[deps.provider!](deps, q, max), max, maxChars);
+  let results = clean(await PROVIDERS[deps.provider!](deps, q, max), max, maxChars);
+  // Nothing found is often the search engine's moment (its sources timed out or limited it): asked once more, and an
+  // empty answer is never kept, so the same question isn't stuck on "no results".
+  if (!results.length) {
+    await new Promise((r) => setTimeout(r, deps.retryDelayMs ?? 1200));
+    results = clean(await PROVIDERS[deps.provider!](deps, q, max), max, maxChars);
+    if (!results.length) return [];
+  }
   cache.delete(key);
   cache.set(key, { at: Date.now(), results });
   // Oldest first in a Map: drop from the front.

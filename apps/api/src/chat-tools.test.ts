@@ -129,6 +129,11 @@ d("tools in chat", () => {
     return { ev: events(r.body), saved, sent: seen.slice(before) };
   }
 
+  it("tells the model to make what was asked in this answer, not stop to ask", async () => {
+    const r = await ask("hello");
+    expect(String(r.sent[0]!.messages[0]!.content)).toMatch(/make it in this answer: research briefly/);
+  });
+
   it("without web search allowed, offers documents and calculators but not the web", async () => {
     const r = await ask("Hi there");
     expect(r.sent[0]!.tools).toEqual(expect.arrayContaining(["search_documents", "calculators_search", "calculators_run"]));
@@ -212,5 +217,7 @@ d("tools in chat", () => {
     expect(r.sent).toHaveLength(MAX_TOOL_ROUNDS + 1);
     expect(r.sent.at(-1)!.tools).toEqual([]);
     expect(r.saved.content).toMatch(/^From what I found: 570 kHz \[1\]\[\d+\]\. Invented\.$/);
+    // The last request says to deliver what was asked now, not report progress or ask to go ahead.
+    expect(r.sent.at(-1)!.messages.at(-1)!.content).toMatch(/No more tools: answer now.*write it in full/);
   }, 30_000);
 });
