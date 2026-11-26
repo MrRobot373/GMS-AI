@@ -166,7 +166,7 @@ export const chatUpdateSchema = z.object({
 
 export const sendMessageSchema = z
   .object({
-    content: z.string().min(1).max(200_000).optional(),
+    content: z.string().max(200_000, "A message can be at most 200,000 characters. Attach a longer text as a document.").optional(),
     modelId: z.string().optional(),
     documentIds: z.array(z.string()).max(20).optional(),
     /** Message to continue from. Omitted: the end of the branch being shown. An earlier id (or null) edits and branches. */
@@ -180,7 +180,8 @@ export const sendMessageSchema = z
     /** Think before answering (the Think switch), for any model. Omitted: Auto decides (on for hard questions). */
     thinking: z.boolean().optional(),
   })
-  .refine((b) => b.content || b.regenerateOf, { message: "Write a message first" });
+  // Only spaces or line breaks isn't a message.
+  .refine((b) => !!b.content?.trim() || !!b.regenerateOf, { message: "Write a message first." });
 
 export const profileSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),

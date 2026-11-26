@@ -23,7 +23,7 @@ import {
   type LessonStage,
   type LessonVerification,
 } from "@aatmiq/db";
-import { completeChat, type ChatMessage } from "@aatmiq/model-gateway";
+import { completeChat, GatewayError, type ChatMessage } from "@aatmiq/model-gateway";
 import { estimateTokens, lessonCheckSchema, lessonSchema, outlineSchema, parseModelJson, PRODUCT_NAME, videoPicksSchema, type Difficulty } from "@aatmiq/shared";
 import { z } from "zod";
 import type { AppContext } from "../context";
@@ -261,7 +261,7 @@ export async function generateJson<T extends z.ZodType>(ctx: AppContext, o: Gene
 const errorText = (e: unknown) =>
   e instanceof LearningOutputError
     ? msg("The model's reply didn't match the required format twice, so nothing was saved. Try again, or pick another model.")
-    : e instanceof HttpError
+    : e instanceof HttpError || (e instanceof GatewayError && (e.status === 503 || e.status === 429))
       ? e.message
       : msg("The model failed to respond.");
 

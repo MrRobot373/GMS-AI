@@ -3,7 +3,7 @@ import { PRODUCT_NAME } from "@aatmiq/shared";
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createAuthEndpoint } from "better-auth/api";
+import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 import type { Config } from "./config";
@@ -165,10 +165,12 @@ export function createAuth(db: DB, cfg: Config, hash: (s: string) => string, mai
     databaseHooks: {
       session: {
         create: {
-          // Deactivated users can never start a session.
+          // Deactivated users can never start a session. A 403 (not "Failed to create session", a 401) lets the
+          // sign-in page say the account is deactivated instead of "That email and password don't match".
           before: async (s) => {
             const [u] = await db.select({ status: user.status }).from(user).where(eq(user.id, s.userId));
-            if (!u || u.status !== "active") return false;
+            if (!u) return false;
+            if (u.status !== "active") throw new APIError("FORBIDDEN", { message: "Your account is deactivated. Contact your admin.", code: "ACCOUNT_DEACTIVATED" });
             return { data: s };
           },
         },

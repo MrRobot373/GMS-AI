@@ -89,7 +89,7 @@ export async function resolveModel(
     models.find((m) => !m.groups.length) ||
     models[0];
   if (!chosen) throw badRequest("No model is available in this workspace. Ask your admin to enable one.");
-  if (requested && chosen.id !== requested) throw badRequest("That model is not available to you in this workspace.");
+  if (requested && chosen.id !== requested) throw badRequest("That model isn't available to you in this workspace any more. Choose another model, or Auto.");
 
   return { model: chosen, provider: await providerConfig(db, box, chosen.id) };
 }

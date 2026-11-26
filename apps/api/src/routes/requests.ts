@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, tokenRequest, user, workspace, workspaceMember } from "@aatmiq/db";
+import { and, desc, eq, inArray, or, sql, tokenRequest, user, workspace, workspaceMember } from "@aatmiq/db";
 import { decideRequestSchema, formatTokens, isOrgAdmin, periodStart, tokenRequestSchema } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
 import { audit, notify, parse, requireUser, requireWorkspaceCap, type AppContext } from "../context";
@@ -14,22 +14,23 @@ export async function requestRoutes(app: FastifyInstance, ctx: AppContext) {
     const body = parse(tokenRequestSchema, req.body);
     await requireWorkspaceCap(ctx, u, body.workspaceId, "workspace.use");
 
-    const [pending] = await db
-      .select({ id: tokenRequest.id })
-      .from(tokenRequest)
-      .where(
-        and(
-          eq(tokenRequest.workspaceId, body.workspaceId),
-          eq(tokenRequest.userId, u.id),
-          eq(tokenRequest.status, "pending"),
-        ),
-      );
-    if (pending) throw conflict("You already have a pending request in this workspace.");
-
-    const [created] = await db
-      .insert(tokenRequest)
-      .values({ ...body, userId: u.id })
-      .returning();
+    // One pending request per person and workspace. The lock makes the check and the insert one step, so a double
+    // click can't make two.
+    const created = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`token-request:${body.workspaceId}:${u.id}`}))`);
+      const [pending] = await tx
+        .select({ id: tokenRequest.id })
+        .from(tokenRequest)
+        .where(
+          and(
+            eq(tokenRequest.workspaceId, body.workspaceId),
+            eq(tokenRequest.userId, u.id),
+            eq(tokenRequest.status, "pending"),
+          ),
+        );
+      if (pending) throw conflict("You already have a pending request in this workspace.");
+      return (await tx.insert(tokenRequest).values({ ...body, userId: u.id }).returning())[0];
+    });
 
     const [ws] = await db.select({ name: workspace.name }).from(workspace).where(eq(workspace.id, body.workspaceId));
     const approvers = await db

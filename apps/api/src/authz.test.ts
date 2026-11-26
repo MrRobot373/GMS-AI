@@ -284,4 +284,70 @@ d("Authorization, route by route", () => {
     expect(((await db.execute(sql`select org_role from "user" where id = ${ids.ben}`)) as unknown as { org_role: string }[])[0]!.org_role).toBe("member");
     expect(((await db.execute(sql`select count(*)::int as n from model_provider where name = 'Evil'`)) as unknown as { n: number }[])[0]!.n).toBe(0);
   }, 60_000);
+
+  it("access taken away while a chat is open: the chat closes, even the person's own", async () => {
+    // Ben has a chat in a project Asha added him to, and one in his workspace.
+    const p = (await call(asha, "POST", "/api/projects", { workspaceId: ids.ws1, name: "Shared plan" })).json.id as string;
+    expect((await call(asha, "PUT", `/api/projects/${p}/members`, { userId: ids.ben, role: "chat" })).status).toBe(200);
+    const inProject = (await call(ben, "POST", "/api/chats", { workspaceId: ids.ws1, projectId: p })).json.id as string;
+    const plain = (await call(ben, "POST", "/api/chats", { workspaceId: ids.ws1 })).json.id as string;
+    expect((await call(ben, "GET", `/api/chats/${inProject}`)).status).toBe(200);
+
+    // Out of the project: its chat can't be read, written in, or moved out of the project; his other chat is fine.
+    expect((await call(asha, "DELETE", `/api/projects/${p}/members/${ids.ben}`)).status).toBe(200);
+    expect((await call(ben, "GET", `/api/chats/${inProject}`)).status).toBe(404);
+    expect((await call(ben, "POST", `/api/chats/${inProject}/messages`, { content: "Still here?" })).status).toBe(404);
+    expect((await call(ben, "PATCH", `/api/chats/${inProject}`, { projectId: null })).status).toBe(404);
+    expect((await call(ben, "GET", `/api/chats/${plain}`)).status).toBe(200);
+    // Deleting it is still his choice.
+    expect((await call(ben, "DELETE", `/api/chats/${inProject}`)).status).toBe(200);
+
+    // Out of the workspace: none of his chats there open.
+    expect((await call(owner, "DELETE", `/api/admin/workspaces/${ids.ws1}/members/${ids.ben}`)).status).toBe(200);
+    expect((await call(ben, "GET", `/api/chats/${plain}`)).status).toBe(404);
+    expect((await call(ben, "POST", `/api/chats/${plain}/messages`, { content: "Hello?" })).status).toBe(404);
+    expect((await call(owner, "POST", `/api/admin/workspaces/${ids.ws1}/members`, { userId: ids.ben, role: "member", sections: ["chat", "work", "code"] })).status).toBe(200);
+    expect((await call(ben, "GET", `/api/chats/${plain}`)).status).toBe(200);
+
+    // An admin who isn't in a project doesn't read its group chats (D53), nor starts one there.
+    const shared = (await call(asha, "POST", "/api/chats", { workspaceId: ids.ws1, projectId: p })).json.id as string;
+    expect((await call(asha, "PATCH", `/api/chats/${shared}`, { sharedToProject: true })).status).toBe(200);
+    expect((await call(owner, "GET", `/api/chats/${shared}`)).status).toBe(404);
+    expect((await call(owner, "POST", "/api/chats", { workspaceId: ids.ws1, projectId: p })).status).toBe(404);
+  });
+
+  it("the same request twice at once is done once: a message, a token request", async () => {
+    const c = (await call(ben, "POST", "/api/chats", { workspaceId: ids.ws1 })).json.id as string;
+    const sends = await Promise.all([1, 2].map(() => call(ben, "POST", `/api/chats/${c}/messages`, { content: "What is 3 x 7?" })));
+    expect(sends.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(sends.find((r) => r.status === 409)!.json.error).toBe("That message was just sent. Its answer is on the way.");
+    const [sent] = (await db.execute(sql`select count(*)::int as n from message where chat_id = ${c} and role = 'user'`)) as unknown as { n: number }[];
+    expect(sent!.n).toBe(1);
+    // Only spaces isn't a message; a very long one gets a sentence, not the schema's words.
+    expect((await call(ben, "POST", `/api/chats/${c}/messages`, { content: "  \n\t " })).json.error).toBe("Write a message first.");
+    expect((await call(ben, "POST", `/api/chats/${c}/messages`, { content: "a".repeat(200_001) })).json.error).toMatch(/^A message can be at most 200,000 characters/);
+    // Within the limit but more than the model reads at once: refused with what fits, not answered from a fragment.
+    const big = await call(ben, "POST", `/api/chats/${c}/messages`, { content: "relay contact coil ".repeat(10_000) });
+    expect(big.status).toBe(400);
+    expect(big.json.error).toMatch(/^This message is too long for .+: it reads about [\d,]+ words at a time, and this is about [\d,]+\. Attach the text as a document/);
+
+    const reqs = await Promise.all([1, 2].map(() => call(ben, "POST", "/api/token-requests", { workspaceId: ids.ws1, amount: 500 })));
+    expect(reqs.map((r) => r.status).sort()).toEqual([200, 409]);
+    const [pending] = (await db.execute(sql`select count(*)::int as n from token_request where user_id = ${ids.ben} and status = 'pending'`)) as unknown as { n: number }[];
+    expect(pending!.n).toBe(1);
+  });
+
+  it("a question left without an answer (the server restarted mid-answer) is shown as interrupted", async () => {
+    const c = (await call(ben, "POST", "/api/chats", { workspaceId: ids.ws1 })).json.id as string;
+    expect((await call(ben, "POST", `/api/chats/${c}/messages`, { content: "First question" })).status).toBe(200);
+    expect((await call(ben, "GET", `/api/chats/${c}`)).json.unanswered).toBe(false);
+    // What a restart leaves: the question saved, its answer never written.
+    const [last] = (await db.execute(sql`select id from message where chat_id = ${c} and role = 'assistant'`)) as unknown as { id: string }[];
+    const [q] = (await db.execute(sql`insert into message (chat_id, parent_id, role, author_id, content) values (${c}, ${last!.id}, 'user', ${ids.ben}, 'Second question') returning id`)) as unknown as { id: string }[];
+    await db.execute(sql`update chat set leaf_message_id = ${q!.id} where id = ${c}`);
+    expect((await call(ben, "GET", `/api/chats/${c}`)).json.unanswered).toBe(true);
+    // Answering again (regenerate) gives it its answer.
+    expect((await call(ben, "POST", `/api/chats/${c}/messages`, { regenerateOf: q!.id })).status).toBe(200);
+    expect((await call(ben, "GET", `/api/chats/${c}`)).json.unanswered).toBe(false);
+  });
 });

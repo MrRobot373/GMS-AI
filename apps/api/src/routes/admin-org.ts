@@ -128,7 +128,8 @@ export async function adminOrgRoutes(app: FastifyInstance, ctx: AppContext) {
       action: body.status === "deactivated" ? "user.deactivated" : body.status === "active" ? "user.reactivated" : "user.role_changed",
       targetType: "user",
       targetId: target.id,
-      meta: body,
+      // What it was before, so the log reads "member → admin".
+      meta: { ...body, ...(body.orgRole ? { fromRole: target.orgRole } : {}), ...(body.status ? { fromStatus: target.status } : {}) },
     });
     return { ok: true };
   });

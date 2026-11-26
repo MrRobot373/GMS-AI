@@ -183,6 +183,27 @@ const jar = (): Jar => ({ cookie: "" });
     expect(md.raw.toString()).not.toContain("salary-slip.txt");
   });
 
+  it("in a group chat each message keeps its writer; what someone wrote in another's chat is in their own export", async () => {
+    const c = await call(mira, "POST", "/api/chats", { workspaceId, projectId: ids.project });
+    await call(mira, "POST", `/api/chats/${c.json.id}/messages`, { content: "Which floor do we move to?" });
+    expect((await call(mira, "PATCH", `/api/chats/${c.json.id}`, { sharedToProject: true, sharedCanReply: true })).status).toBe(200);
+    expect((await call(xavi, "POST", `/api/chats/${c.json.id}/messages`, { content: "Xavi here: can we keep the window seats?" })).status).toBe(200);
+
+    const mz = unzip((await call(mira, "GET", "/api/me/export")).raw);
+    const md = mz.names.find((n) => n.startsWith("chats/") && n.endsWith(".md") && mz.text(n).includes("Xavi here"))!;
+    const text = mz.text(md);
+    expect(text).toMatch(/\*\*Mira Shah\*\*\s+Which floor do we move to\?/);
+    expect(text).toMatch(/\*\*Xavi Rao\*\*\s+Xavi here: can we keep the window seats\?/);
+    const json = JSON.parse(mz.text(md.replace(/\.md$/, ".json")));
+    expect(json.messages.filter((m: { role: string }) => m.role === "user").map((m: { author: string }) => m.author)).toEqual(["Mira Shah", "Xavi Rao"]);
+
+    const xz = unzip((await call(xavi, "GET", "/api/me/export")).raw);
+    const mine = JSON.parse(xz.text("chats/written-in-others-chats.json"));
+    expect(mine).toEqual([expect.objectContaining({ owner: "Mira Shah", content: "Xavi here: can we keep the window seats?" })]);
+    // Only his message: Mira's question is in there as the chat's title, not as something he wrote.
+    expect(mine.map((m: { content: string }) => m.content)).not.toContain("Which floor do we move to?");
+  });
+
   it("an admin can download it for them; nobody else can", async () => {
     expect((await call(xavi, "GET", `/api/admin/users/${ids["Mira Shah"]}/export`)).status).toBe(403);
     const r = await call(owner, "GET", `/api/admin/users/${ids["Mira Shah"]}/export`);
@@ -204,7 +225,8 @@ const jar = (): Jar => ({ cookie: "" });
     const usageBefore = await db.select({ n: sql<number>`count(*)::int` }).from(usageEvent);
     const r = await call(owner, "POST", `/api/admin/users/${miraId}/erase`, { confirmEmail: "MIRA@acme.test", transferTo: ids["Xavi Rao"] });
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ chats: 1, documentsDeleted: 1, documentsTransferred: 2, projectsTransferred: 1, projectsDeleted: 0, tasks: 1 });
+    // Two chats: the Diwali one and the group chat in her project.
+    expect(r.json).toMatchObject({ chats: 2, documentsDeleted: 1, documentsTransferred: 2, projectsTransferred: 1, projectsDeleted: 0, tasks: 1 });
 
     // Gone: the account, its sessions, chats, the private document and its file, the task folder.
     expect(await db.select().from(user).where(eq(user.id, miraId))).toHaveLength(0);

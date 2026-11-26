@@ -25,6 +25,7 @@ import {
   invitation,
   knowledgeQuery,
   message,
+  ne,
   notification,
   or,
   project,
@@ -168,10 +169,20 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
       groups: groups.map((g) => g.group),
     });
 
-    // Chats: every message of every branch, as JSON and readable Markdown.
+    // Chats: every message of every branch, as JSON and readable Markdown. In a group chat, each message
+    // says who wrote it: someone else's message is never shown as the person's.
+    const names = new Map<string, string>([[u.id, u.name]]);
+    const authorOf = async (ids: (string | null)[]) => {
+      const missing = [...new Set(ids.filter((x): x is string => !!x && !names.has(x)))];
+      if (missing.length) for (const a of await db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, missing))) names.set(a.id, a.name);
+    };
+    // A message without an author is the chat owner's (written before group chats), or from someone since erased.
+    const writer = (m: { role: string; authorId: string | null }) =>
+      m.role !== "user" ? "Assistant" : m.authorId ? (names.get(m.authorId) ?? "Someone else") : u.name;
     const chats = await db.select().from(chat).where(eq(chat.userId, userId)).orderBy(asc(chat.createdAt));
     for (const [i, c] of chats.entries()) {
       const stored = await db.select().from(message).where(eq(message.chatId, c.id)).orderBy(asc(message.createdAt));
+      await authorOf(stored.map((m) => m.authorId));
       // A cited passage only while the person can still open its source (a document they lost access to is blanked).
       const cites = await readableCitations(db, userId, stored.map((m) => m.citations));
       const msgs = stored.map((m, k) => ({ ...m, citations: cites[k] ?? null }));
@@ -180,13 +191,23 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
         title: c.title,
         createdAt: c.createdAt,
         temporary: c.temporary,
-        messages: msgs.map((m) => ({ id: m.id, parentId: m.parentId, role: m.role, content: m.content, error: m.error, citations: m.citations, web: m.web, attachments: m.attachments, createdAt: m.createdAt })),
+        messages: msgs.map((m) => ({ id: m.id, parentId: m.parentId, role: m.role, author: writer(m), content: m.content, error: m.error, citations: m.citations, web: m.web, attachments: m.attachments, createdAt: m.createdAt })),
       });
       const shown: ExportMessage[] = msgs
         .filter((m) => m.role !== "system")
-        .map((m) => ({ role: m.role as "user" | "assistant", author: m.role === "user" ? u.name : "Assistant", content: m.content, citations: m.citations }));
+        .map((m) => ({ role: m.role as "user" | "assistant", author: writer(m), content: m.content, citations: m.citations }));
       await zip.add(`${base}.md`, chatToMarkdown({ title: c.title, subtitle: `${c.createdAt.toISOString().slice(0, 10)} · all messages, every version`, messages: shown }));
     }
+
+    // What they wrote in other people's group chats: their own messages only (the rest is the owner's chat).
+    const elsewhere = await db
+      .select({ chat: chat.title, owner: user.name, content: message.content, createdAt: message.createdAt })
+      .from(message)
+      .innerJoin(chat, eq(chat.id, message.chatId))
+      .innerJoin(user, eq(user.id, chat.userId))
+      .where(and(eq(message.authorId, userId), ne(chat.userId, userId)))
+      .orderBy(asc(message.createdAt));
+    if (elsewhere.length) await zip.json("chats/written-in-others-chats.json", elsewhere);
 
     // Documents they uploaded, as the original files.
     const docs = await db.select().from(document).where(eq(document.ownerId, userId)).orderBy(asc(document.createdAt));
@@ -325,7 +346,8 @@ export async function exportPerson(ctx: AppContext, userId: string): Promise<{ s
         `Everything ${ctx.cfg.appUrl} holds about ${u.name} <${u.email}>, exported ${new Date().toISOString()}.`,
         "",
         "profile.json          who you are, how you sign in, your sessions (devices), workspaces and groups",
-        "chats/               every chat, every message and version, as JSON and readable Markdown",
+        "chats/               every chat, every message and version, as JSON and readable Markdown;",
+        "                      written-in-others-chats.json: what you wrote in other people's group chats",
         "documents/           the files you uploaded; documents.json lists them",
         "projects.json         projects you own and the ones you're a member of",
         "work/                Work AI tasks: the timeline of each and the files it made",

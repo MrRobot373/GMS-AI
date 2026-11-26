@@ -114,6 +114,8 @@ export interface ChatDetail {
   leafMessageId: string | null;
   /** A deep research is still running in this chat: its answer arrives when it's done. */
   researching?: boolean;
+  /** The last question has no answer and none is coming (the server restarted mid-answer). */
+  unanswered?: boolean;
   /** The viewer started this chat (only they rename, move, share or delete it). */
   isOwner?: boolean;
   /** Shared to the project as a group chat: its members can write in it. */

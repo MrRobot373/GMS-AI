@@ -243,3 +243,18 @@ describe("embeddings", () => {
     expect(dot(a, b)).toBeGreaterThan(dot(a, c));
   });
 });
+
+describe("a model server that can't be reached", () => {
+  it("says so plainly instead of fetch's own words; a stop is still a stop", async () => {
+    // Nothing listens on port 9 here: the connection is refused.
+    const down = { type: "openai_compatible" as const, baseUrl: "http://127.0.0.1:9/v1", apiKey: "k" };
+    const read = async (signal?: AbortSignal) => {
+      for await (const _ of streamChat(down, "m", [{ role: "user", content: "hi" }], { signal })) void _;
+    };
+    await expect(read()).rejects.toMatchObject({ name: "Error", status: 503, message: expect.stringMatching(/^Couldn't reach the model server\./) });
+    await expect(completeChat(down, "m", [{ role: "user", content: "hi" }])).rejects.toMatchObject({ status: 503 });
+    const stop = new AbortController();
+    stop.abort();
+    await expect(read(stop.signal)).rejects.not.toMatchObject({ status: 503 });
+  });
+});

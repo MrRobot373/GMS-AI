@@ -87,7 +87,8 @@ export function parse<T extends z.ZodType>(schema: T, data: unknown): z.infer<T>
   if (!r.success) {
     const first = r.error.issues[0];
     const field = first?.path.join(".") || "input";
-    throw badRequest(first ? `${field}: ${first.message}` : "Invalid input", r.error.issues);
+    // A sentence written for people (with its full stop) stands alone; Zod's own messages keep the field's name.
+    throw badRequest(first ? (first.message.endsWith(".") ? first.message : `${field}: ${first.message}`) : "Invalid input", r.error.issues);
   }
   return r.data;
 }
@@ -158,6 +159,8 @@ export async function getMembership(db: DB, workspaceId: string, userId: string)
 }
 
 export async function getActiveWorkspace(db: DB, workspaceId: string) {
+  // A request without one (a missing ?workspaceId=) is the caller's mistake, not a server error.
+  if (!workspaceId) throw badRequest("Choose a workspace.");
   const [ws] = await db
     .select()
     .from(workspace)

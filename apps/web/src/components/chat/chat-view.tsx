@@ -892,6 +892,15 @@ export function ChatView({
                     {t("Deep research is still running. The report appears here when it's done.")}
                   </div>
                 )}
+                {existing.data?.unanswered && !streaming && !readOnly && (
+                  <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3 text-[13px] text-fg-muted" data-testid="unanswered">
+                    <TriangleAlert className="size-4 shrink-0 text-warning" />
+                    <span className="min-w-0 flex-1">{t("This message has no answer: it was interrupted before the answer was saved.")}</span>
+                    <Button variant="outline" size="sm" onClick={regenerate}>
+                      {t("Answer again")}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>

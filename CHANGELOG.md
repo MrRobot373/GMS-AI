@@ -9,6 +9,32 @@ without one.
 
 ## Unreleased
 
+- **Access taken away closes the chat, even your own.** Someone removed from a project kept reading and writing their
+  chats in it (with the project's material), and someone removed from a workspace kept opening their chats there. A
+  chat now opens only while its owner is still in its workspace and, for a project chat, in the project; it can still
+  be deleted. Admins who aren't project members no longer open or start chats in it (D53).
+- **A double click sends once.** The same message sent twice at once got two answers, and two token requests at once
+  made two pending requests. Each is now checked and saved in one locked step: the second is refused ("That message
+  was just sent. Its answer is on the way.").
+- **A deactivated person signing in is told so.** They were told "That email and password don't match" (the server
+  answered 401 "Failed to create session"); now 403 "Your account is deactivated. Contact your admin."
+- **A model server that can't be reached says so.** Chat and Knowledge showed "fetch failed"; Learning said "The
+  model failed to respond." All three now say "Couldn't reach the model server. It may be down or not reachable from
+  here: try again in a minute, or ask your admin to check it."
+- **Out of tokens, a new course or lesson is refused at once** (402, as in Chat), instead of being accepted and then
+  failing in the background. The same for writing all lessons, a new version, a check and retrying an outline.
+- **A question interrupted by a restart says so.** When the server restarted mid-answer, the question stayed with no
+  answer and nothing said why. The chat now shows "This message has no answer: it was interrupted…" with **Answer
+  again**.
+- **A message too long for the model is refused, not cut.** Only older turns are dropped to fit the model's window;
+  a question that can't fit whole is refused with how much fits, and a suggestion to attach it as a document.
+- **Clearer input errors.** A message of only spaces isn't sent; over-long messages, Knowledge questions and course
+  topics get a sentence ("A message can be at most 200,000 characters…") instead of the schema's words; a missing
+  workspace or project in a request is a 400 ("Choose a workspace.") instead of a server error. A model turned off
+  says to choose another or Auto.
+- **Data exports name who wrote each message.** In a group chat, someone else's message was labelled with the owner's
+  name; it now carries its writer's. A person's export also has what they wrote in other people's group chats.
+- **The audit log says what a role or status was before** a change (`fromRole`, `fromStatus`).
 - **The root finder finds roots where the curve only touches zero.** Calculus → roots looked only for sign changes, so
   (x − 1)² on [0, 3] had "no roots", and horizontal tangents missed flat points like x³ at 0. A dip of |f| to zero
   between grid points now counts (located exactly); a dip that stays above zero doesn't.

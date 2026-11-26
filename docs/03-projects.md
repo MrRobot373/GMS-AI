@@ -54,6 +54,9 @@ answer, chat; if you want something delivered, use Work AI.*
   and connected apps; Python runs only for the chat's author (so nobody's code runs with the author's files). Only the
   author renames, moves, unshares or deletes it, and **Group chat / Read-only** in its header lets members only read it.
   Moving a chat out of the project stops sharing it.
+- **Access taken away closes the project's chats.** Someone removed from the project (or from its workspace) no longer
+  opens, writes in or moves its chats, their own included, since the answers hold the project's material; they can
+  still delete their own. Admins who aren't members don't open or start chats in it (D53).
 - Linking a private library document to a project makes it readable by the project's people. It stays in the owner's library.
 
 ## Also in Phase A

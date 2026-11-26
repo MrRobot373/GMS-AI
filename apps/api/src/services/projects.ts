@@ -13,7 +13,7 @@ import { and, eq, or, project, projectMember, sql, workspaceMember, type DB } fr
 import { isOrgAdmin } from "@aatmiq/shared";
 import type { AppContext, SessionUser } from "../context";
 import { getMembership, requireWorkspaceCap } from "../context";
-import { forbidden, notFound } from "../errors";
+import { badRequest, forbidden, notFound } from "../errors";
 
 export type ProjectRole = "owner" | "edit" | "chat";
 
@@ -37,6 +37,8 @@ export async function requireNotGuest(ctx: AppContext, u: SessionUser, workspace
 }
 
 export async function getProjectAccess(ctx: AppContext, u: SessionUser, projectId: string) {
+  // A request without one (a missing ?projectId=) is the caller's mistake, not a server error.
+  if (!projectId) throw badRequest("Choose a project.");
   const [p] = await ctx.db.select().from(project).where(eq(project.id, projectId));
   if (!p) throw notFound("Project not found");
   const wm = await getMembership(ctx.db, p.workspaceId, u.id);

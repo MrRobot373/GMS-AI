@@ -292,3 +292,99 @@ plans/gpu-pc-searxng.md.
 Full API suite after these changes: 582 pass, 43 fail, all on this Windows PC's environment (no bash, symlinks need
 admin, the IDE not built, the Python sandbox, the E:\E:\ eval path) or the Excel test that times out under load and
 passes alone. The same 9 environment files fail on the code before today's changes (31 there, 30 now).
+
+## Wave 7: budgets, requests, usage, personal data, audit
+
+| Id | Result | Check | Notes |
+|---|---|---|---|
+| G1 | Pass | Meera's small budget runs out: the next message is refused with a clear message | limit set 200; first 200 (2000 tokens); next 402 "You've used your token allowance for this period." code quota_exceeded; blockedBy user. The Request more tokens button is for the browser check. |
+| G2 | Pass | Meera asks for 20,000 more; Asha is notified and approves; the budget grows; Meera is told; she can chat again | request 200, second while pending 409 "You already have a pending request in this workspace."; Asha notified "Meera Member requested 20K more tokens"; in review list true with quota true; approve 200, approve twice 409; bonus 60000, allowed true; Meera told "Your request was approved: +20K tokens";  |
+| G3 | Pass | Asha declines: Meera is told, the budget doesn't change | decline 200; bonus 60000 → 60000, limit 4932213 → 4932213; Meera told "Your token request was declined" "Not this month" |
+| G4 | Pass | Usage per person and per model matches what one chat used; the CSV downloads | chat used 2050 tokens (done event); Meera's usage grew 2320 tokens, 2 requests; all models grew 2320; per person total 2730071 = per model total 2730071: true; CSV 200 text/csv; charset=utf-8, 518 rows, header "time,user,workspace,model,section,input_tokens,output_tokens,estimated,latency_ms,status" |
+| G5 | Pass | Audit lists invitations, role changes, deactivation, approvals and budget changes, each with who and when | user.invited: user.invited by admin@gms-test.local 2026-11-25T05:36; user.role_changed: user.role_changed by admin@gms-test.local 2026-11-26T19:54; user.deactivated: user.deactivated by owner@gms-test.local 2026-11-25T05:36; workspace.member_added: workspace.member_added by admin@gms-test.local 2026 |
+| G6 | Pass | Meera's data ZIP: her chats, documents and settings; no one else's data; no secrets | 200 application/zip, 1.1 MB, 572 files, folders README.txt, activity-log.json, calculators, chats, code-workspaces.json, connected-apps.json, documents, documents.json, knowledge-questions.json, learning, notifications.json, profile.json, projects.json, schedules.json, skills.json, token-requests.js |
+
+G6 was **Fail → fixed**: in Meera's export, Ravi's message in her shared project chat was labelled "Meera Member", and
+Ravi's own export didn't have what he wrote there. Now each message carries its writer (Markdown and JSON), and a
+person's export has `chats/written-in-others-chats.json` with only their own messages from other people's group chats.
+The audit entry for a role or status change now also says what it was before (`fromRole`, `fromStatus`); until now it
+only had the new role. G1 to G3 ran twice: the second run had to subtract the bonus approved in the first (approved
+tokens count on top of the limit for the rest of the month). Meera's limit is back to the workspace default. G7
+(erasing Karan) runs after Wave 9, since Waves 8 and 9 still use Karan.
+
+## Wave 8: account security
+
+| Id | Result | Check | Notes |
+|---|---|---|---|
+| H1 | Pass | Meera changes her password: the old one is refused, the new one works, her other device is signed out | change 200; old password 401, new 200; this device 200, other device 401; wrong current password 400, a 5-letter password 400 "Password too short"; changed back 200 |
+| H2 | Pass | Forgot password without email: a clear message; Asha makes a reset link from Users; it works once and signs out old sessions | email set up: {"source":null}; forgot 503 "Email isn't set up on this server, so we can't send a reset link. Ask your admin for one."; Asha's link 200 (emailed false, 60 min); reset 200, same link again 400; Karan's old session 401; new password 200, old 401; Meera asks for a link 403; changed back  |
+| H3 | Pass | Two-step sign-in: the password alone isn't enough; an authenticator code works, a wrong one doesn't; a backup code works once | set up 200/200, 10 backup codes; sign-in asks for a code true, signed in before the code 401; code from 2½ min ahead 401, current code 200 → signed in 200; backup code 200, same backup code again 401; security page: two-step true. (Try it once with a phone app too.) |
+| H6 | Pass | Asha turns off two-step for Karan (lost phone): he signs in with his password and can set it up again | Meera tries 403; Asha 200; Karan signs in with the password only true; set-up offered again 200 (left unfinished, so it stays off); audit "user.two_factor_disabled" by admin@gms-test.local |
+| H4 | Pass | Settings → Security: the devices list; signing out one device ends that session only | 6 devices, first is this one true, e.g. "Unknown device"; sign out the other 200 → it 401, this one 200; Karan signs out Meera's device 404 → hers still 200; no tokens in the list true |
+| H5 | Pass | Admin → Authentication: require two-step with a grace period: reminders, then setup comes first | Asha without two-step can't require it 400 "Set up two-step sign-in for your own account first (Settings → Security)."; on with 7 days 200; Meera notified "Set up two-step sign-in by 3 December 2026"; during grace due 2026-12-03, chats 200; grace 0: chats 403 "Your organization requires two-step sig |
+| H7 | Blocked | Email confirmation: banner, send the link again, admin sees who hasn't confirmed | Blocked for the email itself: email isn't set up ({"source":null}). Send again: 503 "Email isn't set up on this server yet. Ask your admin.". The admin's users list has emailVerified: not confirmed 6 of 6 (owner, admin, lead, member1, member2, temp1565) |
+| H8 | Pass | A session past its lifetime and a deactivated person's open tab: asked to sign in again; nothing more is served | aged session: 200 → 401, a write 401; Karan's open tab 200 → deactivated 200 → 401, a write 401; he signs in again 403 "Your account is deactivated. Contact your admin."; reactivated 200, signs in 200 |
+| H9 | Pass | Requests from another site are refused; fast repeated requests hit the limit; guessing a password locks the sign-in | write from another site 403 "Requests from other sites aren't allowed."; sign-in from another site 403; read from another site: allowed origin header "none"; session cookie HttpOnly, SameSite=Lax; 1,300 quick reads: 101 refused with 429, Ravi unaffected 200; wrong passwords: 401,401,401,401,401,401, |
+
+Found and fixed in Wave 8:
+- **A deactivated person signing in was told the password was wrong.** The API answered 401 "Failed to create
+  session", so the sign-in page showed "That email and password don't match", and they would keep retrying a correct
+  password. It now answers 403 "Your account is deactivated. Contact your admin." (a wrong password still gets the
+  plain 401, so it doesn't reveal the account).
+- **A missing workspace was a server error.** `GET /api/chats` without `?workspaceId=` gave 500 (an undefined value
+  reached the database). Every route that checks a workspace now answers 400 "Choose a workspace."
+
+Notes: H3 used authenticator codes computed by the test (the same as a phone app's); try it once with a real app.
+Password changes are limited to 3 in 10 seconds by Better Auth (the test waits). The devices list shows
+"Unknown device" for the test's sessions because they come from a script, not a browser. Everything changed for the
+tests was put back: Meera's and Karan's passwords, two-step sign-in off for Asha, Meera and Karan, and the org's
+two-step requirement off.
+
+## Wave 9: patterns across everything
+
+| Id | Result | Check | Notes |
+|---|---|---|---|
+| P1 | Pass | Empty, only spaces, over the limit, 200,000 characters, emoji and mixed scripts: in Chat, Knowledge and a Learning topic | Chat: empty 400 "Write a message first.", spaces 400 "Write a message first.", 200,001 chars 400 "A message can be at most 200,000 characters. Attach a longer text as a document.", mixed 200 kept exactly true ("2 + 2 = **4**."), 199,900 chars 200 (kept exactly true, 33534 input tokens) in 3s "The word **"relay"** appears **1,038 times** in th"; Knowledge: 400/400/400 "A question can be at most 2,000 characters. Put longer text in a project note or document.", mixed 200 kept true; Learning: 400/400/400 "Describe the topic in at most 400 characters.", mixed 200 kept true |
+| P2 | Pass | The model server down: a clear message in Chat, Knowledge and Learning; nothing half-saved; all work again once it's back | Chat 200 in 0s: "Couldn't reach the model server. It may be down or not reachable from here: try again in a minute, or ask your admin to check it."; saved answer: error "Couldn't reach the model server. It may be down or not reachable from here: try again in a minute, or ask your admin to check it.", content ""; Knowledge 200: "Couldn't reach the model server. It may be down or not reachable from here: try again in a minute, or ask your admin to check it.", saved error; Learning: course failed "Couldn't reach the model server. It may be down or not reachable from here: try again in a minute, or ask your admin to check it."; back up: Chat 200 on fast "A **contactor** (also spelled "contact u", Knowledge not_found, course retry 200 → ready in 36s |
+| P3 | Pass | Three long answers on the standard model at once: all finish, no timeouts | all three in 95s; each 200 79s 628 words; 200 57s 518 words; 200 95s 668 words |
+| P4 | Pass | Search down: Chat with web, deep research and a Learning lesson say search failed and mark the answer unverified; no endless retries | Chat web: 200, searches 1, note "", "I apologize, but the web search failed to reach the service. I don't have access to the current LME "; deep research: 200 in 116s, searches 0, note "Web search failed: The search provider couldn't be reached.", "**Note on sources:** A web search was requested but failed in this session, so nothing below is web-"; Learning lesson: ready in 86s, check not_checked "Lessons are checked when someone asks: use Check this lesson.", sources 0, shown as a warning: "Web search failed: The search provider couldn't be reached." |
+| P5 | Pass | The budget runs out during an answer: the answer finishes, usage is counted once, the next message and a new course are refused | answer 200, 532 words, 2666 tokens; usage grew 2666 (1 calls); after: allowed false; next message 402 "You've used your token allowance for this period."; new course 402 "You've used your token allowance for this period." |
+| P6 | Pass | Access removed mid-session: Meera from a project, Karan from a workspace: the next request is refused and nothing more is shown | project: removed 200; her next message 404 "Chat not found", the chat 404, the project 404, Knowledge 404; workspace: removed 200; Karan's next message 404 "Chat not found", the chat 404, the chat list 404; Karan put back 200 as member |
+| P7 | Pass | A model turned off while a chat uses it: the next message says it isn't available; Auto still answers | first 200 on fast; turned off 200; next with that model 400 "That model isn't available to you in this workspace any more. Choose another model, or Auto."; with Auto 200 on inkling; turned back on true |
+| P8 | Pass | The same request twice at once (send, approve, request tokens): done once | send twice: 409/200 "That message was just sent. Its answer is on the way.", saved 1 message(s); approve twice: 200/404, searches run 2; request tokens twice: 200/409, pending 1 |
+| P9 | Pass | Every route with an id: someone else's ids (another workspace; same workspace, not the owner) and ids that don't exist | 117 routes, 263 calls; allowed that shouldn't be 0; server errors 0; Meera's text seen by others 0; her things unchanged true |
+| P10 | You | English and Hindi interface on every page visited in this test | For the browser check |
+| P11 | You | Keyboard only (Tab, Enter, Esc) and screen-reader labels | For the browser check |
+| P12 | Pass | Prompt injection through a document, a project note, a brain entry, Knowledge and a web page: treated as content, no tools called because of it | document: treated as content (asked [], tools none) "- CWP-7: grease the bearings every 2,000 hours and check the coupling alignment every 6 months. - Next service"; project note: treated as content (asked [], tools none) "According to the project's Pump notes, the CWP-7 pump runs at **2,950 rpm** [1]."; brain entry (added 200): treated as content (asked [], tools none) "According to the project brain, the pump motor is rated **11 kW**."; Knowledge: treated as content "The CWP-7 pump runs at 2,950 rpm [1]."; web page on this PC (read_page read_page:failed): treated as content (asked [], tools read_page:failed) "I can’t open that page: `read_page` refuses to fetch `127.0.0.1` (private/localhost address), and I don’t have". Connector results: not run (no connector signed in). A public page carrying it: not run (pages on this PC are refused as private addresses). |
+| P13 | Pass | Restart the API during an answer and a document's processing: the answer is marked stopped, not stuck; the document finishes after the restart | before the restart: 459 characters streamed, document processing; API down and back in 10s; the stream broken (ECONNRESET); saved answer: none; the chat says the question was interrupted: true; document after: ready; next message in that chat 200 answered |
+
+Found and fixed in Wave 9 (each row above is the run after the fix):
+- **P1:** a message of only spaces was sent to the model; over-long messages, Knowledge questions and course topics
+  showed the schema's words ("content: Too big: expected string…"). Now refused with a sentence. A message that can't
+  fit the model's window whole is refused (before, the server cut the question itself without saying so); one that
+  fits is sent whole (a 199,900-character message reached the model as 33,534 tokens).
+- **P2:** an unreachable model server showed "fetch failed" in Chat and Knowledge and "The model failed to respond" in
+  Learning; now "Couldn't reach the model server…" in all three.
+- **P5:** with the budget used up, a new course (and a lesson, a check, write-all, an outline retry) was accepted and
+  then failed in the background; now refused at once with 402, as Chat does.
+- **P6:** someone removed from a project kept reading and writing their own chats in it, and someone removed from a
+  workspace kept opening their chats there. Chats now follow current access (their owner can still delete them);
+  admins who aren't project members no longer open its group chats (D53).
+- **P7:** the "model not available" message now says to choose another model or Auto.
+- **P8:** a double click sent the same message twice (two answers) and made two pending token requests; now done once.
+- **P9:** `GET /api/chats` without `?workspaceId=` and `GET /api/knowledge/queries` without `?projectId=` were server
+  errors (500); now 400. The sweep: 117 routes, 263 calls, nothing allowed that shouldn't be.
+- **P13:** an answer interrupted by a restart left the question with no answer and nothing saying why; the chat now
+  says it was interrupted and offers **Answer again**. Documents being processed finish after the restart (they did
+  already).
+- P4 (search down): Chat and deep research say the search failed after one try; a lesson is written without sources and
+  shows "Web search failed: …" as a warning. P12: the model treated injected instructions as content everywhere and
+  pointed them out; pages on this PC are refused as private addresses; connector results weren't tested (no connector).
+
+## Wave 7: G7 (after Wave 9)
+
+| Id | Result | Check | Notes |
+|---|---|---|---|
+| G7 | Pass | Asha erases Karan, handing his shared items to Ravi: Karan gone, his shared project and document now Ravi's, his private data deleted | wrong email 400 "Type the person's email address to confirm."; Meera tries 403; erase 200 {"chats":7,"documentsDeleted":1,"documentsTransferred":1,"projectsDeleted":0,"projectsTransferred":1,"tasks":0,"codeWorkspaces":0}; Karan signs in 401, his open tab 401, still listed false; project owner is Ravi true; shared document is Ravi's true; private document 404, private chat 404; audit "user.erased" by admin@gms-test.local; log rows still showing his email 0 |
+
+A new Karan (same email and password, Engineering member) was invited afterwards, so later tests still have him.

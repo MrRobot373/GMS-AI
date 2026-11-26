@@ -10,7 +10,7 @@ import { audit, parse, requireUser, type AppContext, type SessionUser } from "..
 import { badRequest, forbidden, notFound } from "../errors";
 import { localeOf, tr, type Locale } from "../i18n";
 import { getGemSettings, requireModule } from "../services/gem";
-import { checkLearningLimits, flatLessons } from "../services/learning";
+import { checkLearningLimits, flatLessons, modelFor } from "../services/learning";
 import { blockedAmong, NO_COUNTS, videoCounts } from "../services/lesson-videos";
 import { isVideoId } from "../services/youtube";
 
@@ -147,11 +147,15 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
       .limit(200);
   });
 
+  /** Out of tokens: refused now (402), not a course or lesson that fails in the background. The jobs' own check. */
+  const budgetFirst = (workspaceId: string, userId: string, text: string) => modelFor(ctx, { workspaceId, userId, text });
+
   app.post("/api/learning/courses", async (req) => {
     const u = await requireUser(ctx, req);
     const body = parse(courseCreateSchema, req.body);
     await requireModule(ctx, u, body.workspaceId, "learning");
     await checkLearningLimits(ctx, u.id, "course");
+    await budgetFirst(body.workspaceId, u.id, `Design a ${body.level} engineering course on ${body.topic}`);
     const [c] = await db
       .insert(course)
       .values({ workspaceId: body.workspaceId, userId: u.id, topic: body.topic, level: body.level, title: body.topic, tags: [...new Set(body.tags ?? [])] })
@@ -207,6 +211,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     const c = await ownCourse(ctx, u, req.params.id);
     if (c.status !== "failed") throw badRequest("Only a course whose outline failed can be retried.");
     await checkLearningLimits(ctx, u.id, "lesson");
+    await budgetFirst(c.workspaceId, u.id, `Design a ${c.level} engineering course on ${c.topic}`);
     await db.update(course).set({ status: "generating", error: null }).where(eq(course.id, c.id));
     void ctx.learning.outline(c.id);
     return { ok: true };
@@ -286,6 +291,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!l) throw notFound("Lesson not found");
     if (l.status === "ready" || l.status === "generating") return { ok: true, status: l.status };
     await checkLearningLimits(ctx, u.id, "lesson");
+    await budgetFirst(c.workspaceId, u.id, c.topic);
     await db.update(courseLesson).set({ status: "generating", error: null }).where(eq(courseLesson.id, l.id));
     void ctx.learning.lesson(c.id, ordinal);
     return { ok: true, status: "generating" };
@@ -304,6 +310,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     const [busy] = await db.select({ id: courseLesson.id }).from(courseLesson).where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.ordinal, ordinal), eq(courseLesson.status, "generating")));
     if (busy) return { ok: true, status: "generating" };
     await checkLearningLimits(ctx, u.id, "lesson");
+    await budgetFirst(c.workspaceId, u.id, c.topic);
     if (l.status === "ready") {
       if (!(await ctx.learning.regenerate(c.id, ordinal, l.title))) return { ok: true, status: "generating" };
     } else {
@@ -332,6 +339,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
     if (busy) return { ok: true, status: "generating" };
     if (l.status !== "ready" || !l.content) throw badRequest("Only a lesson that's been written can be checked.");
     await checkLearningLimits(ctx, u.id, "lesson");
+    await budgetFirst(c.workspaceId, u.id, c.topic);
     if (!(await ctx.learning.check(c.id, ordinal, l.title))) return { ok: true, status: "generating" };
     await audit(ctx, { actor: u, action: "lesson.checked", workspaceId: c.workspaceId, targetType: "course", targetId: c.id, meta: { ordinal } });
     return { ok: true, status: "generating" };
@@ -364,6 +372,7 @@ export async function learningRoutes(app: FastifyInstance, ctx: AppContext) {
       .where(and(eq(courseLesson.courseId, c.id), eq(courseLesson.current, true), sql`${courseLesson.status} in ('pending', 'failed')`))
       .orderBy(asc(courseLesson.ordinal));
     await checkLearningLimits(ctx, u.id, "lesson");
+    await budgetFirst(c.workspaceId, u.id, c.topic);
     for (const w of waiting) void ctx.learning.lesson(c.id, w.ordinal);
     return { ok: true, queued: waiting.length };
   });

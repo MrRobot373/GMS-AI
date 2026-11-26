@@ -99,7 +99,7 @@ const tag = z.string().trim().min(1).max(40);
 
 export const courseCreateSchema = z.object({
   workspaceId: z.string().min(1),
-  topic: z.string().trim().min(3, "Describe the topic in a few words").max(400),
+  topic: z.string().trim().min(3, "Describe the topic in a few words.").max(400, "Describe the topic in at most 400 characters."),
   level: z.enum(COURSE_LEVELS),
   tags: z.array(tag).max(12).optional(),
 });
@@ -353,6 +353,6 @@ export const calculatorHistorySchema = z.object({
 
 export const knowledgeAskSchema = z.object({
   projectId: z.string().min(1),
-  question: z.string().trim().min(3, "Ask a question").max(2000),
+  question: z.string().trim().min(3, "Ask a question.").max(2000, "A question can be at most 2,000 characters. Put longer text in a project note or document."),
   includeGeneral: z.boolean().optional(),
 });

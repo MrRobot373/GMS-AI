@@ -176,9 +176,22 @@ export function resetKeyPools() {
  * short limit (requests per minute), it waits for the first to reset and tries once more; with no
  * usable key left the last answer is returned as is.
  */
+/**
+ * fetch(), with a network failure (refused, unknown host, no route, TLS) turned into a GatewayError people can read,
+ * not "fetch failed". Stopping (abort) passes through.
+ */
+async function reach(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (e) {
+    if ((e as Error)?.name === "AbortError" || init.signal?.aborted) throw e;
+    throw new GatewayError("Couldn't reach the model server. It may be down or not reachable from here: try again in a minute, or ask your admin to check it.", 503);
+  }
+}
+
 export async function fetchWithKeys(cfg: ProviderConfig, url: string, init: RequestInit & { headers?: Record<string, string> } = {}, waited = false): Promise<Response> {
   const keys = keysOf(cfg);
-  if (keys.length === 0) return fetch(url, init);
+  if (keys.length === 0) return reach(url, init);
   const pool = poolOf(cfg);
   const now = Date.now();
   // Start from the current key, skipping resting ones; if all rest, try the one that wakes first.
@@ -188,7 +201,7 @@ export async function fetchWithKeys(cfg: ProviderConfig, url: string, init: Requ
   let last: Response | null = null;
   for (const i of tryOrder) {
     const key = keys[i]!;
-    const res = await fetch(url, { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${key}` } });
+    const res = await reach(url, { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${key}` } });
     if (!KEY_PROBLEM.has(res.status)) {
       pool.current = i;
       pool.restUntil.delete(key);

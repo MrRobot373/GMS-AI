@@ -264,7 +264,11 @@ d("Aatmiq API", () => {
     expect((await call(member, "GET", "/api/me")).status).toBe(401);
     const again = jar();
     const r = await call(again, "POST", "/api/auth/sign-in/email", { email: "dev@acme.test", password: "another-good-password" });
-    expect(r.status).not.toBe(200);
+    // 403, not 401: the sign-in page says the account is deactivated, not that the password is wrong.
+    expect(r.status).toBe(403);
+    expect(r.json.code).toBe("ACCOUNT_DEACTIVATED");
+    // A wrong password for a deactivated account still says nothing about the account.
+    expect((await call(jar(), "POST", "/api/auth/sign-in/email", { email: "dev@acme.test", password: "wrong-password-0" })).status).toBe(401);
   });
 
   it("locks an account after 10 failed sign-ins without blocking other accounts", async () => {

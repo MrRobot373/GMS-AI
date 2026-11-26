@@ -605,23 +605,31 @@ d("checked lessons", () => {
     }
   });
 
-  it("with the token allowance used up, nothing is searched for a lesson or a check: it says why", async () => {
+  it("with the token allowance used up, a new course, a lesson or a check is refused at once: nothing searched, nothing left failed", async () => {
     const { id } = await newCourse("Resistor budget");
+    const before0 = await versionsOf(id, 0);
     await h.db.update(workspace).set({ tokenLimit: 1 }).where(eq(workspace.id, h.workspaceId));
     try {
       web.searches.length = 0;
       const before = seen.length;
-      expect((await h.call(h.alice, "POST", `/api/learning/courses/${id}/lessons/1/generate`)).status).toBe(200);
+      for (const [path, body] of [
+        ["/api/learning/courses", { workspaceId: h.workspaceId, topic: "Earthing systems", level: "basic" }],
+        [`/api/learning/courses/${id}/lessons/1/generate`, undefined],
+        [`/api/learning/courses/${id}/lessons/1/regenerate`, undefined],
+        [`/api/learning/courses/${id}/lessons/0/check`, undefined],
+        [`/api/learning/courses/${id}/generate-all`, undefined],
+      ] as const) {
+        const r = await h.call(h.alice, "POST", path, body);
+        expect([path, r.status, r.json.error]).toEqual([path, 402, "You've used your token allowance for this period."]);
+      }
       await h.app.learning.idle();
-      const l = (await h.call(h.alice, "GET", `/api/learning/courses/${id}/lessons/1`)).json;
-      expect(l).toMatchObject({ status: "failed", error: "You've used your token allowance for this period." });
-      expect((await h.call(h.alice, "POST", `/api/learning/courses/${id}/lessons/0/check`)).status).toBe(200);
-      await h.app.learning.idle();
-      const checked = await versionsOf(id, 0);
-      expect(checked.at(-1)).toMatchObject({ status: "failed", current: false, error: "The check didn't run: You've used your token allowance for this period." });
-      // No paid search and no model call was made for either.
+      // The lesson is still waiting to be written, the checked one unchanged, and no course was added.
+      expect((await h.call(h.alice, "GET", `/api/learning/courses/${id}/lessons/1`)).json.status).toBe("pending");
+      expect(await versionsOf(id, 0)).toEqual(before0);
+      expect(await h.db.execute(sql`select id from course where topic = 'Earthing systems'`)).toHaveLength(0);
+      // No paid search and no model call was made.
       expect(web.searches).toEqual([]);
-      expect(seen.slice(before).filter((s) => s.kind === "lesson" || s.kind === "check")).toEqual([]);
+      expect(seen.slice(before).filter((s) => s.kind === "lesson" || s.kind === "check" || s.kind === "outline")).toEqual([]);
     } finally {
       await h.db.update(workspace).set({ tokenLimit: null }).where(eq(workspace.id, h.workspaceId));
     }

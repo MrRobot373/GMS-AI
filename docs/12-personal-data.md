@@ -22,7 +22,7 @@ A ZIP, made as it downloads (large exports don't fill the server's memory):
 | File | What |
 |---|---|
 | `profile.json` | Name, email, role, status, job title, custom instructions, two-step sign-in on or off, the directory that keeps them up to date (SCIM or LDAP, with its id for them), sign-in methods, sessions (devices, addresses, times), workspaces and groups |
-| `chats/` | Every chat, every message and version: JSON with the full branch structure, and readable Markdown |
+| `chats/` | Every chat, every message and version: JSON with the full branch structure, and readable Markdown. In a group chat each message names its writer. `written-in-others-chats.json`: the person's own messages in other people's group chats |
 | `documents/`, `documents.json` | The files they uploaded (originals), notes and saved answers, and their details |
 | `projects.json` | Projects they own (with instructions) and the ones they're a member of |
 | `work/` | Each Work AI task: its timeline (`task.json`) and the files it made, up to 500 MB in all (anything over is listed in `README.txt`) |

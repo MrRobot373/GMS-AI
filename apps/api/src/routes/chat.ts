@@ -2,22 +2,22 @@ import { z } from "zod";
 import { recordConversation } from "../services/conversation-log";
 import { readableCitations } from "../services/citation-access";
 import { existsSync } from "node:fs";
-import { and, asc, chat, chatDocument, desc, document, eq, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
+import { and, asc, chat, chatDocument, desc, document, eq, gt, inArray, isNotNull, isNull, message, organization, project, projectSource, sql, usageEvent, user, type Citation, type DB, type MessageWeb } from "@aatmiq/db";
 import { fitToWindow, GatewayError, IMAGE_TOKENS, streamChat, type ChatMessage } from "@aatmiq/model-gateway";
 import { chatPictures, pictureDataUrl } from "../services/chat-images";
 import { answerRoom, contextRequest, DEFAULT_CHAT_WINDOW } from "../services/model-context";
 import { AUTO_MODEL_ID, chatCreateSchema, chatUpdateSchema, estimateTokens, isOrgAdmin, PRODUCT_NAME, sendMessageSchema, type Routing } from "@aatmiq/shared";
 import type { FastifyInstance } from "fastify";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
-import { badRequest, forbidden, HttpError, notFound } from "../errors";
+import { badRequest, conflict, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, buildContext, recallProjectChats, retrieve } from "../services/documents";
 import { chatToDocx, chatToMarkdown, fileNameFor, type ExportMessage } from "../services/export";
-import { getProjectAccess, requireNotGuest } from "../services/projects";
+import { getProjectAccess, requireNotGuest, requireProjectMember } from "../services/projects";
 import { brainContext } from "../services/brain";
 import { inBackground, learnFromChat } from "../services/brain-learn";
 import { chooseModel, isSmallTalk } from "../services/router";
 import { quotaFor, quotaMessage } from "../services/quota";
-import { localeOf, msg, tr } from "../i18n";
+import { fill, localeOf, msg, tr } from "../i18n";
 import { calcContext, findCalculation, saveChatCalculation } from "../services/calc-tool";
 import { awaitApproval, callConnectorTool, chatConnectorTools, decideApproval, waitingApprovals } from "../services/chat-connectors";
 import { chatTools, chatToolsPrompt, MAX_CALLS_PER_ROUND, MAX_PAGE_READS, MAX_TOOL_ROUNDS, MAX_WEB_SEARCHES, onlyAnnounces, RESEARCH_CALLS_PER_ROUND, RESEARCH_PAGE_READS, RESEARCH_ROUNDS, RESEARCH_WEB_SEARCHES, researchPrompt, runChatTool, type ChatToolSet } from "../services/chat-tools";
@@ -43,10 +43,25 @@ async function loadOwnChat(db: DB, u: SessionUser, chatId: string) {
 async function loadReadableChat(ctx: AppContext, u: SessionUser, chatId: string) {
   const [c] = await ctx.db.select().from(chat).where(eq(chat.id, chatId));
   if (!c) throw notFound("Chat not found");
-  if (c.userId === u.id) return { chat: c, readOnly: false, owner: true };
-  if (!c.projectId || !c.sharedToProject) throw notFound("Chat not found");
-  await getProjectAccess(ctx, u, c.projectId);
-  return { chat: c, readOnly: !c.sharedCanReply, owner: false };
+  const owner = c.userId === u.id;
+  if (!owner && (!c.projectId || !c.sharedToProject)) throw notFound("Chat not found");
+  await requireStillIn(ctx, u, c);
+  return { chat: c, readOnly: owner ? false : !c.sharedCanReply, owner };
+}
+
+/**
+ * Access can be taken away while a chat is open: someone removed from the workspace, or from the chat's project,
+ * no longer reads or writes it, even their own (its answers hold the project's material). Admins who aren't
+ * members of the project don't read its chats either (docs/decisions.md, D53).
+ */
+async function requireStillIn(ctx: AppContext, u: SessionUser, c: { workspaceId: string; projectId: string | null }) {
+  try {
+    await requireWorkspaceCap(ctx, u, c.workspaceId, "workspace.use");
+    if (c.projectId) await requireProjectMember(ctx, u, c.projectId);
+  } catch (e) {
+    if (e instanceof HttpError && e.statusCode < 500) throw notFound("Chat not found");
+    throw e;
+  }
 }
 
 /** A chat the user may write in: their own, or a group chat in a project they're in. */
@@ -71,6 +86,15 @@ const chatFileType = (name: string) => FILE_TYPES[name.split(".").pop()?.toLower
 const researching = new Map<string, number>();
 const isResearching = (chatId: string) => {
   const since = researching.get(chatId);
+  return since !== undefined && Date.now() - since < 60 * 60_000;
+};
+/**
+ * Chats with an answer being written now, and since when. A question at the end of a chat with no answer and none
+ * being written was interrupted (the server restarted mid-answer): the chat says so and offers to answer again.
+ */
+const answering = new Map<string, number>();
+const isAnswering = (chatId: string) => {
+  const since = answering.get(chatId);
   return since !== undefined && Date.now() - since < 60 * 60_000;
 };
 
@@ -166,7 +190,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const body = parse(chatCreateSchema, req.body);
     await requireChatSection(ctx, u, body.workspaceId);
     if (body.projectId) {
-      const { project: p } = await getProjectAccess(ctx, u, body.projectId);
+      // Members only: a chat in a project reads the project's material.
+      const { project: p } = await requireProjectMember(ctx, u, body.projectId);
       if (p.workspaceId !== body.workspaceId) throw badRequest("That project belongs to another workspace.");
     } else await requireNotGuest(ctx, u, body.workspaceId);
     const [c] = await db
@@ -211,6 +236,8 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
       ...c,
       // A deep research is still running: its answer arrives when it's done.
       researching: isResearching(c.id),
+      // The last question has no answer and none is coming: it was interrupted.
+      unanswered: !!c.leafMessageId && !isAnswering(c.id) && !isResearching(c.id) && messages.some((m) => m.id === c.leafMessageId && m.role === "user") && !messages.some((m) => m.parentId === c.leafMessageId),
       messages: messages.map((m) => ({
         ...m,
         authorName: m.authorId ? (authorNames.get(m.authorId) ?? null) : null,
@@ -265,6 +292,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
   app.patch<{ Params: { id: string } }>("/api/chats/:id", async (req) => {
     const u = await requireUser(ctx, req);
     const c = await loadOwnChat(db, u, req.params.id);
+    await requireStillIn(ctx, u, c);
     const { archived, projectId, sharedToProject, leafMessageId, ...rest } = parse(chatUpdateSchema, req.body);
     const set: Partial<typeof chat.$inferInsert> = { ...rest };
     if (leafMessageId !== undefined) {
@@ -275,7 +303,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     if (archived !== undefined) set.archivedAt = archived ? new Date() : null;
     if (projectId !== undefined) {
       if (projectId) {
-        const { project: p } = await getProjectAccess(ctx, u, projectId);
+        const { project: p } = await requireProjectMember(ctx, u, projectId);
         if (p.workspaceId !== c.workspaceId) throw badRequest("That project belongs to another workspace.");
       } else await requireNotGuest(ctx, u, c.workspaceId);
       set.projectId = projectId;
@@ -346,6 +374,7 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
   app.post<{ Params: { id: string } }>("/api/chats/:id/files", async (req) => {
     const u = await requireUser(ctx, req);
     const c = await loadOwnChat(db, u, req.params.id);
+    await requireStillIn(ctx, u, c);
     if (!(await getGemSettings(db)).chatSandbox) throw forbidden("Python in chat is turned off for your organization.");
     const why = ctx.chatSandbox.unavailable();
     if (why) throw new HttpError(503, why, "sandbox_unavailable");
@@ -475,6 +504,22 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     const thinking = body.thinking ?? autoThinking;
     const routing = picked && { ...picked, thinking: thinking === true };
     // The workspace pays for its own models; a group pays for a model only it gives.
+    // A question the model can't read whole is refused, not silently shortened (older turns can be dropped; the
+    // question can't): about 2,000 tokens stay for the instructions around it.
+    {
+      const win = m.contextLength ?? DEFAULT_CHAT_WINDOW;
+      const room = win - answerRoom(win) - 2000;
+      const need = estimateTokens(content);
+      if (need > room) {
+        throw badRequest(
+          fill(msg("This message is too long for {model}: it reads about {max} words at a time, and this is about {words}. Attach the text as a document and ask about it instead."), {
+            model: m.displayName,
+            max: Math.floor((room * 0.75) / 100) * 100,
+            words: Math.round((need * 0.75) / 100) * 100,
+          }),
+        );
+      }
+    }
     const { status: quota, groupId } = await quotaFor(db, c.workspaceId, u.id, m, c.projectId);
     if (!quota.result.allowed) {
       throw new HttpError(402, quotaMessage(quota), "quota_exceeded", quota);
@@ -496,14 +541,32 @@ export async function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     }
     await waitForProcessing(db, [...chatDocIds, ...projectDocIds]);
 
+    // A double click (or a retried request) sends the same message twice: the second is refused, not answered again.
+    // The chat's lock makes the check and the insert one step, so two at once can't both pass.
     const userMsgId = regenerateOf
       ? regenerateOf.id
-      : (
-          await db
+      : await db.transaction(async (tx) => {
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`chat:${c.id}`}))`);
+          const [same] = await tx
+            .select({ id: message.id })
+            .from(message)
+            .where(
+              and(
+                eq(message.chatId, c.id),
+                eq(message.role, "user"),
+                eq(message.authorId, u.id),
+                eq(message.content, content),
+                parentId ? eq(message.parentId, parentId) : isNull(message.parentId),
+                gt(message.createdAt, new Date(Date.now() - 10_000)),
+              ),
+            );
+          if (same) throw conflict("That message was just sent. Its answer is on the way.");
+          const [row] = await tx
             .insert(message)
             .values({ chatId: c.id, parentId, role: "user", authorId: u.id, content, attachments: attachments.length ? attachments : null })
-            .returning({ id: message.id })
-        )[0]!.id;
+            .returning({ id: message.id });
+          return row!.id;
+        });
 
     const [[org], [profile]] = await Promise.all([
       db.select({ productName: organization.productName, promptLogging: organization.promptLogging }).from(organization).limit(1),
@@ -645,6 +708,7 @@ The person attached pictures (${pictures.map((p) => p.name).join(", ")}), but th
     if (proj) await db.update(project).set({ updatedAt: new Date() }).where(eq(project.id, proj.id));
 
     // Stream.
+    answering.set(c.id, Date.now());
     reply.hijack();
     const res = reply.raw;
     res.writeHead(200, {
@@ -964,6 +1028,7 @@ The person attached pictures (${pictures.map((p) => p.name).join(", ")}), but th
     }
     if (assistant) await record("assistant", error ? `[error] ${error}` : text, m.displayName);
     researching.delete(c.id);
+    answering.delete(c.id);
     await db.insert(usageEvent).values({
       workspaceId: c.workspaceId,
       projectId: c.projectId,
