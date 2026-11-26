@@ -11,7 +11,7 @@ import { strFromU8, unzipSync } from "fflate";
 import { createServer, type Server } from "node:http";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { APP_URL, startHarness, type Harness } from "../test/gem-harness";
-import { dropModelImages, dropUnknownCitations, searchQueries, searchSources, webPrompt } from "./services/chat-web";
+import { dropModelImages, dropUnknownCitations, keywordQuery, searchQueries, searchSources, webPrompt } from "./services/chat-web";
 import { clearWebSearchCache, htmlToText, type WebSearchDeps } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
 
@@ -64,9 +64,18 @@ describe("chat web search, without a server", () => {
     expect(dropUnknownCitations("Nothing to cite [1].", 0)).toBe("Nothing to cite.");
   });
 
-  it("the demo model doesn't write queries: the message is searched as it is", async () => {
+  it("the demo model doesn't write queries: the message's key words are searched", async () => {
     const r = await searchQueries({ model: { modelKey: "aatmiq-demo", thinkingSwitch: false } as never, provider: { type: "mock" } as never }, [], "  What is   Ohm's law?  ");
-    expect(r).toEqual({ queries: ["What is Ohm's law?"], usage: null });
+    expect(r).toEqual({ queries: ["Ohm's law"], usage: null });
+    // A whole question finds nothing on most search engines; its key words do.
+    expect(keywordQuery("What is the latest edition of IEC 61439-1 and what changed from the previous one?")).toBe("latest edition IEC 61439-1 changed previous one");
+  });
+
+  it("after nothing was found, a model with web_search is told to search again itself", () => {
+    expect(webPrompt([], 1, false, new Date(), true)).toMatch(/Search again yourself with web_search/);
+    expect(webPrompt([], 1, false)).not.toMatch(/Search again/);
+    // A provider that's down stays down: no point searching again.
+    expect(webPrompt([], 1, true, new Date(), true)).not.toMatch(/Search again/);
   });
 
   it("keeps each query's best results first, one per link, at most 6, and reads pages only at public addresses", async () => {
@@ -346,11 +355,11 @@ d("chat web search", () => {
     await h.call(h.owner, "PUT", "/api/admin/gem", { webUrl: "http://searx.test" });
   });
 
-  it("nothing found is said too; a query writer that doesn't write JSON searches the message", async () => {
+  it("nothing found is said too; a query writer that doesn't write JSON searches the message's key words", async () => {
     const r = await ask(await newChat(), "QUERY-PROSE nothing matches this", { webSearch: true });
     // Nothing found is asked once more (the search engine's sources may just have timed out).
-    expect(web.searches).toEqual(["QUERY-PROSE nothing matches this", "QUERY-PROSE nothing matches this"]);
-    expect(r.saved.web).toMatchObject({ queries: ["QUERY-PROSE nothing matches this"], note: "Web search found nothing for this question." });
+    expect(web.searches.slice(0, 2)).toEqual(["QUERY-PROSE nothing matches", "QUERY-PROSE nothing matches"]);
+    expect(r.saved.web).toMatchObject({ queries: ["QUERY-PROSE nothing matches"], note: "Web search found nothing for this question." });
     expect(r.answer.system).toMatch(/found nothing useful/);
   });
 

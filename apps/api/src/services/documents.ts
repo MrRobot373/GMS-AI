@@ -3,6 +3,7 @@
  * See docs/02-chat.md. Keyword search always works; vectors are added when the
  * workspace has an embedding model.
  */
+import { msg } from "../i18n";
 import {
   and,
   asc,
@@ -26,7 +27,7 @@ import {
 } from "@aatmiq/db";
 import { embed, type ProviderConfig } from "@aatmiq/model-gateway";
 import type { SecretBox } from "../crypto";
-import { chunkPages, extractText, UnsupportedFileError } from "./extract";
+import { chunkPages, extractText, isPictureName, OcrOffError, UnsupportedFileError } from "./extract";
 import { docInAccessibleProject } from "./projects";
 import type { Storage } from "./storage";
 import { createHash } from "node:crypto";
@@ -62,6 +63,9 @@ export function forEmbedding(prefix: string, name: string, text: string): string
 /** Raised for files that will never work (no text, unsupported type): retrying can't help. */
 class NoTextError extends Error {}
 
+/** The note on a picture with no text in it: it can't be searched, but chat can show it to a model. */
+export const PICTURE_ONLY = msg("No text in this picture, so it isn't searchable. In chat, models that read images can look at it.");
+
 /**
  * Extract, chunk and (optionally) embed a stored document. Never throws; records the outcome on the
  * row. With `willRetry`, a failure that may pass (storage or the embedding model unreachable) leaves
@@ -78,10 +82,32 @@ export async function processDocument(
   if (!doc) return "missing";
   try {
     const data = await storage.get(doc.storageKey);
-    const pages = await extractText(doc.name, data);
+    const pages = await extractText(doc.name, data).catch((e) => {
+      if (e instanceof OcrOffError) return [];
+      throw e;
+    });
     const chunks = chunkPages(pages);
     const charCount = pages.reduce((n, p) => n + p.text.length, 0);
-    if (chunks.length === 0) throw new NoTextError("No readable text was found. Scanned PDFs need OCR, which is coming soon.");
+    if (chunks.length === 0 && isPictureName(doc.name)) {
+      // A photo or drawing with no text in it is still worth keeping: chat shows it to models that read images.
+      await db.transaction(async (tx) => {
+        await tx.delete(documentChunk).where(eq(documentChunk.documentId, doc.id));
+        await tx
+          .update(document)
+          .set({
+            status: "ready",
+            error: PICTURE_ONLY,
+            chunkCount: 0,
+            charCount: 0,
+            pageCount: null,
+            embeddingModelId: null,
+            contentHash: createHash("sha256").update(data).digest("hex"),
+          })
+          .where(eq(document.id, doc.id));
+      });
+      return "ready";
+    }
+    if (chunks.length === 0) throw new NoTextError(msg("No readable text was found in this file."));
 
     let emb = await embeddingModelFor(db, box, doc.workspaceId);
     let vectors: (number[] | null)[] = chunks.map(() => null);
@@ -267,13 +293,20 @@ export async function retrieve(
   db: DB,
   box: SecretBox,
   /** Without documentIds: everything the person can open in the workspace, always ranked (the agent's search). */
-  opts: { workspaceId: string; userId: string; documentIds?: string[]; query: string; k?: number },
+  /** projectId: searching from a project's chat, so the library and that project's sources, not other projects'. */
+  opts: { workspaceId: string; userId: string; documentIds?: string[]; query: string; k?: number; projectId?: string | null },
 ): Promise<{ chunks: RetrievedChunk[]; embedTokens: number; embeddingModelId: string | null }> {
   const k = opts.k ?? 6;
   const library = opts.documentIds === undefined;
   if (opts.documentIds?.length === 0) return { chunks: [], embedTokens: 0, embeddingModelId: null };
   const access = and(
     accessibleDocs(opts.workspaceId, opts.userId),
+    library && opts.projectId
+      ? or(
+          and(isNull(document.projectId), or(eq(document.scope, "workspace"), eq(document.ownerId, opts.userId))),
+          sql`exists (select 1 from project_source ps where ps.project_id = ${opts.projectId} and ps.document_id = "document"."id")`,
+        )
+      : undefined,
     eq(document.status, "ready"),
     library ? undefined : inArray(document.id, opts.documentIds!),
     // Older versions that were replaced by a newer upload are left out.

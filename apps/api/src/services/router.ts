@@ -66,12 +66,17 @@ const LEGAL = /\b(law|laws|legal(ly)?|statut\w+|liabilit\w+|penalt(y|ies)|indemn
 const NOT_LEGAL =
   /\b(ohm|newton|kirchhoff|faraday|lenz|coulomb|hooke|boyle|charles|gauss|amp[eè]re|snell|kepler|joule|fourier|fick|stefan|planck|moore|murphy|zipf|benford|beer[- ]lambert|biot[- ]savart|hess|henry|dalton|raoult|pascal|bernoulli|archimedes)['’]?s?\s+(current\s+|voltage\s+|first\s+|second\s+|third\s+)?laws?\b|\b(first|second|third|zeroth)\s+law\b|\blaws?\s+of\s+(physics|motion|thermodynamics|gravitation|gravity|conservation|reflection|refraction|large numbers|averages|diminishing returns|supply|demand|nature|sines|cosines|exponents|indices|logarithms|probability)\b|\b(inverse[- ]square|power|scaling|square[- ]cube|conservation|gas|rate|exponential)\s+laws?\b/gi;
 
+/** Designing or sizing a piece of hardware or a structure: values to choose, calculations to check. */
+const ENGINEERING_DESIGN =
+  /\b(design|designing|size|sizing|dimension|dimensioning)\b.{0,60}\b(converters?|inverters?|rectifiers?|regulators?|power suppl(y|ies)|smps|circuits?|pcbs?|filters?|amplifiers?|op-?amps?|oscillators?|transformers?|inductors?|motors?|drives?|vfds?|generators?|busbars?|switchgear|panels?|cables?|breakers?|protection|earthing|grounding|heat ?sinks?|beams?|shafts?|gears?|bearings?|springs?|welds?|bolted joints?|columns?|slabs?|foundations?|trusses|pumps?|fans?|compressors?|heat exchangers?|hvac|ducts?|piping|pipelines?|tanks?|pressure vessels?|pid|controllers?|control loops?|battery (packs?|banks?|systems?)|solar (plants?|systems?|arrays?))\b/i;
+
 /** One of these is enough: the request needs careful, multi-step work. */
 const HARD_STRONG: [RegExp, string][] = [
   [/\bdesign (a|an|the|our|my)\b.{0,60}\b(system|schema|database|architecture|network|pipeline|api|data model|workflow)\b/i, "a system to design"],
   [/\b(plan|roadmap|strategy)\b.{0,80}\b(migrat\w*|rollout|roll out|launch|expansion|implementation|transition|restructur\w*)\b|\bmigrat(e|ion)\b.{0,60}\b(to|from|with)\b.{0,40}\b(downtime|staff|users|laptops|servers|cloud)\b/i, "a plan with many moving parts"],
   [/\b(analy[sz]e|investigate|figure out|work out|find out)\b.{0,20}\b(why|how come|causes?|what caused)\b|\broot cause\b|\blikely causes\b/i, "finding the causes of a problem"],
   [LEGAL, "a question with legal consequences"],
+  [ENGINEERING_DESIGN, "an engineering design to work out"],
 ];
 const HARD_WORDS = [
   /\bstep[- ]by[- ]step\b/i,
@@ -82,14 +87,20 @@ const HARD_WORDS = [
   /\bstrateg(y|ic)\b|\bbusiness plan\b|\broadmap\b|\bgo-to-market\b/i,
   /\broot cause\b|\bdebug(ging)?\b|\bwhy (does|is) (this|my|it) (fail|crash|break|not work)/i,
   /\boptimi[sz](e|ation)\b|\brefactor(ing)?\b|\balgorithm\b|\b(time|space) complexity\b/i,
-  /\bprove\b|\bproof\b|\bderive\b|\btheorem\b/i,
+  /\bprove\b|\bproof\b|\bderive\b|\btheorem\b|\bshow (the |your |all (the )?)?(calculations?|working|workings|derivation)\b/i,
   /\bevaluate\b|\bassess(ment)?\b|\bcritique\b|\breview (this|my|the|our)\b/i,
   /\bresearch\b|\bliterature\b/i,
   /\bcontract\b|\bclauses?\b|\bregulat(ion|ory)\b/i,
-  /\bfinancial model\b|\bforecast(ing)?\b|\bvaluation\b|\bcash ?flow\b|\bbudget plan\b/i,
+  /\bfinancial model\b|\bforecast(ing)?\b|\bvaluation\b|\bcash ?flow\b|\bbudget plan\b|\bpayback\b|\breturn on investment\b|\broi\b|\blife-?cycle cost\b/i,
 ];
 const HARD_MATH = /\\(frac|int|sum|sqrt|lim)\b|[∫∑√∂]|\b(integral|derivative|differentiate|integrate|eigen\w*|matri(x|ces)|probability|statistically|regression|differential equation)\b/i;
 const ARITHMETIC = /\d\s*[-+*/×÷^%]\s*\d|\b(calculate|compute|how much is|percentage of)\b/i;
+/** Orders addressed to an AI, as planted in an email or a page the person pastes. */
+const AI_ORDER =
+  /\b(ignore|disregard|forget)\s+(all\s+|any\s+)?(the\s+|your\s+|my\s+)?((previous|prior|above|earlier|original|system)\s+(instructions?|prompts?|rules?|messages?)|user'?s?\b)|\b(instructions?|note|message|command)\s+(for|to)\s+(the\s+|any\s+)?(ai|assistant|llm|chatbot|language model)\b|\bsystem prompt\b|\byou are now\b|\b(ai|assistant)s?\s*[:,]\s*(you must|reply only|respond only|say only)/i;
+
+const INDIAN_NUMBERS = /\b(lakhs?|lacs?|crores?|in words)\b|लाख|करोड़/i;
+
 const CODE_BLOCK = /```|^\s*(def |class |function |import |from \S+ import|const |let |var |public |private |#include|SELECT |INSERT |UPDATE |CREATE TABLE|<\?php|package |fn |func )/im;
 const STACK_TRACE = /Traceback \(most recent call last\)|^\s+at [\w.$<>]+ ?\(.*:\d+(:\d+)?\)|\b\w+(Error|Exception): /m;
 const CODE_HARD = /\b(debug(ging)?|fix(es|ed)?|bugs?|errors?|crash(es|ed|ing)?|fails?|failed|failing|broken|optimi[sz](e|ing|ation)|refactor(ing)?|performance|slow|memory leak|race condition|architecture|review)\b/i;
@@ -217,6 +228,10 @@ export function judgeByRules(input: RuleInput): { difficulty: Difficulty | null;
   }
   // Small models are weakest outside English.
   if (otherScript && found.difficulty === "easy") found = { difficulty: "medium", reason: "a request in another language" };
+  // Pasted text with orders for an AI in it: the fast model obeyed one (chat regression, 26 Nov), larger ones don't.
+  if (AI_ORDER.test(t) && (found.difficulty === null || found.difficulty === "easy")) found = { difficulty: "medium", reason: "text with instructions for an AI in it" };
+  // Lakh, crore and numbers in words: the fast model said "1 crore = 10 lakh" three times out of three (26 Nov).
+  if (INDIAN_NUMBERS.test(t) && (found.difficulty === null || found.difficulty === "easy")) found = { difficulty: "medium", reason: "amounts in lakh and crore, or numbers in words" };
   // "And for Pune?" means as much as the question before it.
   if (input.follows && (words < 15 || input.unfinished) && (found.difficulty === null || RANK[found.difficulty] < RANK[input.follows])) {
     found = { difficulty: input.follows, reason: "a follow-up in this conversation" };

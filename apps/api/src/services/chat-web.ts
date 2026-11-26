@@ -20,6 +20,18 @@ const SOURCES_MAX = 6;
 const PAGES_READ = 4;
 const PAGE_CHARS = 3000;
 const QUERY_TIMEOUT_MS = 15_000;
+/** Room for the queries: a model that thinks first (Qwen, Nemotron) spends a few hundred tokens before the JSON. */
+const QUERY_MAX_TOKENS = 1500;
+
+/** Words a search engine doesn't need: the question's frame, not its subject. */
+const FRAME = /^(what|which|who|whom|whose|when|where|why|how|is|are|was|were|do|does|did|can|could|should|would|will|shall|may|might|the|a|an|of|to|in|on|for|and|or|from|with|about|me|my|i|we|our|you|your|it|its|this|that|these|those|there|please|tell|give|explain|show|find|list|any|some|much|many|be|been|has|have|had|vs|versus|between|than|then|also|just|only|really)$/i;
+
+/** A search engine query from the question itself, when no model wrote one: its words without the question's frame. */
+export function keywordQuery(content: string): string {
+  const words = oneLine(content).replace(/[?!.,;:()"“”]/g, " ").split(/\s+/).filter(Boolean);
+  const kept = words.filter((w) => !FRAME.test(w));
+  return clip((kept.length >= 2 ? kept : words).slice(0, 14).join(" "), 300);
+}
 
 /** A model that can answer, with whose budget pays for it. */
 export interface PaidModel {
@@ -71,7 +83,7 @@ export async function searchQueries(
   content: string,
   opts: { signal?: AbortSignal; today?: Date } = {},
 ): Promise<{ queries: string[]; usage: Usage | null }> {
-  const fallback = [clip(oneLine(content), 300)].filter(Boolean);
+  const fallback = [keywordQuery(content)].filter(Boolean);
   if (model.provider.type === "mock") return { queries: fallback, usage: null };
   const convo = turns
     .filter((t) => t.role !== "system")
@@ -87,7 +99,7 @@ export async function searchQueries(
         { role: "system", content: QUERY_PROMPT(opts.today ?? new Date()) },
         { role: "user", content: `${convo ? `Conversation so far:\n${convo}\n\n` : ""}Latest message:\n${clip(content.trim(), 2000)}` },
       ],
-      { temperature: 0, maxTokens: 200, signal, ...(model.model.thinkingSwitch && { thinking: false }) },
+      { temperature: 0, maxTokens: QUERY_MAX_TOKENS, signal, ...(model.model.thinkingSwitch && { thinking: false }) },
     );
     const r = parseModelJson(queriesSchema, text);
     const seen = new Set<string>();
@@ -159,13 +171,16 @@ export function webCitations(sources: WebResult[], first: number): Citation[] {
 }
 
 /** What the answering model is told: the numbered extracts and how to use them, or why there are none. */
-export function webPrompt(sources: WebResult[], first: number, failed: boolean, today = new Date()): string {
+export function webPrompt(sources: WebResult[], first: number, failed: boolean, today = new Date(), canSearch = false): string {
   if (!sources.length) {
     return [
       failed
         ? "A web search was asked for, but it failed, so there are no web sources for this answer."
         : "A web search was asked for, but it found nothing useful, so there are no web sources for this answer.",
-      "Answer from what you know, and say in one short sentence that you couldn't check this on the web. Never write URLs.",
+      ...(canSearch && !failed
+        ? ["Search again yourself with web_search, using a few keywords rather than the whole question, and read a page or two with read_page before answering. If that finds nothing either, answer from what you know and say in one short sentence that you couldn't check this on the web."]
+        : ["Answer from what you know, and say in one short sentence that you couldn't check this on the web."]),
+      "Never write URLs.",
     ].join("\n");
   }
   const last = first + sources.length - 1;
@@ -238,6 +253,8 @@ export async function chatWebSearch(o: {
   onUsage?: (u: Usage) => Promise<void>;
   /** The queries are written and the search starts (so people see what's being looked up). */
   onQueries?: (queries: string[]) => void;
+  /** The answering model has web_search itself: when nothing was found, it's told to search again with better words. */
+  canSearch?: boolean;
 }): Promise<ChatWebResult> {
   const { queries, usage } = await searchQueries(o.model, o.turns, o.content, { signal: o.signal });
   if (usage) await o.onUsage?.(usage).catch(() => undefined);
@@ -257,6 +274,6 @@ export async function chatWebSearch(o: {
     web: { queries, provider: o.deps.provider, note },
     sources,
     citations: webCitations(sources, o.first),
-    prompt: webPrompt(sources, o.first, failed),
+    prompt: webPrompt(sources, o.first, failed, new Date(), o.canSearch),
   };
 }

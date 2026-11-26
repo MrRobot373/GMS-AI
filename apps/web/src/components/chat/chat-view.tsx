@@ -95,6 +95,8 @@ interface UiMessage {
   research?: boolean;
 }
 
+/** Attached pictures shown as pictures (the model reads them too). */
+const PICTURE = /\.(png|jpe?g|webp|bmp)$/i;
 const PERIOD_ADJ = { day: msg("daily"), week: msg("weekly"), month: msg("monthly") } as const;
 /** As in "this month's allowance". */
 const PERIOD_NOUN = { day: msg("day"), week: msg("week"), month: msg("month") } as const;
@@ -161,6 +163,20 @@ export function ChatView({
   const [webOn, setWebOn] = useState(false);
   // Deep research for the next message only.
   const [researchOn, setResearchOn] = useState(false);
+  // "Think": the person decides whether the model thinks before answering, for every model; remembered in this browser.
+  const [thinkOn, setThinkOn] = useState(false);
+  useEffect(() => {
+    try {
+      setThinkOn(localStorage.getItem("aatmiq_think") === "1");
+    } catch {}
+  }, []);
+  const toggleThink = () =>
+    setThinkOn((v) => {
+      try {
+        localStorage.setItem("aatmiq_think", v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
   const webFromChat = useRef(false);
 
   const models = useQuery({
@@ -397,8 +413,8 @@ export function ChatView({
           headers: { "content-type": "application/json" },
           body: JSON.stringify(
             opts.regenerateOf
-              ? { regenerateOf: opts.regenerateOf, modelId: model?.id, webSearch }
-              : { content, parentId, modelId: model?.id, documentIds: sending.length ? sending.map((a) => a.id) : undefined, webSearch, research },
+              ? { regenerateOf: opts.regenerateOf, modelId: model?.id, webSearch, thinking: thinkOn }
+              : { content, parentId, modelId: model?.id, documentIds: sending.length ? sending.map((a) => a.id) : undefined, webSearch, research, thinking: thinkOn },
           ),
           signal: ctrl.signal,
         });
@@ -493,7 +509,7 @@ export function ChatView({
         }
       }
     },
-    [attachments, chatId, leafId, model?.id, onCreated, project, qc, renameNode, researchOn, streaming, temporary, webAvailable, webOn, workspaceId],
+    [attachments, chatId, leafId, model?.id, onCreated, project, qc, renameNode, researchOn, streaming, temporary, thinkOn, webAvailable, webOn, workspaceId],
   );
 
   /** Show another version of a message (and the newest branch under it). */
@@ -619,6 +635,7 @@ export function ChatView({
       library={library.data}
       webSearch={webAvailable ? { on: webOn, onToggle: () => setWebOn((v) => !v) } : undefined}
       research={{ on: webAvailable && researchOn, onToggle: () => setResearchOn((v) => !v), unavailable: !webAvailable }}
+      thinking={{ on: thinkOn, onToggle: toggleThink }}
     />
   );
 
@@ -1002,13 +1019,18 @@ function MessageBlock({
         )}
         <div className="rounded-xl border border-border bg-surface-2 px-4 py-3 text-[14px] leading-relaxed whitespace-pre-wrap text-fg">
           {m.attachments && m.attachments.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5 whitespace-normal">
-              {m.attachments.map((a) => (
+            <div className="mb-2 flex flex-wrap items-end gap-1.5 whitespace-normal">
+              {m.attachments.map((a) =>
+                PICTURE.test(a.name) ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- the person's own upload, served by the API
+                  <img key={a.id} src={`/api/documents/${a.id}/file`} alt={a.name} title={a.name} className="max-h-40 max-w-60 rounded-md border border-border bg-bg object-contain" />
+                ) : (
                 <span key={a.id} className="inline-flex h-6 max-w-60 items-center gap-1.5 rounded-md border border-border bg-bg px-2 text-[12px]">
                   <FileIcon name={a.name} className="size-3.5" />
                   <span className="truncate">{a.name}</span>
                 </span>
-              ))}
+                ),
+              )}
             </div>
           )}
           {m.content}

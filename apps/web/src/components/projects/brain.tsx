@@ -64,6 +64,7 @@ export function BrainSection({ project: p }: { project: ProjectDetail }) {
     replaced: t("Replaced"),
     accepted: t("Accepted"),
     rejected: t("Turned down"),
+    retired: t("Source removed"),
     edited: t("Edited"),
     deleted: t("Deleted"),
     learned: t("Read"),

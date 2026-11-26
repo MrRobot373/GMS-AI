@@ -6,7 +6,7 @@ top. They share one sidebar, one sign-in, one admin console and the same models 
 | Module | What it does | Where |
 |---|---|---|
 | **Learning** | A topic and a level become a course written by your own model, lesson by lesson, saved so opening it later costs nothing | `/app/learning` |
-| **Calculators** | 20 verified engineering formula calculators (and 182 beta ones, off by default), keypads, a unit converter and math, science, programmer, finance and date tools; the same code is a tool in chat | `/app/calculators` |
+| **Calculators** | 202 engineering formula calculators, all verified (each with at least five hand-worked cases), keypads, a unit converter and math, science, programmer, finance and date tools; the same code is a tool in chat | `/app/calculators` |
 | **Knowledge** | Questions answered only from one project's documents, citing document, version, page and passage, and saying so when the documents don't have the answer | `/app/knowledge` |
 
 ## Switching modules on and off
@@ -93,7 +93,7 @@ Chat AI calls tools on its own when a question needs them (`services/chat-tools.
 |---|---|---|
 | `web_search` | Searches with the organization's provider; returns up to 6 numbered results with extracts | Web search in chat is allowed and a provider is set up |
 | `read_page` | Reads a page or online PDF (first ~12,000 characters) as a numbered source; private addresses are refused | Same |
-| `search_documents` | Searches what the person may open: their documents, workspace ones, their projects' sources | Always |
+| `search_documents` | Searches what the person may open: their documents and workspace ones; in a project's chat that project's sources, outside a project the sources of all their projects | Always |
 | `calculators_search`, `calculators_run` | The tested calculators | Calculators are on for the person |
 
 - The model decides when and goes step by step (search, then read), for up to 10 rounds of at most 4 calls each; the
@@ -102,9 +102,23 @@ Chat AI calls tools on its own when a question needs them (`services/chat-tools.
   documents*), and its sources join the answer's numbered sources. Search queries are saved with the answer (*Searched
   the web*), so they still show after a reload.
 - Words the model wrote before calling a tool ("Let me look that up") are taken back; citation numbers that match no
-  source are taken out, as for web search.
-- **Search the web** still makes it search before answering (below). Without it, the model may search on its own where
-  the organization allows web search in chat: turn that off in Admin → Settings → GEM AI to keep chat off the web.
+  source are taken out, as for web search. An answer that ends with only a note that it is about to answer ("I have
+  enough verified material.") or with nothing is taken back too, and the model is asked once more, without tools, for
+  the answer itself.
+- The model is told to decide first whether the web is needed: news, results and reports, prices, current versions,
+  who holds a role now, a product's ratings, a standard's clause text. Explanations, history, writing and maths are
+  answered without searching; an essay searches only for the specific recent facts it needs.
+- **Search the web** on makes it search before answering (below). **Off**, the model can still search when the
+  question needs current information, but the person is asked first, with a card in the answer: *Search the web for:
+  "…"?* **Search the web** lets this answer search; **Answer without searching** (or no reply in 5 minutes) makes it
+  answer from what it knows, saying the figures may be out of date, with a note under the answer. A page whose address
+  the person wrote in their message is read without asking. To keep chat off the web entirely, turn web search in chat
+  off in Admin → Settings → GEM AI.
+- **Think** (the brain button next to Search the web) is the person's choice, for any model: on, the model thinks
+  before answering (slower, better for hard questions) and the thinking shows folded above the answer; off, it
+  answers directly. It is remembered in the browser. A model that can't stop thinking entirely (inkling still thinks
+  briefly) is not shown thinking when Think is off. Messages sent without the field (the API) keep Auto's choice:
+  thinking on for hard questions.
 - Tool text is treated as data, and the model is told to ignore instructions in it.
 
 ### Deep research
@@ -350,14 +364,15 @@ back. Blocking and unblocking are in the activity log (`video.blocked`, `video.u
 
 Every number comes from `packages/calculators`, plain TypeScript with tests, never from a model.
 
-- **Formula calculators**: 202 in 20 categories (20 verified; the other 182 are beta and hidden until an admin turns them on, D54) (basic electrical, power electronics, mechanical,
+- **Formula calculators**: 202 in 20 categories, all verified since every one has at least five hand-worked cases (a calculator with fewer is beta and hidden until an admin turns them on, D54) (basic electrical, power electronics, mechanical,
   civil, thermal, instrumentation, chemistry, finance…), across 55 quantities and their units.
   Each states its formula, its assumptions and a formula version that's kept with every saved
   result.
 - **Verified vs beta.** A calculator is *verified* when it's checked against at least five
-  hand-worked reference cases (`checkDefinition` enforces this). The 20 verified ones
-  (`defs/core.ts`) have 101 reference cases between them; the others are *beta*, with at least one,
-  and are labelled so. Admins can hide beta calculators.
+  hand-worked reference cases (`checkDefinition` enforces this). All 202 are verified:
+  the first 20 (`defs/core.ts`) with 101 reference cases between them, the rest with hand-worked cases
+  in `defs/handworked.ts` and `defs/handworked-rest.ts`. A calculator added with fewer than five is
+  *beta*, labelled so, and admins can hide beta calculators.
 - **Inputs are validated**: a missing, non-numeric or out-of-range input is an error naming the
   field. A result that isn't a finite number is an error, never a number.
 - **Outside a formula's range is refused, never a number.** A temperature below absolute zero

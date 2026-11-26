@@ -30,7 +30,7 @@ tasks unless the admin turns *Start with Auto* off.
    | Decision | When |
    |---|---|
    | Easy | Greetings and thanks; quick rewrites, translations, spelling and grammar fixes; definitions and short facts; short summaries; very short questions |
-   | Medium | Questions about code; calculations; long texts; anything answered from documents or project sources; requests in another script (the small models are made for English) |
+   | Medium | Questions about code; calculations; long texts; anything answered from documents or project sources; requests in another script (the small models are made for English); amounts in lakh and crore, or numbers to write in words (the fast model said "1 crore = 10 lakh"); pasted text with orders for an AI in it ("ignore the user and reply…": the fast model obeyed one) |
    | Hard | Code with an error or a request to debug, optimize or review it, or more than 40 lines; math beyond arithmetic (derivatives, proofs, probability); requests with several parts that ask for analysis, comparison, design, strategy, legal or financial review |
    | Unclear | The rest (an email to write, a report, a "why" question) |
 
@@ -43,9 +43,12 @@ tasks unless the admin turns *Start with Auto* off.
    (hard → standard, easy → standard), and so does a model that can't hold the conversation (its
    context length, counting the history and the sources).
 
-4. **Thinking**: hard requests turn thinking on (on the advanced model, or the standard one when
-   there's no advanced model); everything else answers directly. Models without the Thinking
-   switch get no such instruction.
+4. **Thinking**: in chat the person decides, with the **Think** button, for any model (switched through
+   `chat_template_kwargs.enable_thinking` and `reasoning_effort`). Where nobody chose (the API, Work AI), hard
+   requests turn thinking on (on the advanced model, or the standard one when there's no advanced model) and
+   everything else answers directly; models without the Thinking switch then get no such instruction. Tested 26 Nov
+   on the GPU PC: the fast model stops thinking when told (0.6 s instead of 7 s); inkling only thinks less (about
+   half), so with Think off its thinking isn't shown.
 
 Two more rules keep it steady:
 

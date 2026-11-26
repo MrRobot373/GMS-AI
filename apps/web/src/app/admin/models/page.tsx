@@ -215,7 +215,7 @@ export default function ModelsPage() {
                         </button>
                       );
                     })}
-                    <Tooltip content={m.vision ? t("Sees images: the agent can look at pictures and screenshots") : t("Text only. Turn on if this model accepts images")}>
+                    <Tooltip content={m.vision ? t("Sees images: Chat and the agents can look at pictures and screenshots") : t("Text only. Turn on if this model accepts images")}>
                       <button
                         onClick={() => updateModel.mutate({ id: m.id, vision: !m.vision })}
                         className={cn(

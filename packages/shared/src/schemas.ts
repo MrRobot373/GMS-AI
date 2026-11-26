@@ -177,6 +177,8 @@ export const sendMessageSchema = z
     webSearch: z.boolean().optional(),
     /** Deep research: many searches and pages, then a report (docs/15-gem-ai.md, "Deep research"). Needs web search. */
     research: z.boolean().optional(),
+    /** Think before answering (the Think switch), for any model. Omitted: Auto decides (on for hard questions). */
+    thinking: z.boolean().optional(),
   })
   .refine((b) => b.content || b.regenerateOf, { message: "Write a message first" });
 

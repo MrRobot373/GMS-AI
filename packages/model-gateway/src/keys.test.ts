@@ -11,7 +11,7 @@ let server: Server;
 let base = "";
 const seen: string[] = [];
 /** key → how the fake provider answers it */
-const behavior: Record<string, "ok" | "weekly" | "rate" | "bad"> = {};
+const behavior: Record<string, "ok" | "weekly" | "rate" | "bad" | "minute" | "minute-always"> = {};
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -25,6 +25,13 @@ beforeAll(async () => {
     if (b === "rate") {
       res.writeHead(429, { "content-type": "application/json", "retry-after": "30" });
       return res.end(JSON.stringify({ error: "too many requests" }));
+    }
+    // LiteLLM's per-minute limit: no Retry-After, the reset time in the body. "minute" lets the next request through.
+    if (b === "minute" || b === "minute-always") {
+      if (b === "minute") behavior[key] = "ok";
+      const at = new Date(Date.now() + 1500).toISOString().replace("T", " ").slice(0, 19);
+      res.writeHead(429, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: { message: `Rate limit exceeded for api_key: abc. Limit type: requests. Current limit: 60, Remaining: 0. Limit resets at: ${at} UTC`, code: "429" } }));
     }
     if (b === "bad") {
       res.writeHead(401, { "content-type": "application/json" });
@@ -90,6 +97,23 @@ describe("API key rotation", () => {
     seen.length = 0;
     await completeChat(cfg, "m", [{ role: "user", content: "x" }]).catch(() => undefined);
     expect(seen).toHaveLength(1);
+  });
+
+  it("waits for a per-minute limit on its only key instead of failing; says plainly when it still holds", async () => {
+    behavior.solo = "minute";
+    const t0 = Date.now();
+    expect((await completeChat(provider(["solo"]), "m", [{ role: "user", content: "x" }])).text).toBe("answered with solo");
+    expect(seen).toEqual(["solo", "solo"]);
+    expect(Date.now() - t0).toBeGreaterThan(400);
+    expect(Date.now() - t0).toBeLessThan(5000);
+    // The reset time in the body is read (not 15 minutes of rest).
+    const in10s = new Date(Date.now() + 10_000).toISOString().replace("T", " ").slice(0, 19);
+    expect(restFor(429, null, `Limit resets at: ${in10s} UTC`)).toBeGreaterThan(8_000);
+    expect(restFor(429, null, `Limit resets at: ${in10s} UTC`)).toBeLessThan(12_000);
+    behavior.stuck = "minute-always";
+    seen.length = 0;
+    await expect(completeChat(provider(["stuck"]), "m", [{ role: "user", content: "x" }])).rejects.toThrow("The model server is busy");
+    expect(seen).toHaveLength(2);
   });
 
   it("works without keys and with a single key", async () => {

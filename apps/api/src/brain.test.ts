@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startHarness, type Harness } from "../test/gem-harness";
 import { projectInstructions, writeProjectFiles } from "./services/project-work";
-import { brainDigest, brainFile, checkProposals, linkPages, quoteIn, similarity, slugOf, vaultFiles, type Brain, type Entry, type Page } from "./services/brain";
+import { brainDigest, brainFile, checkProposals, linkPages, quoteIn, similarity, slugOf, statesChange, vaultFiles, type Brain, type Entry, type Page } from "./services/brain";
 import { looksLikeStatement, windows } from "./services/brain-learn";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -97,6 +97,23 @@ describe("what the brain keeps, without a server", () => {
     expect(run({ replaces: "E1" })).toMatchObject({ replacesId: "e1", conflict: false });
     expect(run({ conflicts: "E1" })).toMatchObject({ replacesId: "e1", conflict: true });
     expect(run({ replaces: "E99" })).toMatchObject({ replacesId: null, conflict: false });
+  });
+
+  it("a model's 'replaces' counts only when the source says it changed, or is a newer version of the entry's document", () => {
+    const existing = [entry("e1", "pg", "Output ripple must stay below 120 mV peak to peak.")];
+    const aliases = new Map([["E1", "e1"]]);
+    const bare = "The output ripple limit is 50 mV peak to peak.";
+    const run = (material: string, quote: string, replaceable?: Set<string>) =>
+      checkProposals([{ page: "Requirements", text: "Output ripple limit is 50 mV peak to peak.", quote, replaces: "E1" }], { material, existing, aliases, pages: [], replaceable }).keep[0]!;
+    // A different value, said plainly: a contradiction for a person, not a silent overwrite.
+    expect(run(bare, "The output ripple limit is 50 mV")).toMatchObject({ replacesId: "e1", conflict: true });
+    // The sentence it comes from says it changed (even when the quote leaves that word out).
+    expect(run("Bench review. We tightened the budget: the output ripple limit is now 50 mV peak to peak.", "output ripple limit is now 50 mV")).toMatchObject({ replacesId: "e1", conflict: false });
+    expect(run("Ripple was lowered to 50 mV peak to peak after the EMC scan.", "lowered to 50 mV peak to peak")).toMatchObject({ conflict: false });
+    // A newer version of the document the entry came from may change it without saying so.
+    expect(run(bare, "The output ripple limit is 50 mV", new Set(["e1"]))).toMatchObject({ replacesId: "e1", conflict: false });
+    expect(statesChange("हमने रिपल सीमा बदलकर 50 mV कर दी है", "हमने रिपल सीमा बदलकर 50 mV कर दी है।")).toBe(true);
+    expect(statesChange("The input range is 36 V to 75 V", "The input range is 36 V to 75 V.")).toBe(false);
   });
 
   it("pages: known names are reused whatever the case, a new topic gets a page, the usual ones are steered to", () => {
@@ -408,4 +425,51 @@ d("the project brain", () => {
     expect((await h.call(h.alice, "DELETE", `/api/projects/${projectId}`)).status).toBe(200);
     expect(await h.db.select().from(brainEntry).where(eq(brainEntry.projectId, projectId))).toHaveLength(0);
   }, 40_000);
+
+  it("the sources decide: a bare difference waits, a new version updates its own values, a source marked TBD or removed stops being fact", async () => {
+    const pid = (await h.call(h.alice, "POST", "/api/projects", { workspaceId: h.workspaceId, name: "Pump drive" })).json.id;
+    const all = (b: any) => [...b.pages.flatMap((p: any) => p.entries), ...b.history];
+    const find = (b: any, re: RegExp) => all(b).find((e: any) => re.test(e.text));
+    script.push([
+      { page: "Requirements", kind: "requirement", text: "Rated power is 15 kW.", quote: "Rated power is 15 kW" },
+      { page: "Requirements", kind: "requirement", text: "Supply is 400 V three-phase.", quote: "Supply is 400 V three-phase" },
+    ]);
+    const v1 = (await h.upload(h.alice, `/api/projects/${pid}/sources/upload`, {}, text("pump-spec.txt", "Pump drive spec. Rated power is 15 kW. Supply is 400 V three-phase."))).json;
+    await wait(async () => (await brain(h.alice, pid)).counts.active === 2);
+
+    // Someone says another value without saying it changed: the model calls it a replacement, the app holds it.
+    script.push([{ page: "Requirements", kind: "requirement", text: "Rated power is 18.5 kW.", quote: "rated power is 18.5 kW", replaces: "@Rated power is 15" }]);
+    const chatId = (await h.call(h.alice, "POST", "/api/chats", { workspaceId: h.workspaceId, projectId: pid })).json.id;
+    await h.call(h.alice, "POST", `/api/chats/${chatId}/messages`, { content: "For this pump drive the rated power is 18.5 kW, please keep that in mind." });
+    let b = await wait(async () => {
+      const x = await brain(h.alice, pid);
+      return x.counts.pending ? x : null;
+    });
+    expect(find(b, /18\.5/)).toMatchObject({ status: "pending", conflict: true });
+    expect(find(b, /15 kW/)).toMatchObject({ status: "active" });
+    await h.call(h.alice, "POST", `/api/projects/${pid}/brain/entries/${find(b, /18\.5/).id}/reject`);
+
+    // Revision B of the same spec changes the value without saying so: its own earlier value is replaced.
+    script.push([{ page: "Requirements", kind: "requirement", text: "Rated power is 22 kW.", quote: "Rated power is 22 kW", replaces: "@Rated power is 15" }]);
+    const v2 = (await h.upload(h.alice, `/api/projects/${pid}/sources/upload`, { replaces: v1.id }, text("pump-spec-b.txt", "Pump drive spec, rev B. Rated power is 22 kW. Supply is 400 V three-phase."))).json;
+    b = await wait(async () => {
+      const x = await brain(h.alice, pid);
+      return find(x, /22 kW/) ? x : null;
+    });
+    expect(find(b, /22 kW/)).toMatchObject({ status: "active", conflict: false });
+    expect(find(b, /15 kW/)).toMatchObject({ status: "replaced" });
+
+    // Marked TBD after it was read: what it said waits for a person again.
+    expect((await h.call(h.alice, "PATCH", `/api/projects/${pid}/sources/${v2.id}`, { label: "tbd" })).status).toBe(200);
+    b = await brain(h.alice, pid);
+    expect(find(b, /22 kW/)).toMatchObject({ status: "pending" });
+    expect(b.log[0]).toMatchObject({ action: "pending" });
+
+    // Removed: what was learned from it leaves the facts (kept in the history); other sources' entries stay.
+    expect((await h.call(h.alice, "DELETE", `/api/projects/${pid}/sources/${v2.id}`)).status).toBe(200);
+    b = await brain(h.alice, pid);
+    expect(find(b, /22 kW/)).toMatchObject({ status: "rejected" });
+    expect(find(b, /400 V/)).toMatchObject({ status: "active" });
+    expect(b.log[0]).toMatchObject({ action: "retired", detail: "pump-spec-b.txt: 1 entry moved to history" });
+  }, 60_000);
 });

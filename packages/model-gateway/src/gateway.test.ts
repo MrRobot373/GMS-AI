@@ -92,6 +92,21 @@ describe("openai-compatible provider", () => {
     });
   });
 
+  it("sends a message's pictures as image_url parts, and only that message's", async () => {
+    const cfg = { type: "openai_compatible" as const, baseUrl: base };
+    const pic = "data:image/jpeg;base64,AAAA";
+    for await (const _ of streamChat(cfg, "qwen-test", [
+      { role: "system", content: "rules" },
+      { role: "user", content: "what is this?", images: [pic] },
+    ]));
+    const sent = bodies.at(-1) as { messages: { role: string; content: unknown; images?: unknown }[] };
+    expect(sent.messages[0]).toEqual({ role: "system", content: "rules" });
+    expect(sent.messages[1]).toEqual({
+      role: "user",
+      content: [{ type: "text", text: "what is this?" }, { type: "image_url", image_url: { url: pic } }],
+    });
+  });
+
   it("keeps the model's thinking apart from its answer", async () => {
     const cfg = { type: "openai_compatible" as const, baseUrl: base };
     const events = [];
@@ -134,12 +149,42 @@ describe("openai-compatible provider", () => {
     expect(firstJsonObject('{"a":')).toBe('{"a":');
   });
 
+  it("asks again without reasoning_effort when a server refuses \"none\"", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const strict = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const body = JSON.parse(raw) as Record<string, unknown>;
+        seen.push(body);
+        if ("reasoning_effort" in body) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: { message: "reasoning_effort: Input should be 'low', 'medium' or 'high'" } }));
+          return;
+        }
+        res.setHeader("content-type", "text/event-stream");
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] })}\n\n`);
+        res.end("data: [DONE]\n\n");
+      });
+    });
+    await new Promise<void>((r) => strict.listen(0, "127.0.0.1", () => r()));
+    const cfg = { type: "openai_compatible" as const, baseUrl: `http://127.0.0.1:${(strict.address() as AddressInfo).port}/v1` };
+    const r = await completeChat(cfg, "qwen-test", [{ role: "user", content: "hi" }], { thinking: false });
+    await new Promise<void>((done) => strict.close(() => done()));
+    expect(r.text).toBe("ok");
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toMatchObject({ chat_template_kwargs: { enable_thinking: false } });
+    expect(seen[1]).not.toHaveProperty("reasoning_effort");
+  });
+
   it("switches thinking per request: vLLM through the chat template, Ollama by reasoning effort", async () => {
     const vllm = { type: "openai_compatible" as const, baseUrl: base };
     await completeChat(vllm, "qwen-test", [{ role: "user", content: "hi" }], { thinking: false });
-    expect(bodies.at(-1)).toMatchObject({ chat_template_kwargs: { enable_thinking: false } });
+    // Off goes both ways: the chat template (vLLM, llama.cpp) and reasoning effort (LiteLLM in front of Ollama).
+    expect(bodies.at(-1)).toMatchObject({ chat_template_kwargs: { enable_thinking: false }, reasoning_effort: "none" });
     await completeChat(vllm, "qwen-test", [{ role: "user", content: "hi" }], { thinking: true });
     expect(bodies.at(-1)).toMatchObject({ chat_template_kwargs: { enable_thinking: true } });
+    expect(bodies.at(-1)).not.toHaveProperty("reasoning_effort");
     // Left alone, the server's default applies.
     await completeChat(vllm, "qwen-test", [{ role: "user", content: "hi" }]);
     expect(bodies.at(-1)).not.toHaveProperty("chat_template_kwargs");

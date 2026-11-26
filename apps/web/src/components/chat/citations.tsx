@@ -182,21 +182,24 @@ export function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
  * Whether an answer that used the web was checked against a page: no page read (or none worked) means its figures
  * come from search snippets or the model's memory, and the person is told so.
  */
-export function webCheck(steps: ToolStep[] | undefined): "unchecked" | "search-failed" | null {
+export function webCheck(steps: ToolStep[] | undefined): "unchecked" | "search-failed" | "declined" | null {
   const web = (steps ?? []).filter((x) => x.tool === "web_search" || x.tool === "read_page");
   if (!web.length) return null;
+  if (web.every((x) => x.outcome === "declined")) return "declined";
   const searched = web.filter((x) => x.tool === "web_search");
   if (searched.length && searched.every((x) => x.outcome === "failed" || x.outcome === "off" || x.outcome === "limit")) return "search-failed";
   const read = web.some((x) => x.tool === "read_page" && !x.running && !["failed", "off", "empty", "limit"].includes(x.outcome ?? ""));
   return read ? null : "unchecked";
 }
 
-export function UncheckedNote({ kind }: { kind: "unchecked" | "search-failed" }) {
+export function UncheckedNote({ kind }: { kind: "unchecked" | "search-failed" | "declined" }) {
   const t = useT();
   return (
     <p className="mt-3 flex items-start gap-1.5 rounded-md bg-warning-soft px-2.5 py-1.5 text-[12.5px] text-warning" data-testid="unchecked-note">
       <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-      {kind === "search-failed"
+      {kind === "declined"
+        ? t("Answered without the web, as you chose: figures come from the model's own knowledge and may be out of date.")
+        : kind === "search-failed"
         ? t("Web search didn't work for this answer, so it comes from the model's own knowledge. Check figures before you rely on them.")
         : t("No web page was read for this answer: figures come from search snippets or the model's memory and aren't verified.")}
     </p>
@@ -217,6 +220,8 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
             ? t("Searching the web")
             : x.outcome === "limit"
               ? t("Search limit reached, not searched")
+              : x.outcome === "declined"
+                ? t("Not searched: you chose to answer without the web")
               : n !== null
                 ? t.n(n, "Searched the web · {n} result", "Searched the web · {n} results")
                 : failed
@@ -224,7 +229,7 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
                   : t("Searched the web"),
         };
       case "read_page":
-        return { icon: FileText, label: x.running ? t("Reading") : x.outcome === "limit" ? t("Page limit reached, not read") : failed ? t("Couldn't read") : t("Read") };
+        return { icon: FileText, label: x.running ? t("Reading") : x.outcome === "limit" ? t("Page limit reached, not read") : x.outcome === "declined" ? t("Not read: you chose to answer without the web") : failed ? t("Couldn't read") : t("Read") };
       case "search_documents":
         return {
           icon: FolderSearch,
@@ -291,6 +296,8 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
 /** A connected app's action waiting for the person in the chat. */
 export interface PendingApproval {
   id: string;
+  /** "web": the model asks to search the web while "Search the web" is off. */
+  kind?: "web";
   connector: string;
   tool: string;
   description: string;
@@ -321,6 +328,25 @@ export function ApprovalCard({ chatId, approval }: { chatId: string; approval: P
     }).catch(() => null);
     if (!r?.ok) setBusy(null);
   };
+  // "Search the web" was off and the question needs current information: the person decides.
+  if (approval.kind === "web")
+    return (
+      <div className="mb-3 rounded-xl border border-accent/40 bg-surface p-3" data-testid="chat-web-approval">
+        <div className="flex items-center gap-2 text-[13px] text-fg">
+          <Globe className="size-3.5 text-accent-text" />
+          {t("Search the web for: {query}?", { query: approval.tool })}
+        </div>
+        <p className="mt-1 text-[12px] text-fg-subtle">{t("Web search is off for this message, but this question seems to need current information. Without it, the answer comes from the model's own knowledge, which may be out of date.")}</p>
+        <div className="mt-2 flex gap-2">
+          <Button size="sm" variant="primary" loading={busy === "approve"} disabled={!!busy} onClick={() => decide(true)} data-testid="chat-web-approve">
+            {t("Search the web")}
+          </Button>
+          <Button size="sm" variant="outline" loading={busy === "decline"} disabled={!!busy} onClick={() => decide(false)} data-testid="chat-web-decline">
+            {t("Answer without searching")}
+          </Button>
+        </div>
+      </div>
+    );
   return (
     <div className="mb-3 rounded-xl border border-warning/40 bg-surface p-3" data-testid="chat-approval">
       <div className="flex items-center gap-2 text-[13px] text-fg">

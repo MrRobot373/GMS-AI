@@ -9,7 +9,9 @@ import type { ChatMessage } from "./index";
 
 /** Tokens a text takes, counted on the safe side (code and non-English text use more than 4 characters a token). */
 export const countTokens = (text: string) => Math.ceil(text.length / 3);
-const size = (m: ChatMessage) => countTokens(m.content) + (m.tool_calls ? countTokens(JSON.stringify(m.tool_calls)) : 0) + 8;
+/** About what one picture costs a vision model, scaled to at most 1280 px a side (most use 1,000 to 1,600 tokens). */
+export const IMAGE_TOKENS = 1600;
+const size = (m: ChatMessage) => countTokens(m.content) + (m.tool_calls ? countTokens(JSON.stringify(m.tool_calls)) : 0) + (m.images?.length ?? 0) * IMAGE_TOKENS + 8;
 const total = (ms: ChatMessage[]) => ms.reduce((n, m) => n + size(m), 0);
 const CUT = "\n\n[… shortened to fit the model's memory …]\n\n";
 

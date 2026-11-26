@@ -80,6 +80,9 @@ d("projects across teams", () => {
     expect(JSON.stringify(lib)).toContain("team-handbook.txt");
     const theirs = await h.call(farah.j, "GET", `/api/documents?workspaceId=${software}`);
     expect(JSON.stringify(theirs.json)).not.toContain("team-handbook.txt");
+    // Not by its id (a link someone passed on) either.
+    for (const path of [`/api/documents/${up.json.id}`, `/api/documents/${up.json.id}/file`]) expect((await h.call(farah.j, "GET", path)).status).toBe(404);
+    expect((await h.call(h.alice, "GET", `/api/documents/${up.json.id}`)).status).toBe(200);
     const share = await h.upload(farah.j, "/api/documents", { workspaceId: software, scope: "workspace" }, { name: "x.txt", type: "text/plain", data: Buffer.from("x") });
     expect(share.status).toBe(403);
   });

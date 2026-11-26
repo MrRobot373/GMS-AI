@@ -25,6 +25,15 @@ describe("chunkPages", () => {
     expect(c.map((x) => x.ordinal)).toEqual(c.map((_, i) => i));
   });
 
+  it("starts a chunk at each page, so a short PDF's passages keep their pages", () => {
+    const c = chunkPages([
+      { page: 1, text: "General. Customer: Shree Textiles." },
+      { page: 2, text: "Electrical. Motor 11 kW, 415 V." },
+      { page: 3, text: "Hydraulics. Design flow 120 m3/h at 32 m head." },
+    ]);
+    expect(c.map((x) => [x.page, x.content.split(".")[0]])).toEqual([[1, "General"], [2, "Electrical"], [3, "Hydraulics"]]);
+  });
+
   it("hard-splits a single enormous line", () => {
     const c = chunkPages([{ page: null, text: "x".repeat(5000) }], 1000, 100);
     expect(c.length).toBeGreaterThanOrEqual(5);
@@ -61,6 +70,27 @@ describe("extractText", () => {
     expect(isSupported("movie.mp4")).toBe(false);
     expect(isSupported("photo.png")).toBe(true);
     await expect(extractText("archive.zip", Buffer.from(""))).rejects.toBeInstanceOf(UnsupportedFileError);
+  });
+
+  it("refuses a password-protected PDF for good, saying why (retrying can't help)", async () => {
+    const objs = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>",
+      `<< /Filter /Standard /V 1 /R 2 /O <${"ab".repeat(32)}> /U <${"cd".repeat(32)}> /P -44 >>`,
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets = objs.map((o, i) => {
+      const at = pdf.length;
+      pdf += `${i + 1} 0 obj\n${o}\nendobj\n`;
+      return at;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 5\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+    pdf += `trailer\n<< /Size 5 /Root 1 0 R /Encrypt 4 0 R /ID [<${"01".repeat(16)}><${"01".repeat(16)}>] >>\nstartxref\n${xref}\n%%EOF\n`;
+    const locked = extractText("locked.pdf", Buffer.from(pdf, "latin1"));
+    await expect(locked).rejects.toBeInstanceOf(UnsupportedFileError);
+    await expect(locked).rejects.toThrow(/password-protected/);
   });
 });
 

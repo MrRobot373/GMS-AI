@@ -5,7 +5,8 @@
  */
 import { estimateTokens, type ProviderType } from "@aatmiq/shared";
 
-export { countTokens, fitToWindow } from "./fit";
+export { countTokens, fitToWindow, IMAGE_TOKENS } from "./fit";
+import { IMAGE_TOKENS } from "./fit";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -14,6 +15,15 @@ export interface ChatMessage {
   tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
   /** Present on a tool result, matching the call's id. */
   tool_call_id?: string;
+  /** Pictures for the model to look at with this (user) message, as `data:` URLs. Only for models that read images. */
+  images?: string[];
+}
+
+/** Messages as OpenAI-compatible servers take them: a message with pictures becomes text and `image_url` parts. */
+function toWire(messages: ChatMessage[]) {
+  return messages.map(({ images, ...m }) =>
+    images?.length ? { ...m, content: [{ type: "text", text: m.content }, ...images.map((url) => ({ type: "image_url", image_url: { url } }))] } : m,
+  );
 }
 
 /** A function the model may call. OpenAI-compatible `tools` entry. */
@@ -65,7 +75,9 @@ export interface StreamOptions {
 export function thinkingParams(cfg: ProviderConfig, thinking: boolean | undefined): Record<string, unknown> {
   if (thinking === undefined || cfg.type === "mock") return {};
   if (cfg.type === "ollama") return { reasoning_effort: thinking ? "high" : "none" };
-  return { chat_template_kwargs: { enable_thinking: thinking } };
+  // vLLM and llama.cpp switch through the chat template; LiteLLM in front of Ollama only through reasoning_effort, so
+  // "off" sends both (a server that refuses "none" is asked again without it, below).
+  return thinking ? { chat_template_kwargs: { enable_thinking: true } } : { chat_template_kwargs: { enable_thinking: false }, reasoning_effort: "none" };
 }
 
 export interface ProviderTestResult {
@@ -123,10 +135,16 @@ const poolOf = (cfg: ProviderConfig) => {
 /** Statuses that mean "this key can't be used right now", so another key may work. */
 const KEY_PROBLEM = new Set([401, 402, 403, 429]);
 
+/** When the body says the limit resets ("Limit resets at: 2026-11-25 23:58:28 UTC", as LiteLLM writes it), in ms from now. */
+function resetsIn(body: string): number {
+  const m = /resets? at:?\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?\s*(UTC|Z|GMT)?/i.exec(body);
+  return m ? Date.parse(`${m[1]}T${m[2]}Z`) - Date.now() : NaN;
+}
+
 /** How long a key rests after a problem. */
 export function restFor(status: number, retryAfter: string | null, body: string): number {
-  const after = retryAfter ? (/^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) : NaN;
-  if (Number.isFinite(after) && after > 0) return Math.min(after, 7 * 86_400_000);
+  const after = retryAfter ? (/^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) : resetsIn(body);
+  if (Number.isFinite(after) && after > 0) return Math.min(after + (retryAfter ? 0 : 1000), 7 * 86_400_000);
   if (status === 429 || status === 402) return /week/i.test(body) ? 86_400_000 : /day|daily/i.test(body) ? 6 * 3_600_000 : 15 * 60_000;
   return 6 * 3_600_000; // 401/403: wrong or revoked key
 }
@@ -154,10 +172,11 @@ export function resetKeyPools() {
 /**
  * fetch() with the provider's keys: uses the current key and, when the provider answers that this
  * key is out of quota or not accepted (401/402/403/429), rests it and tries the next. Status and
- * headers arrive before the body, so streamed answers never mix keys. With no usable key left the
- * last answer is returned as is.
+ * headers arrive before the body, so streamed answers never mix keys. When every key is held by a
+ * short limit (requests per minute), it waits for the first to reset and tries once more; with no
+ * usable key left the last answer is returned as is.
  */
-export async function fetchWithKeys(cfg: ProviderConfig, url: string, init: RequestInit & { headers?: Record<string, string> } = {}): Promise<Response> {
+export async function fetchWithKeys(cfg: ProviderConfig, url: string, init: RequestInit & { headers?: Record<string, string> } = {}, waited = false): Promise<Response> {
   const keys = keysOf(cfg);
   if (keys.length === 0) return fetch(url, init);
   const pool = poolOf(cfg);
@@ -182,8 +201,22 @@ export async function fetchWithKeys(cfg: ProviderConfig, url: string, init: Requ
     if (last) await last.body?.cancel().catch(() => undefined);
     last = res;
   }
+  // A per-minute limit on every key (one key on a team's own server, 60 requests a minute): wait for it, don't fail.
+  const wake = Math.min(...keys.map((k) => pool.restUntil.get(k) ?? 0)) - Date.now();
+  if (!waited && last!.status === 429 && wake <= SHORT_LIMIT_WAIT_MS && !init.signal?.aborted) {
+    await last!.body?.cancel().catch(() => undefined);
+    await new Promise<void>((r) => {
+      const t = setTimeout(r, Math.max(wake, 500));
+      init.signal?.addEventListener("abort", () => (clearTimeout(t), r()), { once: true });
+    });
+    for (const k of keys) if ((pool.restUntil.get(k) ?? 0) <= Date.now() + 1000) pool.restUntil.delete(k);
+    return fetchWithKeys(cfg, url, init, true);
+  }
   return last!;
 }
+
+/** The longest a request waits for a rate limit to reset before giving up. */
+const SHORT_LIMIT_WAIT_MS = 30_000;
 
 function headers(_cfg: ProviderConfig): Record<string, string> {
   return { "content-type": "application/json" };
@@ -221,24 +254,32 @@ async function* streamOpenAiCompatible(
   messages: ChatMessage[],
   opts: StreamOptions,
 ): AsyncGenerator<StreamEvent> {
-  const res = await fetchWithKeys(cfg, `${openAiBase(cfg)}/chat/completions`, {
-    method: "POST",
-    headers: headers(cfg),
-    signal: opts.signal,
-    body: JSON.stringify({
-      model: modelKey,
-      messages,
-      stream: true,
-      stream_options: { include_usage: true },
-      ...(opts.temperature !== undefined && { temperature: opts.temperature }),
-      ...(opts.maxTokens !== undefined && { max_tokens: opts.maxTokens }),
-      ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
-      ...thinkingParams(cfg, opts.thinking),
-      ...opts.extraBody,
-    }),
-  });
+  const body = {
+    model: modelKey,
+    messages: toWire(messages),
+    stream: true,
+    stream_options: { include_usage: true },
+    ...(opts.temperature !== undefined && { temperature: opts.temperature }),
+    ...(opts.maxTokens !== undefined && { max_tokens: opts.maxTokens }),
+    ...(opts.tools?.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
+    ...thinkingParams(cfg, opts.thinking),
+    ...opts.extraBody,
+  };
+  const post = (b: Record<string, unknown>) =>
+    fetchWithKeys(cfg, `${openAiBase(cfg)}/chat/completions`, { method: "POST", headers: headers(cfg), signal: opts.signal, body: JSON.stringify(b) });
+  let res = await post(body);
+  // A server that only knows low/medium/high (some vLLM versions) refuses reasoning_effort "none": ask without it.
+  if (res.status === 400 && "reasoning_effort" in body && body.reasoning_effort === "none") {
+    const text = await res.clone().text().catch(() => "");
+    if (/reasoning_effort/i.test(text)) {
+      const { reasoning_effort: _drop, ...rest } = body as Record<string, unknown>;
+      res = await post(rest);
+    }
+  }
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
+    // Still limited after waiting: say so plainly (the server's own text names its key).
+    if (res.status === 429 && !/week|day|daily|quota|credit/i.test(text)) throw new GatewayError("The model server is busy: it has reached its limit of requests a minute. Try again in a minute.", 429);
     throw new GatewayError(`Provider returned ${res.status}: ${text.slice(0, 300)}`, 502);
   }
 
@@ -352,7 +393,7 @@ export function firstJsonObject(args: string): string {
 }
 
 export function estimateUsage(messages: ChatMessage[], output: string): Usage {
-  const input = messages.reduce((n, m) => n + estimateTokens(m.content) + 4, 0);
+  const input = messages.reduce((n, m) => n + estimateTokens(m.content) + (m.images?.length ?? 0) * IMAGE_TOKENS + 4, 0);
   return { inputTokens: input, outputTokens: estimateTokens(output), estimated: true };
 }
 

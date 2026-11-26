@@ -11,6 +11,17 @@ describe("fitting a chat into the model's window", () => {
     expect(fitToWindow(ms, 8000, 2000)).toEqual({ messages: ms, dropped: 0, shortened: false });
   });
 
+  it("counts pictures, so a chat full of them drops its oldest turns", () => {
+    const pic = "data:image/jpeg;base64,AAAA";
+    const ms: ChatMessage[] = [{ role: "system", content: "rules" }];
+    for (let i = 0; i < 6; i++) ms.push({ role: "user", content: `photo ${i}`, images: [pic, pic] }, { role: "assistant", content: `about photo ${i}` });
+    ms.push({ role: "user", content: "and this one?", images: [pic] });
+    // 13 pictures at IMAGE_TOKENS each don't fit in 16k with 4k kept for the answer; the text alone would.
+    const r = fitToWindow(ms, 16_384, 4096);
+    expect(r.dropped).toBeGreaterThan(0);
+    expect(r.messages.at(-1)).toEqual({ role: "user", content: "and this one?", images: [pic] });
+  });
+
   it("drops the oldest turns first, keeping the instructions and the new question", () => {
     const ms: ChatMessage[] = [{ role: "system", content: "rules" }];
     for (let i = 0; i < 60; i++) ms.push({ role: "user", content: `q${i} ${long(900)}` }, { role: "assistant", content: `a${i} ${long(900)}` });

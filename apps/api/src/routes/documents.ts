@@ -5,6 +5,7 @@ import { z } from "zod";
 import { audit, parse, requireUser, requireWorkspaceCap, type AppContext, type SessionUser } from "../context";
 import { randomToken } from "../crypto";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
+import { localeOf, tr } from "../i18n";
 import { accessibleDocs, processDocument } from "../services/documents";
 import { getProjectAccess, requireNotGuest } from "../services/projects";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
@@ -28,11 +29,12 @@ export async function loadReadable(ctx: AppContext, u: SessionUser, id: string) 
     if (!a || !a.member) throw notFound("Document not found");
     return { doc, canManage: a.canEdit || doc.ownerId === u.id };
   }
-  // Someone's private library file is theirs alone: admins don't open, rename, share or delete it by id.
-  if (doc.scope === "private" && doc.ownerId !== u.id) {
+  // Someone else's library file opens only as the library lists it: a private one is its owner's alone (admins don't
+  // open, rename, share or delete it by id), and a guest from another team doesn't see the team's shared ones.
+  if (doc.ownerId !== u.id) {
     const [ok] = await ctx.db.select({ id: document.id }).from(document).where(and(eq(document.id, id), accessibleDocs(doc.workspaceId, u.id)));
     if (!ok) throw notFound("Document not found");
-    return { doc, canManage: false };
+    if (doc.scope === "private") return { doc, canManage: false };
   }
   return { doc, canManage: doc.ownerId === u.id || isAdmin };
 }
@@ -67,7 +69,9 @@ export async function documentRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get<{ Querystring: { workspaceId: string } }>("/api/documents", async (req) => {
     const u = await requireUser(ctx, req);
     await requireWorkspaceCap(ctx, u, req.query.workspaceId, "workspace.use");
-    return listDocuments(db, req.query.workspaceId, u.id);
+    // Why a file failed is stored in English and shown in the person's language.
+    const locale = localeOf(req);
+    return (await listDocuments(db, req.query.workspaceId, u.id)).map((d) => ({ ...d, error: d.error && tr(locale, d.error) }));
   });
 
   /** Multipart upload: fields `workspaceId`, optional `scope`, then one `file`. Processing runs in the background. */
@@ -118,7 +122,7 @@ export async function documentRoutes(app: FastifyInstance, ctx: AppContext) {
     const u = await requireUser(ctx, req);
     const { doc, canManage } = await loadReadable(ctx, u, req.params.id);
     const { storageKey: _k, ...rest } = doc;
-    return { ...rest, canManage };
+    return { ...rest, error: rest.error && tr(localeOf(req), rest.error), canManage };
   });
 
   app.get<{ Params: { id: string } }>("/api/documents/:id/file", async (req, reply) => {

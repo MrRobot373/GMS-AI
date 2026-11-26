@@ -75,6 +75,25 @@ export function quoteIn(quote: string, material: string): boolean {
   return q.split(/\s*(?:\.\.\.|…)\s*/).filter((part) => part.length >= 4).every((part) => m.includes(part)) && q.replace(/\.\.\.|…/g, "").trim().length >= 8;
 }
 
+/** Words that say a value changed ("raised to", "no longer", "instead"). Without them a different value is only a disagreement. */
+const STATED_CHANGE = /\b(?:chang|rais|lower|increas|reduc|decreas|updat|revis|replac|amend|correct|supersed|bump|swap|tighten|loosen|relax|instead|no longer|from now on|going forward|switch(?:ed|ing)? (?:to|from|over)|moved? (?:to|from)|now (?:is|are|uses?|be)|(?:is|are|was) now)\w*|→|->|बदल|बढ़ा|घटा|संशोधित/iu;
+
+/** The sentence of the material a quote comes from (the quote itself when it can't be found). */
+function sentenceOf(quote: string, material: string): string {
+  const m = squash(material);
+  const first = squash(quote).split(/\s*(?:\.\.\.|…)\s*/)[0] ?? "";
+  const at = first ? m.indexOf(first) : -1;
+  if (at < 0) return quote;
+  const start = Math.max(...[". ", "! ", "? ", "। "].map((b) => m.lastIndexOf(b, at))) + 1;
+  const ends = [". ", "! ", "? ", "। "].map((b) => m.indexOf(b, at + first.length)).filter((i) => i >= 0);
+  return m.slice(start, ends.length ? Math.min(...ends) + 1 : m.length);
+}
+
+/** Does the material itself say this is a change (not just a different value)? */
+export function statesChange(quote: string, material: string): boolean {
+  return STATED_CHANGE.test(quote) || STATED_CHANGE.test(sentenceOf(quote, material));
+}
+
 /** Text that reads as an instruction to an assistant, not a fact about the project: never kept. */
 const INSTRUCTION = /\b(ignore|disregard|forget)\b.{0,40}\b(instruction|prompt|rule)s?\b|\bsystem prompt\b|\byou (must|should) (now|always|never)\b|\bas an ai\b/i;
 
@@ -100,11 +119,13 @@ export interface Checked {
 
 /**
  * What of a model's proposals may be kept. `existing` are the project's active and pending entries; `aliases`
- * maps the short names the model was shown ("E12") to their ids.
+ * maps the short names the model was shown ("E12") to their ids. A proposal replaces an entry only when the material
+ * says the value changed, or when the entry came from an earlier version of the same document (`replaceable`);
+ * otherwise the model's "replaces" is treated as a contradiction, for a person to settle.
  */
 export function checkProposals(
   proposals: Proposal[],
-  o: { material: string; existing: Pick<Entry, "id" | "text" | "status">[]; aliases: Map<string, string>; pages: string[] },
+  o: { material: string; existing: Pick<Entry, "id" | "text" | "status">[]; aliases: Map<string, string>; pages: string[]; replaceable?: Set<string> },
 ): { keep: Checked[]; dropped: { text: string; reason: string }[] } {
   const keep: Checked[] = [];
   const dropped: { text: string; reason: string }[] = [];
@@ -130,8 +151,10 @@ export function checkProposals(
       drop("its quote is not in the source");
       continue;
     }
-    const replacesId = p.replaces ? (o.aliases.get(String(p.replaces).trim()) ?? null) : null;
-    const conflictsId = p.conflicts ? (o.aliases.get(String(p.conflicts).trim()) ?? null) : null;
+    const named = p.replaces ? (o.aliases.get(String(p.replaces).trim()) ?? null) : null;
+    // The model may call a mere difference a change: the app decides, from the source's own words.
+    const replacesId = named && (o.replaceable?.has(named) || statesChange(quote, o.material)) ? named : null;
+    const conflictsId = (p.conflicts ? (o.aliases.get(String(p.conflicts).trim()) ?? null) : null) ?? (named && !replacesId ? named : null);
     const target = replacesId ?? conflictsId;
     // The same statement again (from this batch or already in the brain) adds nothing, unless it is there to settle one.
     const twin = [...o.existing.filter((e) => e.id !== target), ...keep].find((e) => similarity(e.text, text) >= 0.8);
@@ -492,6 +515,23 @@ export async function deleteEntry(db: DB, projectId: string, entryId: string, us
   await db.delete(brainEntry).where(eq(brainEntry.id, e.id));
   await log(db, projectId, "deleted", e.text, { actorId: userId });
   return true;
+}
+
+const fromSource = (projectId: string, documentId: string, statuses: BrainEntryStatus[]) =>
+  and(eq(brainEntry.projectId, projectId), eq(brainEntry.sourceKind, "document"), eq(brainEntry.sourceId, documentId), inArray(brainEntry.status, statuses));
+
+/** A source left the project: what was learned from it is no longer a project fact (it stays in the history). */
+export async function retireSource(db: DB, projectId: string, documentId: string, name: string, userId: string): Promise<number> {
+  const gone = await db.update(brainEntry).set({ status: "rejected", conflict: false, decidedBy: userId, updatedAt: new Date() }).where(fromSource(projectId, documentId, ["active", "pending"])).returning({ id: brainEntry.id });
+  if (gone.length) await log(db, projectId, "retired", `${name}: ${gone.length} entr${gone.length === 1 ? "y" : "ies"} moved to history`, { actorId: userId });
+  return gone.length;
+}
+
+/** A source was marked Assumption or TBD after it was read: what it said waits for a person again. */
+export async function holdSource(db: DB, projectId: string, documentId: string, name: string, userId: string): Promise<number> {
+  const held = await db.update(brainEntry).set({ status: "pending", updatedAt: new Date() }).where(fromSource(projectId, documentId, ["active"])).returning({ id: brainEntry.id });
+  if (held.length) await log(db, projectId, "pending", `${name}: ${held.length} entr${held.length === 1 ? "y waits" : "ies wait"} for review (marked not confirmed)`, { actorId: userId });
+  return held.length;
 }
 
 export async function recentLog(db: DB, projectId: string, n = 40) {

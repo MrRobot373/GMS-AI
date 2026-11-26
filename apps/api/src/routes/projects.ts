@@ -30,6 +30,7 @@ import { audit, parse, requireUser, requireWorkspaceCap, type AppContext } from 
 import { randomToken } from "../crypto";
 import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { accessibleDocs, processDocument } from "../services/documents";
+import { holdSource, retireSource } from "../services/brain";
 import { inBackground, learnFromDocument } from "../services/brain-learn";
 import { isSupported, SUPPORTED_HINT } from "../services/extract";
 import { dropProjectGuestIfDone, ensureProjectGuest, getProjectAccess, isGuest, isWorkspaceAdmin, projectVisibleTo, requireNotGuest, requireProjectEdit } from "../services/projects";
@@ -534,11 +535,14 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
       if (body.supersededById === req.params.documentId) throw badRequest("A source can't replace itself.");
       if (!(await inProject(body.supersededById))) throw badRequest("The newer version must be a source of this project.");
     }
+    const [before] = await db.select({ label: document.label, name: document.name }).from(document).where(eq(document.id, req.params.documentId));
     const [updated] = await db
       .update(document)
       .set(body)
       .where(eq(document.id, req.params.documentId))
       .returning({ id: document.id, label: document.label, supersededById: document.supersededById });
+    // Marked as not confirmed after the brain read it: what it said waits for a person again.
+    if ((body.label === "assumption" || body.label === "tbd") && before?.label !== "assumption" && before?.label !== "tbd") await holdSource(db, p.id, updated!.id, before!.name, u.id);
     await audit(ctx, { actor: u, action: "project.source_updated", workspaceId: p.workspaceId, targetType: "document", targetId: updated!.id, meta: { projectId: p.id, ...body } });
     return updated;
   });
@@ -550,6 +554,8 @@ export async function projectRoutes(app: FastifyInstance, ctx: AppContext) {
     const [doc] = await db.select().from(document).where(eq(document.id, req.params.documentId));
     if (!doc) throw notFound("Source not found");
     await db.delete(projectSource).where(and(eq(projectSource.projectId, p.id), eq(projectSource.documentId, doc.id)));
+    // What the brain learned from it is no longer a project fact.
+    await retireSource(db, p.id, doc.id, doc.name, u.id);
     if (doc.projectId === p.id) {
       await db.delete(document).where(eq(document.id, doc.id));
       await storage.remove(doc.storageKey).catch(() => {});

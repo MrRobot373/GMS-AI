@@ -85,7 +85,7 @@ rsf.forEachChild(function visit(n) {
     !e ? [] : ts.isStringLiteral(e) ? [e.text] : ts.isConditionalExpression(e) ? [...reasons(e.whenTrue), ...reasons(e.whenFalse)] : [];
   if (ts.isPropertyAssignment(n) && n.name.getText(rsf) === "reason") for (const r of reasons(n.initializer)) if (r) used.set(r, where());
   if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && n.left.getText(rsf) === "reason") for (const r of reasons(n.right)) used.set(r, where());
-  if (ts.isArrayLiteralExpression(n) && n.elements.length === 2 && ts.isRegularExpressionLiteral(n.elements[0]) && ts.isStringLiteral(n.elements[1])) used.set(n.elements[1].text, where());
+  if (ts.isArrayLiteralExpression(n) && n.elements.length === 2 && (ts.isRegularExpressionLiteral(n.elements[0]) || ts.isIdentifier(n.elements[0])) && ts.isStringLiteral(n.elements[1])) used.set(n.elements[1].text, where());
   ts.forEachChild(n, visit);
 });
 

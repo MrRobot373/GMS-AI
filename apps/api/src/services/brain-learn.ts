@@ -9,7 +9,7 @@
  * The third row is the safeguard: whatever an AI wrote can be wrong, so it never becomes a project fact on its own.
  * A source marked Assumption or TBD (docs/03-projects.md) only ever produces entries that wait too.
  */
-import { and, asc, brainLog, chat, document, documentChunk, eq, isNull, project, projectSource, sql, usageEvent, user, workEvent, workTask } from "@aatmiq/db";
+import { and, asc, brainLog, chat, document, documentChunk, eq, inArray, isNull, project, projectSource, sql, usageEvent, user, workEvent, workTask } from "@aatmiq/db";
 import { parseModelJson } from "@aatmiq/shared";
 import { completeChat, type ChatMessage } from "@aatmiq/model-gateway";
 import { z } from "zod";
@@ -82,6 +82,8 @@ export function looksLikeStatement(text: string): boolean {
   const t = text.trim();
   if (t.length < 40) return false;
   if (t.endsWith("?") && t.length < 200 && !/\d/.test(t)) return false;
+  // A question about a part or a value ("What output current does the DCX-48 need?") states nothing either.
+  if (t.endsWith("?") && t.length < 200 && /^(what|which|when|where|who|why|how|is|are|does|do|did|can|could|should|will|would)\b/i.test(t)) return false;
   // Thanks, requests and questions about how to do something say nothing about the project.
   if (/^(thanks|thank you|ok|okay|great|cool|nice|good|perfect|please|can you|could you|would you|how|what|why|when|where|who|which|is there|do you|does)\b/i.test(t) && !/\d/.test(t)) return false;
   return /\d|\b(is|are|was|were|will|must|should|decided?|chose|choose|use[sd]?|using|require[sd]?|need[s]?|limit|target|deadline|rated|spec|because|instead|changed?|switch(ed)?)\b/i.test(t);
@@ -141,6 +143,8 @@ async function learnNow(ctx: AppContext, o: LearnInput): Promise<LearnResult | n
   }
   const total: LearnResult = { added: 0, pending: 0, replaced: 0, dropped: 0 };
   const dropReasons = new Map<string, number>();
+  // A new version of a document may change what its earlier versions said without saying so.
+  const earlier = o.source.kind === "document" && o.source.id ? await earlierVersions(db, o.source.id) : new Set<string>();
   for (const part of windows(o.material)) {
     // Each window sees the brain as the one before it left it.
     const b = await loadBrain(db, o.projectId);
@@ -177,10 +181,13 @@ async function learnNow(ctx: AppContext, o: LearnInput): Promise<LearnResult | n
       if (!parsed.ok) messages.push({ role: "assistant", content: r.text.slice(0, 8000) }, { role: "user", content: `That reply was not the JSON asked for (${parsed.error}). Reply again with only the JSON object.` });
     }
     if (!parsed?.ok) continue;
+    // A source removed from the project while it was being read adds nothing.
+    if (o.source.kind === "document" && o.source.id && !(await stillASource(db, o.projectId, o.source.id))) return null;
     const existing = [...b.entries];
+    const replaceable = new Set(b.entries.filter((e) => e.sourceKind === "document" && e.sourceId && earlier.has(e.sourceId)).map((e) => e.id));
     const { keep, dropped } = checkProposals(
       parsed.value.entries.map((e) => ({ page: e.page, kind: e.kind, text: e.text, quote: e.quote, replaces: e.replaces ?? null, conflicts: e.conflicts ?? null })),
-      { material: part, existing, aliases, pages: b.pages.map((x) => x.title) },
+      { material: part, existing, aliases, pages: b.pages.map((x) => x.title), replaceable },
     );
     for (const d of dropped) dropReasons.set(d.reason, (dropReasons.get(d.reason) ?? 0) + 1);
     total.dropped += dropped.length;
@@ -198,6 +205,20 @@ async function learnNow(ctx: AppContext, o: LearnInput): Promise<LearnResult | n
   });
   return total;
 }
+
+/** The documents a document replaced, and the ones those replaced. */
+async function earlierVersions(db: AppContext["db"], documentId: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let next = [documentId]; next.length && out.size < 50; ) {
+    const rows = await db.select({ id: document.id }).from(document).where(inArray(document.supersededById, next));
+    next = rows.map((r) => r.id).filter((id) => !out.has(id) && id !== documentId);
+    next.forEach((id) => out.add(id));
+  }
+  return out;
+}
+
+const stillASource = async (db: AppContext["db"], projectId: string, documentId: string) =>
+  (await db.select({ id: projectSource.documentId }).from(projectSource).where(and(eq(projectSource.projectId, projectId), eq(projectSource.documentId, documentId)))).length > 0;
 
 /* ───────────── Where it learns from ───────────── */
 

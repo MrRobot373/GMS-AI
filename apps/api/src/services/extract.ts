@@ -16,8 +16,15 @@ export interface Chunk {
 }
 
 export class UnsupportedFileError extends Error {}
+/** A picture, with OCR turned off: there's no text to take from it, but a model that reads images can still look at it. */
+export class OcrOffError extends UnsupportedFileError {}
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp"]);
+
+/** A picture file (by its name), which chat can show to a model that reads images. */
+export function isPictureName(name: string): boolean {
+  return IMAGE_EXTENSIONS.has(extensionOf(name));
+}
 const SHEET_EXTENSIONS = new Set(["xlsx", "xlsm"]);
 /** Pages with less text than this are treated as scanned and read with OCR. */
 const SCANNED_PAGE_CHARS = 25;
@@ -89,9 +96,22 @@ async function extractSheets(data: Buffer): Promise<PageText[]> {
   return pages;
 }
 
+/** A PDF opened for reading; one that needs a password or is damaged will never open, so retrying can't help. */
+async function openPdf(data: Buffer, opts: { verbosity?: number } = {}) {
+  const { getDocumentProxy } = await import("unpdf");
+  try {
+    return await getDocumentProxy(new Uint8Array(data), opts);
+  } catch (e) {
+    const name = (e as { name?: string })?.name;
+    if (name === "PasswordException") throw new UnsupportedFileError(msg("This PDF is password-protected. Remove the password and upload it again."));
+    if (name === "InvalidPDFException") throw new UnsupportedFileError(msg("This PDF is damaged and can't be read."));
+    throw e;
+  }
+}
+
 async function extractPdf(data: Buffer): Promise<PageText[]> {
-  const { extractText: pdfText, getDocumentProxy, renderPageAsImage } = await import("unpdf");
-  const pdf = await getDocumentProxy(new Uint8Array(data));
+  const { extractText: pdfText, renderPageAsImage } = await import("unpdf");
+  const pdf = await openPdf(data);
   const { maxPdfPages } = await import("./file-check");
   if (pdf.numPages > maxPdfPages()) {
     await pdf.loadingTask.destroy();
@@ -126,9 +146,8 @@ export interface PdfRead {
  * checks `signal` first; the document is let go either way.
  */
 export async function pdfRead(data: Buffer, opts: { maxChars: number; maxPages?: number; signal?: AbortSignal }): Promise<PdfRead> {
-  const { getDocumentProxy } = await import("unpdf");
   // Errors only: a broken file's warnings would just fill the log.
-  const pdf = await getDocumentProxy(new Uint8Array(data), { verbosity: 0 });
+  const pdf = await openPdf(data, { verbosity: 0 });
   try {
     const parts: string[] = [];
     let n = 0;
@@ -159,7 +178,7 @@ export async function extractText(name: string, data: Buffer): Promise<PageText[
   if (SHEET_EXTENSIONS.has(ext)) return extractSheets(data);
   if (IMAGE_EXTENSIONS.has(ext)) {
     const { ocrEnabled, ocrImage } = await import("./ocr");
-    if (!ocrEnabled()) throw new UnsupportedFileError("Reading text from images (OCR) is turned off on this server.");
+    if (!ocrEnabled()) throw new OcrOffError("Reading text from images (OCR) is turned off on this server.");
     return [{ page: null, text: await ocrImage(data) }];
   }
   if (ext === "docx") {
@@ -250,6 +269,13 @@ export function chunkPages(pages: PageText[], size = 1200, overlap = 200): Chunk
   };
 
   for (const p of pages) {
+    // Each page starts its own chunk, so a passage is cited with the page it's on: a short PDF isn't all "page 1", and
+    // no text from one page is carried over under the next page's number.
+    if (p.page !== null && cur.trim()) {
+      if (cur.length > carried) chunks.push({ ordinal: chunks.length, page: curPage, content: cur.trim() });
+      cur = "";
+      carried = 0;
+    }
     const paras = normalize(p.text).split(/\n\n+/);
     for (const para of paras) {
       for (const piece of splitLong(para, size)) {

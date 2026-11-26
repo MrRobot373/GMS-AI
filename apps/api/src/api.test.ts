@@ -367,6 +367,17 @@ d("Documents", () => {
     expect(r.status).toBe(415);
   });
 
+  it("says why a file failed, in the person's language", async () => {
+    const r = await upload(owner, "blank.txt", "   \n\t  \n");
+    expect(r.status).toBe(200);
+    expect(await waitReady(owner, r.json.id)).toMatchObject({ status: "failed", error: "No readable text was found in this file." });
+    const hindi: Jar = { cookie: `${owner.cookie}; aatmiq_lang=hi` };
+    expect((await call(hindi, "GET", `/api/documents/${r.json.id}`)).json.error).toBe("इस फ़ाइल में पढ़ने लायक कोई टेक्स्ट नहीं मिला।");
+    const listed = (await call(hindi, "GET", `/api/documents?workspaceId=${workspaceId}`)).json.find((d: { id: string }) => d.id === r.json.id);
+    expect(listed.error).toBe("इस फ़ाइल में पढ़ने लायक कोई टेक्स्ट नहीं मिला।");
+    expect((await call(owner, "DELETE", `/api/documents/${r.json.id}`)).status).toBe(200);
+  });
+
   it("uploads, processes and embeds a document", async () => {
     const r = await upload(owner, "leave-policy.md", "# Leave policy\n\nEmployees get 24 days of annual leave per year.\n\nSick leave is 10 days.");
     expect(r.status).toBe(200);
@@ -587,7 +598,8 @@ d("Projects", () => {
     // A colleague's task only once it's shared to the project.
     const q = await call(member, "POST", `/api/chats/${c.json.id}/messages`, { content: "What does the quokka permit cost?" });
     expect(startOf(q.body).citations.filter((x: { kind: string }) => x.kind === "task").map((x: { taskId: string }) => x.taskId)).toEqual([shared]);
-    expect(q.body).not.toContain("777");
+    // The private task's words, not just its number (ids in the stream can contain "777").
+    expect(q.body).not.toContain("777 coins");
   });
 
   it("gives linked library documents to project members", async () => {

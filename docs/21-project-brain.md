@@ -58,7 +58,11 @@ The rules the app applies to every proposal, whatever the model said:
 3. **No repeats.** A statement already in the brain (by its words) adds nothing.
 4. **Nothing is silently overwritten.** If the source itself says a value changed ("we raised it to 300 kHz"), the new
    entry replaces the old one, which stays as history. If it only seems to disagree, the new entry **waits as a
-   contradiction** for a person to accept (the old one then becomes history) or turn down.
+   contradiction** for a person to accept (the old one then becomes history) or turn down. The model's word that
+   something "replaces" an entry is not enough: the app checks the source's own words for a change ("raised", "now",
+   "instead", "no longer"…), and otherwise treats it as a contradiction. The one exception is a newer version of a
+   document (Upload a new version): it may change what its earlier versions said without saying so, but not what a chat
+   or another document established.
 5. **A cap per reading** (15 entries) and per project (40 pages).
 6. The change log is written by the app.
 
@@ -83,6 +87,9 @@ repeated to everyone.
 - **Anyone who can open the project can read the brain.** People with edit access add, correct, move, delete, accept and
   turn down entries and edit a page's summary. Entries of another project can't be reached by id.
 - Every change is in the audit log (`brain.*`); the project's **What changed** panel shows the brain's own log.
+- **Sources change their entries.** A source marked Assumption or TBD after it was read puts what it said back to
+  "waiting for review". A source removed from the project moves what was learned from it to the history (log: "Source
+  removed"); a source removed while it is being read adds nothing.
 - Deleting a project deletes its brain. Deleting a person keeps entries (the author shows as unknown).
 
 ## Obsidian
@@ -107,10 +114,13 @@ tokens in the prompt.
 
 ## Limits and open decisions
 
-- **Tested with a scripted model, not a real one.** The rules above are tested (invented quotes, instructions, repeats,
-  replace versus conflict, who sees what, the export). How well a real model finds the right statements, and how often
-  it proposes things people reject, needs a pilot: run it on one real project and count accepted versus turned-down
-  entries. The first thing to tune is the reading prompt (`LEARN_SYSTEM`).
+- **Tested with a scripted model, and once with the real one (26 Nov 2026, inkling).** The rules are unit-tested
+  (invented quotes, instructions, repeats, replace versus conflict, who sees what, the export). A live run of 22 checks
+  read a 15-statement spec with every statement kept and no number invented, ignored small talk and planted orders, kept
+  one entry for the same fact said twice, and found that the model calls plain disagreements "changes" (hence the app's
+  own check in rule 4). How often people turn down what it proposes on a real project still needs a pilot.
+- **Search by meaning needs the workspace's embedding model.** A workspace whose embedding model is unset or disabled
+  falls back to words only, silently: "what protects the board from moisture?" then misses "conformal coating".
 - **Quotes keep it honest but not complete.** A model may miss facts, or pick a poor page; people fix that by editing.
   Scanned documents depend on OCR quality.
 - **Numbers inside tables and spreadsheets** are read as text; a value whose row and column are far apart in the text

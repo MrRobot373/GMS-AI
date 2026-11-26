@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, AtSign, Check, ChevronDown, Globe, Loader2, Mic, Plus, Search, Sparkles, Square, Telescope, X } from "lucide-react";
+import { ArrowUp, AtSign, Brain, Check, ChevronDown, Globe, Loader2, Mic, Plus, Search, Sparkles, Square, Telescope, X } from "lucide-react";
 import { Popover } from "radix-ui";
 import { ACCEPT, FileIcon } from "@/components/documents/use-documents";
 import { useSession } from "@/components/app/session";
@@ -47,6 +47,8 @@ interface Props {
   webSearch?: { on: boolean; onToggle: () => void };
   /** Deep research for the next message (when web search is set up). */
   research?: { on: boolean; onToggle: () => void; /** Shown but off: web search isn't set up here. */ unavailable?: boolean };
+  /** "Think": the model thinks before answering (any model), as the person chooses. */
+  thinking?: { on: boolean; onToggle: () => void };
 }
 
 /** Bordered prompt box: text on top, tools and send on the bottom row. */
@@ -70,6 +72,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     library,
     webSearch,
     research,
+    thinking,
   },
   ref,
 ) {
@@ -172,6 +175,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           disabled={disabled}
         />
         {webSearch && <WebToggle on={webSearch.on} onToggle={webSearch.onToggle} disabled={disabled} />}
+        {thinking && <ThinkToggle on={thinking.on} onToggle={thinking.onToggle} disabled={disabled} />}
         {research && <ResearchToggle on={research.on} onToggle={research.onToggle} disabled={disabled || research.unavailable} unavailable={research.unavailable} />}
         <span className="mx-1.5 h-4 w-px bg-border max-sm:hidden" />
         <span className="max-sm:hidden">
@@ -265,6 +269,32 @@ function WebToggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => vo
         >
           <Globe />
           {on && <span className="max-sm:hidden">{t("Web search")}</span>}
+        </button>
+      </span>
+    </Tooltip>
+  );
+}
+
+/** Think: the model reasons before it answers (slower, better for hard questions). The person decides, for any model. */
+function ThinkToggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
+  const t = useT();
+  return (
+    <Tooltip content={on ? t("Thinking on: the model thinks before it answers. Click to turn off.") : t("Think before answering: slower, better for hard questions")}>
+      <span>
+        <button
+          type="button"
+          aria-label={t("Think")}
+          aria-pressed={on}
+          disabled={disabled}
+          onClick={onToggle}
+          data-testid="think-toggle"
+          className={cn(
+            "flex h-7 items-center justify-center gap-1.5 rounded-md text-[13px] transition-colors disabled:pointer-events-none disabled:text-fg-subtle [&_svg]:size-4",
+            on ? "bg-accent-soft px-2 text-accent-text hover:bg-accent-soft/70" : "w-7 text-fg-muted hover:bg-surface-2 hover:text-fg",
+          )}
+        >
+          <Brain />
+          {on && <span className="max-sm:hidden">{t("Think")}</span>}
         </button>
       </span>
     </Tooltip>
