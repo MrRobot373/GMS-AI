@@ -66,9 +66,12 @@ const LEGAL = /\b(law|laws|legal(ly)?|statut\w+|liabilit\w+|penalt(y|ies)|indemn
 const NOT_LEGAL =
   /\b(ohm|newton|kirchhoff|faraday|lenz|coulomb|hooke|boyle|charles|gauss|amp[eè]re|snell|kepler|joule|fourier|fick|stefan|planck|moore|murphy|zipf|benford|beer[- ]lambert|biot[- ]savart|hess|henry|dalton|raoult|pascal|bernoulli|archimedes)['’]?s?\s+(current\s+|voltage\s+|first\s+|second\s+|third\s+)?laws?\b|\b(first|second|third|zeroth)\s+law\b|\blaws?\s+of\s+(physics|motion|thermodynamics|gravitation|gravity|conservation|reflection|refraction|large numbers|averages|diminishing returns|supply|demand|nature|sines|cosines|exponents|indices|logarithms|probability)\b|\b(inverse[- ]square|power|scaling|square[- ]cube|conservation|gas|rate|exponential)\s+laws?\b/gi;
 
-/** Designing or sizing a piece of hardware or a structure: values to choose, calculations to check. */
+/**
+ * Designing or sizing a piece of hardware or a structure: values to choose, calculations to check. Not a course,
+ * a lesson or slides about one ("design a course on circuits").
+ */
 const ENGINEERING_DESIGN =
-  /\b(design|designing|size|sizing|dimension|dimensioning)\b.{0,60}\b(converters?|inverters?|rectifiers?|regulators?|power suppl(y|ies)|smps|circuits?|pcbs?|filters?|amplifiers?|op-?amps?|oscillators?|transformers?|inductors?|motors?|drives?|vfds?|generators?|busbars?|switchgear|panels?|cables?|breakers?|protection|earthing|grounding|heat ?sinks?|beams?|shafts?|gears?|bearings?|springs?|welds?|bolted joints?|columns?|slabs?|foundations?|trusses|pumps?|fans?|compressors?|heat exchangers?|hvac|ducts?|piping|pipelines?|tanks?|pressure vessels?|pid|controllers?|control loops?|battery (packs?|banks?|systems?)|solar (plants?|systems?|arrays?))\b/i;
+  /\b(design|designing|size|sizing|dimension|dimensioning)\b(?![^.?!\n]{0,40}\b(course|curriculum|syllabus|lessons?|lectures?|training|tutorials?|workshops?|quiz(zes)?|posters?|logos?|slides?|presentations?)\b).{0,60}\b(converters?|inverters?|rectifiers?|regulators?|power suppl(y|ies)|smps|circuits?|pcbs?|filters?|amplifiers?|op-?amps?|oscillators?|transformers?|inductors?|motors?|drives?|vfds?|generators?|busbars?|switchgear|panels?|cables?|breakers?|protection|earthing|grounding|heat ?sinks?|beams?|shafts?|gears?|bearings?|springs?|welds?|bolted joints?|columns?|slabs?|foundations?|trusses|pumps?|fans?|compressors?|heat exchangers?|hvac|ducts?|piping|pipelines?|tanks?|pressure vessels?|pid|controllers?|control loops?|battery (packs?|banks?|systems?)|solar (plants?|systems?|arrays?))\b/i;
 
 /** One of these is enough: the request needs careful, multi-step work. */
 const HARD_STRONG: [RegExp, string][] = [

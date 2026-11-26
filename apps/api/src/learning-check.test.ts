@@ -7,12 +7,12 @@
  * a new version, the owner's alone; links only from the provider; the check switched off.
  */
 import { courseLesson, eq, sql, usageEvent, workspace } from "@aatmiq/db";
-import { lessonCheckSchema, parseModelJson } from "@aatmiq/shared";
+import { lessonCheckSchema, lessonSchema, parseModelJson } from "@aatmiq/shared";
 import { strFromU8, unzipSync } from "fflate";
 import { createServer, type Server } from "node:http";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { APP_URL, startHarness, type Harness } from "../test/gem-harness";
-import { buildVerification, researchQueries, runCalcChecks } from "./services/learning-check";
+import { applyLessonChanges, buildVerification, researchQueries, runCalcChecks } from "./services/learning-check";
 import { clearWebSearchCache } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
 
@@ -69,7 +69,25 @@ describe("lesson checks, without a server", () => {
     ]);
     // A missing calcChecks is an empty list, not a failed check.
     expect(parseModelJson(lessonCheckSchema, JSON.stringify({ issues: [], lesson })).ok).toBe(true);
-    expect(parseModelJson(lessonCheckSchema, JSON.stringify({ issues: [] })).ok).toBe(false);
+    // Nothing wrong: no issues, no changes.
+    const none = parseModelJson(lessonCheckSchema, JSON.stringify({ issues: [] }));
+    expect(none.ok && none.value.changes).toEqual({});
+    expect(parseModelJson(lessonCheckSchema, JSON.stringify({ issues: "none" })).ok).toBe(false);
+  });
+
+  it("applies only the parts a check corrected; a part that doesn't fit, or isn't one, stays as written", () => {
+    const lesson = lessonSchema.parse(goodLesson("Ohm's law", "I = 4 A"));
+    const r = applyLessonChanges(lesson as never, {
+      workedExample: { ...lesson.workedExample, answer: "I = 3 A, see https://made-up.example/x" },
+      takeaways: [],
+      title: "A new title",
+      videoQueries: ["something else"],
+    });
+    expect(r.lesson.workedExample.answer).toBe("I = 3 A, see");
+    expect(r.lesson.takeaways).toEqual(lesson.takeaways);
+    expect(r.lesson.title).toBe("Ohm's law");
+    expect(r.lesson.videoQueries).toEqual(lesson.videoQueries);
+    expect(r.rejected).toEqual(["takeaways", "title", "videoQueries"]);
   });
 });
 
@@ -102,6 +120,16 @@ const WRITTEN = (title: string) => goodLesson(title, "I = 4 A", [
 function checkReply(topic: string, round: number, title: string): string {
   const corrected = { ...goodLesson(title, "I = 3 A"), theory: "Ohm's law relates voltage, current and resistance, as https://checker-invented.example/page explains." };
   if (topic.includes("CHECK-FAIL")) return "I looked at the lesson and it seems mostly fine.";
+  // Only the corrected parts: a right worked example, and a theory that isn't text (it can't be applied).
+  if (topic.includes("CHECK-PARTS"))
+    return JSON.stringify({
+      issues: [
+        { part: "workedExample", problem: "12 V / 4 Ω is 3 A, not 4 A.", fix: "The answer is I = 3 A.", severity: "high", sources: [] },
+        { part: "theory", problem: "Too short.", fix: "Expanded.", severity: "low", sources: [] },
+      ],
+      changes: { workedExample: corrected.workedExample, theory: 42 },
+      calcChecks: [{ label: "Answer", expression: "12 / 4", claimed: 3 }],
+    });
   if (topic.includes("CHECK-CALC")) {
     if (round === 1) return JSON.stringify({ issues: [], lesson: WRITTEN(title), calcChecks: [{ label: "Answer", expression: "12 / 4", claimed: 4 }] });
     return JSON.stringify({
@@ -198,6 +226,7 @@ d("checked lessons", () => {
         if (kind === "check" && hangChecks) return;
         let answer = "";
         if (kind === "judge") answer = "medium";
+        else if (kind === "outline" && field("Topic").startsWith("qwzx")) answer = JSON.stringify({ unclear: "Those are random letters, not a subject." });
         else if (kind === "outline") {
           answer = JSON.stringify({
             title: `${field("Topic")} course`,
@@ -241,7 +270,7 @@ d("checked lessons", () => {
     await add("std-1", "standard");
     await add("adv-1", "advanced");
     expect((await h.call(h.owner, "PUT", `/api/admin/workspaces/${h.workspaceId}/models`, { modelIds: [ids["fast-1"], ids["std-1"], ids["adv-1"]], defaultModelId: ids["std-1"] })).status).toBe(200);
-    expect((await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "searxng", webUrl: "http://searx.test" })).status).toBe(200);
+    expect((await h.call(h.owner, "PUT", "/api/admin/gem", { webProvider: "searxng", webUrl: "http://searx.test", lessonCheckAuto: true })).status).toBe(200);
   }, 60_000);
 
   afterAll(async () => {
@@ -281,6 +310,8 @@ d("checked lessons", () => {
     expect(writer.user).toContain("<sources>\n[1] Ohm's law explained (docs.example.org)\n# Page /r1\nText of /r1");
     expect(writer.user).toContain("[3] Inner notes (inner.example.org)\nSnippet for Inner notes");
     expect(writer.system).toMatch(/Don't copy their text/);
+    expect(writer.system).toMatch(/Write in the language of the course topic/);
+    expect(checker[0]!.system).toMatch(/in the lesson's own language/);
     expect(writer.stage).toBe("writing");
 
     // The checker got the lesson, the numbered sources and a lookup of each reference.
@@ -355,6 +386,43 @@ d("checked lessons", () => {
     // In the person's language.
     const res = await h.app.inject({ method: "GET", url: `/api/learning/courses/${id}/lessons/0`, headers: { origin: APP_URL, cookie: `${h.alice.cookie}; aatmiq_lang=hi` } });
     expect(res.json().verification.reason).toBe("जाँचने वाले मॉडल का उत्तर दोनों बार ज़रूरी प्रारूप में नहीं था, इसलिए पाठ जैसा लिखा गया था वैसा ही दिखाया गया है।");
+  });
+
+  it("a checker that sends only the parts it corrected: they're applied; one that doesn't fit stays as written and says so", async () => {
+    const { lesson: l, sent } = await newCourse("CHECK-PARTS circuits");
+    expect(sent.filter((s) => s.kind === "check")).toHaveLength(1);
+    expect(sent.find((s) => s.kind === "check")!.system).toContain('"changes" holds only the parts you corrected');
+    expect(l.content.workedExample.answer).toBe("I = 3 A");
+    expect(l.content.theory).toBe(WRITTEN("x").theory.replace(" See https://made-up.example/ohm for more.", " See for more."));
+    expect(l.verification.status).toBe("corrected");
+    expect(l.verification.issues[0]).toMatchObject({ part: "workedExample", fix: "The answer is I = 3 A." });
+    expect(l.verification.issues[0].open).toBeUndefined();
+    expect(l.verification.issues[1]).toMatchObject({ part: "theory", open: true, fix: "Not corrected: the correction didn't fit the lesson. Check this part before you rely on it." });
+  });
+
+  it("with automatic checks off, a lesson is written from web sources and checked only when someone asks", async () => {
+    expect((await h.call(h.owner, "PUT", "/api/admin/gem", { lessonCheckAuto: false })).status).toBe(200);
+    const { id, lesson: l, sent } = await newCourse("Resistor colour bands");
+    expect(sent.filter((s) => s.kind === "check")).toEqual([]);
+    expect(sent.find((s) => s.kind === "lesson")!.user).toContain("<sources>");
+    expect(l.content.workedExample.answer).toBe("I = 4 A");
+    expect(l.verification).toMatchObject({ status: "not_checked", reason: "Lessons are checked when someone asks: use Check this lesson.", issues: [] });
+    expect(l.verification.sources.length).toBeGreaterThan(0);
+    expect(l.canCheck).toBe(true);
+    // Asked for, it's checked.
+    expect((await h.call(h.alice, "POST", `/api/learning/courses/${id}/lessons/0/check`)).status).toBe(200);
+    await h.app.learning.idle();
+    const checked = (await h.call(h.alice, "GET", `/api/learning/courses/${id}/lessons/0`)).json;
+    expect(checked.verification.status).toBe("corrected");
+    expect(checked.content.workedExample.answer).toBe("I = 3 A");
+    await h.call(h.owner, "PUT", "/api/admin/gem", { lessonCheckAuto: true });
+  });
+
+  it("a topic that names nothing to teach is refused, in the person's language; no lesson is written", async () => {
+    const r = await h.call(h.alice, "POST", "/api/learning/courses", { workspaceId: h.workspaceId, topic: "qwzx plmk vbnr", level: "basic" });
+    await h.app.learning.idle();
+    const res = await h.app.inject({ method: "GET", url: `/api/learning/courses/${r.json.id}`, headers: { origin: APP_URL, cookie: `${h.alice.cookie}; aatmiq_lang=hi` } });
+    expect(res.json()).toMatchObject({ status: "failed", lessons: [], error: "यह पढ़ाने लायक विषय नहीं लगता। आप क्या सीखना चाहते हैं, कुछ शब्दों में बताएँ, जैसे \"थ्री-फ़ेज़ इंडक्शन मोटर\"।" });
   });
 
   it("a search that fails still writes and checks the lesson, and says why", async () => {

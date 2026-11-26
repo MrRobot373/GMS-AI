@@ -31,8 +31,8 @@ Org admins always have every module that's switched on. The same settings page h
   *Block*), the most liked, and the blocked videos (each with *Unblock*). See
   [Rated videos](#rated-videos).
 - **Web search**: the provider chat and lessons search with, its server or key, a *Test* button,
-  and two switches: *Let people search the web in chat* and *Check lessons before they're saved*
-  (both on by default). See [Web search](#web-search).
+  and switches: *Let people search the web in chat* and *Lesson checks* (both on by default), and,
+  under lesson checks, *Check every lesson automatically* (off by default). See [Web search](#web-search).
 
 ## Web search
 
@@ -110,8 +110,9 @@ Chat AI calls tools on its own when a question needs them (`services/chat-tools.
   answered without searching; an essay searches only for the specific recent facts it needs.
 - **Search the web** on makes it search before answering (below). **Off**, the model can still search when the
   question needs current information, but the person is asked first, with a card in the answer: *Search the web for:
-  "…"?* **Search the web** lets this answer search; **Answer without searching** (or no reply in 5 minutes) makes it
-  answer from what it knows, saying the figures may be out of date, with a note under the answer. A page whose address
+  "…"?* **Search the web** lets this answer search; **Answer without searching** makes it answer from what it knows,
+  saying the figures may be out of date, with a note under the answer. No reply in 5 minutes does the same, but isn't
+  taken as a no: the model is told the person didn't answer, and the note says the request wasn't answered in time. A page whose address
   the person wrote in their message is read without asking. To keep chat off the web entirely, turn web search in chat
   off in Admin → Settings → GEM AI.
 - **Think** (the brain button next to Search the web) is the person's choice, for any model: on, the model thinks
@@ -207,13 +208,15 @@ person's chats in their data export, and go with their chats.
 A course is written in two steps, both by the model Auto picks for the person (their model access
 and token allowance, like a chat):
 
-1. **The outline**: modules and lessons with objectives. Written when the course is created.
+1. **The outline**: modules and lessons with objectives. Written when the course is created. A topic that
+   names nothing to teach (random letters) is refused: the course stops with *That doesn't look like a topic
+   to teach…* and no lesson is written. Abbreviations, standards and part numbers are topics.
 2. **Each lesson**: prerequisites and theory, explanation, equations with every symbol's meaning and
    unit *and when the formula applies*, a worked example with given values and the answer, diagrams
    to look up (named published figures and where to find them, never drawings made up by the
    model), common mistakes, references and takeaways. Written when the lesson is first opened, or
    all at once with *Write the remaining lessons*. With lesson checks on, each one is written from
-   web sources and checked before it's saved: see [Checked lessons](#checked-lessons).
+   web sources and can be checked: see [Checked lessons](#checked-lessons).
 
 What the model returns must be JSON in the expected shape (`outlineSchema` and `lessonSchema` in
 `packages/shared/src/gem.ts`). If it isn't, the model is asked once to fix it; if that fails too,
@@ -227,8 +230,13 @@ picked up again.
 
 ### Checked lessons
 
-With *Check lessons before they're saved* on (the default), each lesson is written from web
-sources and checked by a second, stronger model before it's saved (`services/learning-check.ts`):
+With *Lesson checks* on (the default), each lesson is written from web sources, and a second, stronger
+model checks it (`services/learning-check.ts`): when someone presses *Check this lesson*, or, with *Check every
+lesson automatically* on, before each new lesson is shown. Automatic checks are off by default: measured on
+26 Nov (inkling on the GPU PC), a check added 2½–5 minutes to each lesson, and its findings on a beginner course
+were minor (a reference's kind, a figure's attribution; 0 of 22 calculations wrong). A lesson written without
+the check is marked *Not checked* ("Lessons are checked when someone asks: use Check this lesson.") and keeps
+the sources it was written from.
 
 1. **Sources** (when web search is set up): 2 or 3 searches built from the course topic, the
    lesson's title and its summary in the outline, without a model call (the title with the topic,
@@ -239,7 +247,8 @@ sources and checked by a second, stronger model before it's saved (`services/lea
 2. **Writing**: as before, by the model Auto picks, with the sources as numbered extracts. The
    writer is told to use them to get facts, formulas, constants and references right, not to copy
    their text, and to name only books and standards it's sure exist, preferably ones the sources
-   mention.
+   mention. It writes in the language of the course topic (a Hindi topic gets Hindi lessons), with
+   thinking off: a long lesson leaves no room for reasoning in its 12,000-token reply.
 3. **The check**: one call on the person's Advanced-tier model. The router is asked for a hard
    pick directly, without its rules or the judge; the person's model access and token allowance
    apply, and without an Advanced model the usual order follows (standard, then fast, then their
@@ -247,8 +256,12 @@ sources and checked by a second, stronger model before it's saved (`services/lea
    and author (3 results), so the checker can see whether it exists. The checker gets the lesson
    as JSON, the numbered sources and those lookups, and returns JSON (`lessonCheckSchema` in
    `packages/shared/src/gem.ts`): what it corrected (the part, the problem, the fix, how much it
-   matters and the sources that show it), the whole corrected lesson, and each calculation in the
-   lesson as a plain-number expression with the value the lesson gives. References it can't
+   matters and the sources that show it), only the parts it corrected (`changes`, each part written out
+   whole), and each calculation in the lesson as a plain-number expression with the value the lesson
+   gives. The check runs with thinking off: with thinking on, the reasoning plus a rewritten lesson
+   filled the 16,000-token reply in 4 of 8 checks on 26 Nov. Each corrected part replaces the
+   lesson's only if the result is still a valid lesson; one that isn't stays as written, and its
+   issue says *Not corrected: the correction didn't fit the lesson*. References it can't
    confirm are removed or replaced with real ones. A reply in the wrong shape gets one retry.
 4. **Arithmetic**: each expression is worked out by the calculators' engine
    (`packages/calculators`), never by a model. A result more than 0.5 % away from the lesson's
@@ -283,8 +296,8 @@ pressed, so pressing it again, even while another of the course's lessons is bei
 queue a second check; *Write a new version* works the same way. Each new version counts once: the
 version it replaces keeps its date, and showing another version counts nothing. When the
 explanation lists the sources, it says what they were for: *Written and checked with*, *Checked
-against* (a check of an existing lesson), or *Written with* (the check didn't run). With the switch
-off, lessons are written as before: no searches, no check, and *Check this lesson* isn't offered.
+against* (a check of an existing lesson), or *Written with* (the check didn't run). With *Lesson
+checks* off, lessons are written as before: no searches, no check, and *Check this lesson* isn't offered.
 
 ### Lesson videos
 

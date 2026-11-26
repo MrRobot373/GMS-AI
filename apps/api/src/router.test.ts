@@ -51,6 +51,9 @@ describe("rules", () => {
     expect(level("Design a 48 V to 12 V, 10 A synchronous buck converter: choose the inductor, capacitors and MOSFETs and show the calculations")).toBe("hard");
     expect(judgeByRules({ text: "Size the cables and breakers for a 30 kW motor panel fed at 415 V" }).reason).toBe("an engineering design to work out");
     expect(level("Design a simple RC low-pass filter for 1 kHz")).toBe("hard");
+    // Designing a course, a lesson or slides about hardware isn't designing the hardware.
+    for (const t of ["Design a basic engineering course on circuits", "Design a training workshop on motor drives for new technicians", "Design slides about PCB layout"])
+      expect(judgeByRules({ text: t }).reason, t).not.toBe("an engineering design to work out");
     expect(level("What does a buck converter do?")).not.toBe("hard");
     // A comparison with money worked out (payback, ROI) is analysis with several parts.
     expect(level("Compare IE2 and IE3 motors for a 24×7 pump: energy saved per year at 30 kW, payback, and a recommendation.")).toBe("hard");

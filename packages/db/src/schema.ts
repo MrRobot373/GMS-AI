@@ -1509,8 +1509,10 @@ export interface GemSettingsStored {
   webKeyProvider?: "ollama" | "brave" | "tavily" | "serper" | null;
   /** People may switch web search on in chat (default on). */
   chatWebSearch?: boolean;
-  /** Lessons are researched and checked before they're saved (default on). */
+  /** Lessons are written from web sources and can be checked (default on). */
   lessonCheck?: boolean;
+  /** Each new lesson is checked as it's written (default off). */
+  lessonCheckAuto?: boolean;
   /** Chat AI may run Python in each chat's private folder. */
   chatSandbox?: boolean;
   /** Chat AI may use the person's connected apps. */

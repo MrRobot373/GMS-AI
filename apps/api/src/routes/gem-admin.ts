@@ -78,6 +78,7 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
       ...(webKey ?? {}),
       chatWebSearch: body.chatWebSearch ?? cur.chatWebSearch,
       lessonCheck: body.lessonCheck ?? cur.lessonCheck,
+      lessonCheckAuto: body.lessonCheckAuto ?? cur.lessonCheckAuto,
       chatSandbox: body.chatSandbox ?? cur.chatSandbox,
       chatConnectors: body.chatConnectors ?? cur.chatConnectors,
     };
@@ -97,6 +98,7 @@ export async function gemAdminRoutes(app: FastifyInstance, ctx: AppContext) {
         webKeyChanged: body.webKey !== undefined,
         chatWebSearch: next.chatWebSearch,
         lessonCheck: next.lessonCheck,
+        lessonCheckAuto: next.lessonCheckAuto,
         chatSandbox: next.chatSandbox,
         chatConnectors: next.chatConnectors,
       },

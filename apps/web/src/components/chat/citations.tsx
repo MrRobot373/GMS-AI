@@ -182,23 +182,25 @@ export function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
  * Whether an answer that used the web was checked against a page: no page read (or none worked) means its figures
  * come from search snippets or the model's memory, and the person is told so.
  */
-export function webCheck(steps: ToolStep[] | undefined): "unchecked" | "search-failed" | "declined" | null {
+export function webCheck(steps: ToolStep[] | undefined): "unchecked" | "search-failed" | "declined" | "unanswered" | null {
   const web = (steps ?? []).filter((x) => x.tool === "web_search" || x.tool === "read_page");
   if (!web.length) return null;
-  if (web.every((x) => x.outcome === "declined")) return "declined";
+  if (web.every((x) => x.outcome === "declined" || x.outcome === "unanswered")) return web.some((x) => x.outcome === "unanswered") ? "unanswered" : "declined";
   const searched = web.filter((x) => x.tool === "web_search");
   if (searched.length && searched.every((x) => x.outcome === "failed" || x.outcome === "off" || x.outcome === "limit")) return "search-failed";
   const read = web.some((x) => x.tool === "read_page" && !x.running && !["failed", "off", "empty", "limit"].includes(x.outcome ?? ""));
   return read ? null : "unchecked";
 }
 
-export function UncheckedNote({ kind }: { kind: "unchecked" | "search-failed" | "declined" }) {
+export function UncheckedNote({ kind }: { kind: "unchecked" | "search-failed" | "declined" | "unanswered" }) {
   const t = useT();
   return (
     <p className="mt-3 flex items-start gap-1.5 rounded-md bg-warning-soft px-2.5 py-1.5 text-[12.5px] text-warning" data-testid="unchecked-note">
       <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
       {kind === "declined"
         ? t("Answered without the web, as you chose: figures come from the model's own knowledge and may be out of date.")
+        : kind === "unanswered"
+        ? t("Answered without the web: the request to search wasn't answered in time. Figures come from the model's own knowledge and may be out of date.")
         : kind === "search-failed"
         ? t("Web search didn't work for this answer, so it comes from the model's own knowledge. Check figures before you rely on them.")
         : t("No web page was read for this answer: figures come from search snippets or the model's memory and aren't verified.")}
@@ -222,6 +224,8 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
               ? t("Search limit reached, not searched")
               : x.outcome === "declined"
                 ? t("Not searched: you chose to answer without the web")
+                : x.outcome === "unanswered"
+                  ? t("Not searched: the request wasn't answered in time")
               : n !== null
                 ? t.n(n, "Searched the web · {n} result", "Searched the web · {n} results")
                 : failed
@@ -229,7 +233,7 @@ export function ToolSteps({ steps }: { steps: ToolStep[] }) {
                   : t("Searched the web"),
         };
       case "read_page":
-        return { icon: FileText, label: x.running ? t("Reading") : x.outcome === "limit" ? t("Page limit reached, not read") : x.outcome === "declined" ? t("Not read: you chose to answer without the web") : failed ? t("Couldn't read") : t("Read") };
+        return { icon: FileText, label: x.running ? t("Reading") : x.outcome === "limit" ? t("Page limit reached, not read") : x.outcome === "declined" ? t("Not read: you chose to answer without the web") : x.outcome === "unanswered" ? t("Not read: the request wasn't answered in time") : failed ? t("Couldn't read") : t("Read") };
       case "search_documents":
         return {
           icon: FolderSearch,

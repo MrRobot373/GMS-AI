@@ -9,6 +9,7 @@ import { eq, message } from "@aatmiq/db";
 import { createServer, type Server } from "node:http";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { startHarness, type Harness } from "../test/gem-harness";
+import { approvalWait } from "./services/chat-connectors";
 import { MAX_TOOL_ROUNDS, MAX_WEB_SEARCHES, onlyAnnounces, RESEARCH_ROUNDS } from "./services/chat-tools";
 import { clearWebSearchCache } from "./services/web-search";
 import type { YtDlpRunner } from "./services/youtube";
@@ -72,7 +73,7 @@ d("tools in chat", () => {
     if (!r.tools.length) return { text: cited.length ? `From what I found: 570 kHz [${cited[0]}][${cited.at(-1)}]. Invented [99].` : "Answered without tools." };
     if (user.includes("LOOP")) return { call: { name: "web_search", args: { query: `again ${results.length}` } } };
     if (user.includes("WEB") || user.includes("NOTE") || user.includes("PAGE")) {
-      if (results.some((x) => x.includes("chose not to search"))) return { text: "From what I know, about 570 kHz; that may be out of date." };
+      if (results.some((x) => x.startsWith("Not run:"))) return { text: "From what I know, about 570 kHz; that may be out of date." };
       if (user.includes("PAGE")) return results.length ? { text: `The page says 570 kHz [${cited[0]}].` } : { call: { name: "read_page", args: { url: "https://docs.example.org/a1" } } };
       if (user.includes("NOTE")) return results.length ? { text: "I have enough verified material." } : { call: { name: "web_search", args: { query: "TPS54331" } } };
       if (results.length === 0) return { text: "Let me look that up. ", call: { name: "web_search", args: { query: "TPS54331 switching frequency" } } };
@@ -145,7 +146,9 @@ d("tools in chat", () => {
     await answering;
     expect(r.status).toBe(200);
     const saved = (await h.db.select().from(message).where(eq(message.chatId, chatId))).find((m) => m.role === "assistant")!;
-    return { ev: events(r.body), saved, sent: seen.slice(before), asked };
+    // Only this chat's requests: a late one from an earlier test (a title, say) isn't counted.
+    const sent = seen.slice(before).filter((s) => s.messages.some((m) => m.role === "user" && String(m.content).includes(content)));
+    return { ev: events(r.body), saved, sent, asked };
   }
 
   it("tells the model to make what was asked in this answer, not stop to ask", async () => {
@@ -276,6 +279,23 @@ d("tools in chat", () => {
     const on = await ask("WEB: what frequency does the TPS54331 switch at?", { approve: false, extra: { webSearch: true } });
     expect(on.asked).toEqual([]);
     expect(on.sent.at(-1)!.messages[0]!.content).not.toMatch(/so the app asks them/);
+  }, 30_000);
+
+  it("a request to search that nobody answers isn't a decline: the model is told so, and so is the person", async () => {
+    const wait = approvalWait.ms;
+    approvalWait.ms = 300;
+    try {
+      const r = await ask("WEB: what frequency does the TPS54331 switch at?");
+      expect(r.ev.filter((e) => e.event === "approval")).toHaveLength(1);
+      expect(r.ev.filter((e) => e.event === "approval_done").map((e) => e.data.decision)).toEqual(["expired"]);
+      expect(web.searches).toEqual([]);
+      expect(r.saved.steps).toEqual([{ tool: "web_search", detail: "TPS54331 switching frequency", outcome: "unanswered" }]);
+      const told = r.sent.at(-1)!.messages.filter((m) => m.role === "tool").map((m) => m.content).join(" ");
+      expect(told).toContain("didn't answer the request to search the web in time (they didn't decline it");
+      expect(told).not.toContain("chose not to");
+    } finally {
+      approvalWait.ms = wait;
+    }
   }, 30_000);
 
   it("reads a page the person gave without asking", async () => {

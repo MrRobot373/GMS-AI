@@ -487,41 +487,89 @@ export function horizontalTangents(src: string, a: number, b: number, variable =
   return findRoots(dsrc, a, b, variable);
 }
 
-/** Real roots of f on [a, b]: sign changes on a fine grid, refined by bisection. */
+/** Bisection for a sign change of g on [lo, hi] (g(lo) and g(hi) of opposite signs). */
+function bisect(g: (x: number) => number, lo: number, hi: number): number {
+  let glo = g(lo);
+  for (let i = 0; i < 100; i++) {
+    const m = (lo + hi) / 2;
+    const gm = g(m);
+    if (gm === 0 || hi - lo < 1e-14 * Math.max(1, Math.abs(m))) return m;
+    if (glo * gm < 0) hi = m;
+    else {
+      lo = m;
+      glo = gm;
+    }
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * Where |f| is smallest on [lo, hi]: at the root of f' when it has one there (exact for a double root),
+ * else by golden-section search.
+ */
+function lowestPoint(f: (x: number) => number, df: ((x: number) => number) | null, lo: number, hi: number): number {
+  if (df) {
+    const dlo = df(lo);
+    const dhi = df(hi);
+    if (Number.isFinite(dlo) && Number.isFinite(dhi) && dlo * dhi < 0) return bisect(df, lo, hi);
+  }
+  const g = (x: number) => Math.abs(f(x));
+  const r = (Math.sqrt(5) - 1) / 2;
+  let c = hi - r * (hi - lo);
+  let d = lo + r * (hi - lo);
+  for (let i = 0; i < 200 && hi - lo > 1e-15 * Math.max(1, Math.abs(lo)); i++) {
+    if (g(c) < g(d)) hi = d;
+    else lo = c;
+    c = hi - r * (hi - lo);
+    d = lo + r * (hi - lo);
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * Real roots of f on [a, b]: sign changes on a fine grid, refined by bisection, and roots where f only
+ * touches zero ((x − 1)², x³'s flat point for horizontal tangents), found where |f| dips to zero between
+ * grid points.
+ */
 export function findRoots(src: string, a: number, b: number, variable = "x", steps = 2000): number[] {
   if (!(b > a)) throw new ExprError("The interval's end must be larger than its start");
   const f = compileFn(src, variable);
+  let df: ((x: number) => number) | null | undefined;
+  const derivative = () => {
+    if (df === undefined) {
+      try {
+        df = compileFn(toString(differentiate(parse(src), variable)), variable);
+      } catch {
+        df = null;
+      }
+    }
+    return df;
+  };
   const roots: number[] = [];
   const h = (b - a) / steps;
+  let xp = NaN;
+  let fp = NaN;
   let x0 = a;
   let f0 = f(x0);
   for (let k = 1; k <= steps; k++) {
     const x1 = a + k * h;
     const f1 = f(x1);
+    // |f| lowest at x0 between neighbours of the same sign: f may touch zero near x0 without crossing.
+    if (Number.isFinite(fp) && Number.isFinite(f0) && Number.isFinite(f1) && fp * f0 > 0 && f0 * f1 > 0 && Math.abs(f0) <= Math.abs(fp) && Math.abs(f0) <= Math.abs(f1)) {
+      const m = lowestPoint(f, derivative(), xp, x1);
+      const fm = f(m);
+      if (fm === 0 || (Number.isFinite(fm) && Math.abs(fm) <= 1e-8 * Math.min(Math.abs(fp), Math.abs(f1)))) roots.push(m);
+    }
     if (Number.isFinite(f0) && Number.isFinite(f1)) {
       if (f0 === 0) roots.push(x0);
       else if (f0 * f1 < 0) {
-        let lo = x0;
-        let hi = x1;
-        let flo = f0;
-        for (let i = 0; i < 100; i++) {
-          const m = (lo + hi) / 2;
-          const fm = f(m);
-          if (fm === 0 || hi - lo < 1e-14 * Math.max(1, Math.abs(m))) {
-            lo = hi = m;
-            break;
-          }
-          if (flo * fm < 0) hi = m;
-          else {
-            lo = m;
-            flo = fm;
-          }
-        }
-        const r = (lo + hi) / 2;
+        const r = bisect(f, x0, x1);
         // A sign change across a pole isn't a root.
         if (Math.abs(f(r)) < 1e-6 * Math.max(1, Math.abs(f0), Math.abs(f1))) roots.push(r);
       }
     }
+    xp = x0;
+    fp = f0;
     x0 = x1;
     f0 = f1;
   }

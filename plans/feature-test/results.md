@@ -223,3 +223,72 @@ material." into the answer. The "verify every figure" rule (24 Nov) drives it.
 
 Tests: router 20/20 (new: orders for an AI, lakh and crore), api 44/44 (a flaky check, "777" found inside a random id,
 now looks for "777 coins"), chat-tools, chat-web pass.
+
+## Wave 6: calculators
+
+| Id | Result | Check | Notes |
+|---|---|---|---|
+| F00 | Pass | Automated suites | Engine 2,166/2,166; API calculators 10/10, chat calculator tool 16/16; harness 70 (20 skipped); translations 2,462/2,462 in Hindi; API and web type checks clean. Learning had 3 failures, fixed (below): learning 18/18, learning-check 16/16, learning-videos 18/18, router 20/20 |
+| F0 | Pass | Sweep of all 202 through the app as Meera | 4,189 requests: 1,016 reference cases, every input and output of each first case in another unit (same result), 2,971 bad-input runs (each input at 0, negative, 1e300, missing, below its minimum, above its maximum): 0 fails. No 500, no NaN or Infinity, every refusal a plain sentence. Hand check: 12 V / 4 Ω = 3 A, 36 W; the same in mV, kΩ, mA |
+| F0a | Pass | Independent recheck of every formula (Python, from the textbook, not the code) | 202 calculators, 434 outputs: 426 identical, 5 within 0.001 % (air gas constant 287.05 instead of 287.05287 for Mach and the ISA atmosphere; Ramanujan's ellipse perimeter), 3 differ by 0.9 %: Darcy–Weisbach uses the Swamee–Jain approximation instead of Colebrook, as its formula and assumptions say (and it warns between Re 2300 and 5000). Two conventions I matched on purpose: the 555 timer's 1.44 (datasheet) and the strain gauge's linear quarter-bridge output (exact bridge 2.4975 mV vs 2.5 mV) |
+| F0b | Pass | The 24 tools with known answers | 133 checks, all pass after one fix. Keypads through the app (the server evaluates again): 2+3·4, 0.1+0.2 = 0.3, 7/0 refused, sin 30° / sin(π/6) rad / cos 100 grad, 5!, nCr, √−1 and tan 90° and asin 2 refused. Root solver: x²−3x+2, cubic, x²+1, triple root, quartic; limits: sin x/x, (x²−1)/(x−1), (1+1/x)^x, 1/x and \|x\|/x and sin(1/x) not claimed, 1/x² infinite; decimal to fraction: 0.75, 0.125, 0.1(6) = 1/6, 1.2(34) = 611/495, 0.333... not exact. **Bug found and fixed**: the root finder missed roots where f touches zero without crossing ((x−1)² on [0, 3] gave none; horizontal tangents of x³ gave none) |
+| F2 | Pass | Beta switch on/off with no beta calculators: nothing appears or disappears | switch 200 (false → true → false); 226 / 226 / 226 shown; beta 0 |
+| F4 | Pass | Favourites (API): kept for Meera, not shown to Karan, removed when unstarred | Meera ["ohms-law"], Karan [], after unstar [] |
+| F9 | Pass | Bad input through the app (letters, negative length, zero, huge, wrong and made-up units, −300 °C, too many inputs, D = 1) and typed on the page (letters, comma, double dot, overflow): a plain error on the field, never a wrong number | letters (API): 400 "inputs.V.value: Invalid input" / negative length: 400 "One-way length must be greater than 0 m." (field L) / zero resistance: 400 "Resistance must be greater than 0 Ω." (field R) / huge numbers: 400 "Current isn't a finite number for these inputs (division by zero or overflow)."  | (−300 °C and −500 °F checked again with the right unit ids: "Surface temperature is below absolute zero (0 K = −273.15 °C = −459.67 °F).")
+| F10 | Pass | History: Karan can't see or delete Meera's entry; Meera deletes one, then clears all | 70 entries; Karan's delete 404, sees it false; delete 200, gone true; clear 200, left 0; deleting it again 404 |
+
+Fixed in this wave:
+- **Root finder** (`packages/calculators/src/calculus.ts`): only sign changes were found, so a double root between grid
+  points was missed, and with it horizontal tangents where f' touches zero. Now a dip of |f| to zero between grid points
+  is found too (exactly, at the root of f′); a dip that stays above zero isn't. Tests added.
+- **Auto rated course outlines hard** (`apps/api/src/services/router.ts`): "Design a basic engineering course on
+  circuits" matched the engineering-design rule, so outlines went to the advanced model (slower; 2 Learning tests
+  failed). Courses, lessons, training, workshops and slides about hardware no longer count as designing it.
+- **Lesson videos rechecked in the background weren't tracked** (`apps/api/src/services/learning.ts`): the weekly
+  recheck ran untracked, so `idle()` didn't wait for it (1 Learning test failed) and an error in it went unlogged.
+
+For you on screen: F1 (five calculators match F0), F3 (keypads, converter, programmer, finance, dates), F4 (history and
+favourites after a reload).
+
+## Wave 6: Learning
+
+| Id | Result | Check | Notes |
+|---|---|---|---|
+| F5 | Pass | Learning: "Power electronics", basic: outline, then a lesson with every part; no made-up videos | outline 5 modules / 16 lessons; lesson 0 "Energy Conversion in Everyday Systems": 4 objectives, 4 equations, worked example "Efficiency eta = 81.3%, with 15 W lost as heat; daily input ", 3 references, videos 0 (not_configured); check corrected with 1 issues, 6 sources; 383 s; no video source config |
+| F6 | Pass | Progress, bookmark and note kept after signing out and in | state 200; after sign-in: completed true, bookmarked true, note "Check the duty-cycle example again"; bookmarks list has it true; course in list true (progress 1); the signed-out session gets 401 |
+| F7 | Pass | Regenerate a lesson: a new version, progress kept, the old one still readable | regenerate 200, a second click 200 generating; v1 → v2 ready after 669 s; versions 1,2*; completed kept true, note kept true; v1 readable true |
+| F8 | Pass | Asha (admin) can't open, change, delete or list Meera's course by its id | open 404, lesson 404, rename 404, delete 404; in Asha's list false; title still "Power Electronics for Engineers: Intuition First" |
+| F11 | Pass | Write all lessons (stopped after 4 of 15: each takes 6–10 minutes); restore an older version | "Resistors in Series and Parallel: Basics for Engineers": 15 lessons planned; "write all" wrote them one after another: 1 "Resistance as Opposition to Current" (not_checked), 2 "Voltage, Current, and Resistance in Plain Terms" (corrected), 3 "Reading a simple resistor circuit" (not_checked), 4 "Seri |
+| F12 | Pass | Check this lesson (there's no quiz: the lesson check is the review by the advanced model against web sources) | check 200; v1 → v3 ready after 348 s; corrected, model inkling, 3 issues (workedExample/low, diagram/medium, theory/low), calculations true,true,true,true,true,true,true,true,true, 6 sources; Karan's check 404 |
+| F13 | Blocked | Video feedback; an admin blocks a video | No video source on this server: no YouTube API key, and yt-dlp isn't installed ("yt-dlp didn't start"). Lessons say so and show no videos; none are made up (F5). Needs a key in Admin → Settings → GEM AI, or yt-dlp. |
+| F14 | Fail → fixed | Tags and bookmarks; delete a course; a topic in Hindi; an empty or nonsense topic | First run: tags, by-tag list, bookmarks, empty topic (400 "Describe the topic in a few words") and delete passed, but "asdfgh qwerty zxcvb" got a 5-module course on keyboard layouts, and the Hindi course had a Hindi title with English lessons. Fixed: the outline may answer "unclear" (the course stops with "That doesn't look like a topic to teach…"), and lessons are written in the topic's language. Re-run: nonsense refused, "SVPWM" accepted (18 lessons); the Hindi course's first lesson 96 % Devanagari, its worked example right (625 W, 2.72 A at 230 V, 3.18 N·m). |
+| F12b | Pass | Check this lesson after the change (thinking off, only corrected parts back) | v1 → v2 corrected in 141 s (before: 157–348 s, and 4 of 8 checks ran out of room); 2 issues; calculations 5/5 right |
+
+Found and changed in Learning (26 Nov):
+- **Lessons took 6–11 minutes**, mostly the automatic check on the Advanced model with thinking on: 4 of 8 checks filled
+  their 16,000-token reply (≈ 5 minutes each, wasted) and the lesson went out "not checked". The checks' findings were
+  minor (a reference's kind, a figure's attribution, a rounded intermediate; 0 of 22 calculations wrong). Now: lessons
+  aren't checked automatically (new admin switch *Check every lesson automatically*, off); *Check this lesson* checks on
+  request, with thinking off and only the corrected parts sent back (141 s, found a real slip in a torque step). The
+  writer runs with thinking off too (one lesson had hit its 12,000 tokens after 4 minutes). **A lesson now takes about
+  a minute** (65 s for the Hindi one).
+- F11 was stopped after 4 of 15 lessons: at the old pace the course would have taken 1½–2 hours.
+
+## Web tests again after the GPU PC fix (26 Nov: more SearXNG engines; LiteLLM 1,000 requests a minute)
+
+| Id | Result | Check | Notes |
+|---|---|---|---|
+| W1 | Pass | Web off, a question that needs the web, the person allows it | Asked "Search the web for: NVIDIA most recent quarter revenue 2026?"; allowed: 6 results, answered with the figure and its source (355 s, with Learning on the GPU at the same time) |
+| D3 | Pass | Web on: sources numbered, at most 6 searches, the current edition named | inkling/standard 705s; tools read_page:failed(the page answered 404) → read_page:failed(the page answered 404) → web_search:6 → read_page → web_search:6; searches 7, web sources 19, cited [2,14,17,3,11]; mentions 2020 true; "**Latest edition:** IEC 61439-1:2020 (3rd edition, published 2020-05-05), s |
+| D16 | Pass | A question needing more than 6 searches: stops at the limit and still answers | inkling/advanced 162s; tools web_search:6 → web_search:6 → web_search:6 → web_search:6 → web_search:6 → web_search:6 → web_search:limit → web_search:limit → read_page → read_page; searches run 6, over the limit 2; "Here's what I found — with an important caveat up front: there is no public, cur" |
+| D5 | Pass | Deep research: hard, many sources read, a cited report | inkling/advanced 309s; tools web_search:6 → web_search:6 → w…; searches 16, pages 5, sources 105, 4333 chars |
+| D15 | Pass | Pattern: web then Python (web search off, the search approved when asked) | inkling/advanced 74 s; asked 1; web_search:6 → read_page:failed → web_search:6 → read_page:ok → read_page:ok → run_python:ok:0; "## Copper price (as of 26 Nov 2026) I checked the web. The most recent dated source I could read is a German market-data page listing the **LME official prices " |
+| D15a | Fail → fixed | Web then Python, the search request never answered | The script didn't answer the card: after 5 minutes the app treated it as a no and the model told the person "you declined the search". Fixed: no answer is "unanswered", the model is told the person didn't decline, and the note says the request wasn't answered in time (test added). |
+
+Search on the GPU PC: 69–137 results a query (Bing, Yahoo, DuckDuckGo, Google CSE, Yandex, Mwmbl…); Google, Brave and
+Qwant suspended for blocks. Engines that only fail, and whether to send queries to Yandex, Baidu, Sogou and Naver: see
+plans/gpu-pc-searxng.md.
+
+Full API suite after these changes: 582 pass, 43 fail, all on this Windows PC's environment (no bash, symlinks need
+admin, the IDE not built, the Python sandbox, the E:\E:\ eval path) or the Excel test that times out under load and
+passes alone. The same 9 environment files fail on the code before today's changes (31 there, 30 now).

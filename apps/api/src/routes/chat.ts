@@ -733,7 +733,7 @@ The person attached pictures (${pictures.map((p) => p.name).join(", ")}), but th
     let thought = false;
     const maxRounds = research ? RESEARCH_ROUNDS : MAX_TOOL_ROUNDS;
     // Web search with the switch off: asked once per answer, then allowed or not for the rest of it.
-    let webAsk: "ask" | "granted" | "declined" = toolSet.webAskFirst ? "ask" : "granted";
+    let webAsk: "ask" | "granted" | "declined" | "unanswered" = toolSet.webAskFirst ? "ask" : "granted";
     // Searches and page reads for this answer, against their limits.
     const used = { web_search: 0, read_page: 0 };
     const limits = { web_search: research ? RESEARCH_WEB_SEARCHES : MAX_WEB_SEARCHES, read_page: research ? RESEARCH_PAGE_READS : MAX_PAGE_READS };
@@ -842,13 +842,15 @@ The person attached pictures (${pictures.map((p) => p.name).join(", ")}), but th
               send("approval", { id: approvalId, ...about });
               const decided = await decision;
               send("approval_done", { id: approvalId, decision: decided });
-              webAsk = decided === "approved" ? "granted" : "declined";
+              // No answer within the wait isn't a no: the person may have stepped away.
+              webAsk = decided === "approved" ? "granted" : decided === "expired" ? "unanswered" : "declined";
             }
-            if (webAsk === "declined") {
-              const step = { tool: call.name, detail, outcome: "declined" };
+            if (webAsk === "declined" || webAsk === "unanswered") {
+              const step = { tool: call.name, detail, outcome: webAsk };
               send("step", { ...step, running: false });
               steps.push(step);
-              pending.push({ role: "tool", tool_call_id: callId, content: "Not run: the person chose not to search the web for this answer. Don't call web_search or read_page again. Answer now from what you know, and say plainly that current figures may be out of date." });
+              const why = webAsk === "declined" ? "the person chose not to search the web for this answer" : "the person didn't answer the request to search the web in time (they didn't decline it; don't say they did)";
+              pending.push({ role: "tool", tool_call_id: callId, content: `Not run: ${why}. Don't call web_search or read_page again. Answer now from what you know, and say plainly that current figures may be out of date.` });
               continue;
             }
           }

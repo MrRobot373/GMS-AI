@@ -1,5 +1,16 @@
 # GPU PC: SearXNG fix (to do 26 Nov 2026)
 
+**Done 26 Nov.** Checked from the GEM AI PC: google, bing, brave, yahoo, yep, mwmbl on; searches find 69–137 results
+(from Bing, Yahoo, DuckDuckGo, Google CSE, Yandex, Mwmbl and others; Google, Brave and Qwant were already suspended for
+blocks). The LiteLLM key allows 1,000 requests a minute and 50 at once, with no token limit. Also switched on, beyond this
+list: Yandex, Baidu, Sogou, Naver and several small engines; see "Trim" below.
+
+## Trim (suggested)
+
+Queries go to every engine that's on. Turn off the ones that only fail (baidu: parsing error; sogou, reloado,
+resulthunter: crash; gabanza: SSL error; tusksearch: HTTP error; fastbot, fireball: access denied), and decide whether
+company questions may go to Yandex (Russia), Baidu, Sogou (China) and Naver (Korea).
+
 Why: on 25 Nov SearXNG had only two web engines (DuckDuckGo, Google CSE). Test bursts got both
 blocked (DuckDuckGo CAPTCHA, Google CSE "too many requests"), so every search found nothing.
 

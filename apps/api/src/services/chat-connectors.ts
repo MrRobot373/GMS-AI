@@ -18,6 +18,8 @@ const LIST_TTL_MS = 10 * 60_000;
 const RESULT_CHARS = 14_000;
 /** How long an approval waits for the person. */
 export const APPROVAL_TIMEOUT_MS = 5 * 60_000;
+/** The wait in use (tests shorten it). */
+export const approvalWait = { ms: APPROVAL_TIMEOUT_MS };
 
 export interface ConnectorTool {
   connector: Pick<Connector, "id" | "name" | "displayName" | "url" | "auth">;
@@ -130,7 +132,7 @@ export function awaitApproval(
   userId: string,
   signal: AbortSignal,
   about: Record<string, unknown> = {},
-  timeoutMs = APPROVAL_TIMEOUT_MS,
+  timeoutMs = approvalWait.ms,
 ): { id: string; decision: Promise<"approved" | "declined" | "expired"> } {
   const id = randomUUID();
   const decision = new Promise<"approved" | "declined" | "expired">((resolve) => {

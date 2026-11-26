@@ -38,8 +38,10 @@ export interface GemSettings {
   webUrl: string | null;
   /** People may switch web search on for a chat message (when a provider is set). */
   chatWebSearch: boolean;
-  /** Lessons are researched and checked by a second model before they're saved. */
+  /** Lessons are written from web sources, and anyone can have one checked by the Advanced model (Check this lesson). */
   lessonCheck: boolean;
+  /** Each new lesson is also checked as it's written (minutes longer per lesson); off by default. */
+  lessonCheckAuto: boolean;
   /** Chat AI may run Python in each chat's private folder (files, charts, Excel, Word, PowerPoint, PDF). */
   chatSandbox: boolean;
   /** Chat AI may use the person's connected apps (Admin → Work AI → Connectors), asking before anything that changes. */
@@ -57,6 +59,7 @@ export const DEFAULT_GEM_SETTINGS: GemSettings = {
   webUrl: null,
   chatWebSearch: true,
   lessonCheck: true,
+  lessonCheckAuto: false,
   chatSandbox: true,
   chatConnectors: true,
 };
@@ -78,6 +81,7 @@ export const gemSettingsSchema = z.object({
   webKey: z.string().trim().max(500).optional(),
   chatWebSearch: z.boolean().optional(),
   lessonCheck: z.boolean().optional(),
+  lessonCheckAuto: z.boolean().optional(),
   chatSandbox: z.boolean().optional(),
   chatConnectors: z.boolean().optional(),
 });
@@ -247,7 +251,13 @@ export const lessonCheckSchema = z.object({
     }),
     40,
   ),
-  lesson: lessonSchema,
+  /**
+   * Only the parts the checker corrected, each written out whole ({"workedExample": {...}}); the rest of the
+   * lesson stays as written. Applied and validated by the caller (applyLessonChanges).
+   */
+  changes: z.record(z.string(), z.unknown()).default({}),
+  /** A whole corrected lesson, from a checker that sends one anyway: used instead of `changes`. */
+  lesson: lessonSchema.optional(),
   calcChecks: upTo(
     z.object({
       label: text(200),

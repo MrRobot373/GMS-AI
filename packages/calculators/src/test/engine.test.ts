@@ -272,6 +272,14 @@ describe("calculus", () => {
     // The pole of tan at ±π/2 isn't a root.
     expect(calculus.findRoots("tan(x)", -2, 2)).toEqual([0]);
     expect(calculus.horizontalTangents("x^3-3x", -3, 3).map((r) => Math.round(r * 1e9) / 1e9)).toEqual([-1, 1]);
+    // Roots where f touches zero without crossing, off the grid: found, and exactly.
+    expect(calculus.findRoots("(x-1)^2", 0, 3)).toEqual([1]);
+    expect(calculus.findRoots("cos(x)+1", 0, 7)).toEqual([Number(Math.PI.toPrecision(12))]);
+    expect(calculus.findRoots("(x-2)^2*(x+1)", -3, 3.7)).toEqual([-1, 2]);
+    expect(calculus.horizontalTangents("x^3", -1, 2)).toEqual([0]);
+    // A dip that doesn't reach zero isn't a root.
+    expect(calculus.findRoots("(x-1)^2+0.001", 0, 3)).toEqual([]);
+    expect(calculus.findRoots("1/(x-1)^2", 0, 3)).toEqual([]);
   });
 });
 

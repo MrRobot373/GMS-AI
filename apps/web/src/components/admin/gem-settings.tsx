@@ -29,6 +29,8 @@ interface Gem {
   webUrl: string | null;
   chatWebSearch: boolean;
   lessonCheck: boolean;
+  /** Check each new lesson as it's written (otherwise only when someone asks). */
+  lessonCheckAuto: boolean;
   chatSandbox: boolean;
   chatConnectors: boolean;
   /** Why Python in chat can't run on this server; null when it can. */
@@ -266,11 +268,18 @@ function WebSearchCard({ g, save }: { g: Gem; save: (body: Record<string, unknow
           (v) => save({ chatConnectors: v }),
         )}
         {switchRow(
-          t("Check lessons before they're saved"),
-          t("Your Advanced model checks each lesson's facts, formulas and references, with web sources when search is set up, and corrections are listed with the lesson. Uses more tokens."),
+          t("Lesson checks"),
+          t("Lessons are written from web sources when search is set up, and anyone can ask your Advanced model to check a lesson's facts, formulas and references (Check this lesson); corrections are listed with the lesson."),
           g.lessonCheck,
           (v) => save({ lessonCheck: v }),
         )}
+        {g.lessonCheck &&
+          switchRow(
+            t("Check every lesson automatically"),
+            t("Each new lesson is checked before it's shown. Lessons then take several minutes longer and use more tokens."),
+            g.lessonCheckAuto,
+            (v) => save({ lessonCheckAuto: v }),
+          )}
       </div>
     </Card>
   );

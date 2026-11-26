@@ -9,6 +9,29 @@ without one.
 
 ## Unreleased
 
+- **The root finder finds roots where the curve only touches zero.** Calculus → roots looked only for sign changes, so
+  (x − 1)² on [0, 3] had "no roots", and horizontal tangents missed flat points like x³ at 0. A dip of |f| to zero
+  between grid points now counts (located exactly); a dip that stays above zero doesn't.
+- **Course outlines no longer go to the advanced model for nothing.** Auto read "Design a course on circuits" as designing
+  a circuit; designing a course, lesson, training, workshop or slides about hardware is no longer engineering design.
+- **The weekly recheck of lesson videos runs as a tracked background job**, so its errors are logged.
+- **Lessons aren't checked automatically any more, unless an admin wants them to be.** Checking every lesson added
+  2½–5 minutes to each (6–11 minutes a lesson on the GPU PC) for minor findings. Lessons are still written from web
+  sources, and *Check this lesson* checks one on request; Admin → Settings → GEM AI → *Check every lesson
+  automatically* (new, off) brings the old behaviour back. **Update note:** organizations that relied on every lesson
+  being checked should switch it on.
+- **The lesson check is cheaper and no longer runs out of room.** It runs with thinking off and sends back only the
+  parts it corrects, not the whole lesson; before, the reasoning plus the rewritten lesson filled its 16,000-token reply
+  in 4 of 8 checks, wasting about 5 minutes each. A correction that doesn't fit the lesson is listed as not corrected.
+- **A course in Hindi is taught in Hindi.** A Hindi topic got a Hindi title but English lessons; lessons (and a
+  check's corrections) are now written in the language of the course topic, with formulas, units and standard names
+  as they are.
+- **Lesson writing runs with thinking off.** A lesson title Auto rated hard ("Designing a buck converter output
+  filter") turned thinking on, and the reasoning used up the 12,000-token reply after 4 minutes.
+- **A course topic that names nothing is refused.** "asdfgh qwerty zxcvb" got a 5-module course on keyboard layouts;
+  now the course stops with "That doesn't look like a topic to teach…" and no lesson is written.
+- **A web-search request nobody answers isn't a "no".** After 5 minutes without an answer, chat answered "you declined
+  the search"; it now says the request wasn't answered in time.
 - **Chat sees pictures.** A picture attached in chat (a photo, a nameplate, a sketch, a chart) goes to the model itself,
   scaled to at most 1280 px, as well as any text OCR finds in it; Auto picks a model that sees images (the image switch on
   the model in Admin → Models), and a follow-up about the same picture still has it (at most 4 pictures a request, newest first). A
