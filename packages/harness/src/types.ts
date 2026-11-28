@@ -58,7 +58,16 @@ export interface TaskSpec {
   sandbox?: "on" | "off";
   /** Container mode: this task's limits (the container launcher reads them; process mode ignores them). */
   container?: { cpus: number; memoryMb: number; pidsLimit: number; network: "proxy" | "none" };
+  /**
+   * Where the task may go (dsh-plugin/policy.mjs checkPlace): its own folders; Aatmiq's own data and the server's folder,
+   * never; system and program folders without asking; anywhere else after a person approves. Every engine checks file
+   * tools and the paths a command names, because where programs can't be confined (Windows, sandbox off) nothing else does.
+   */
+  confine?: Confine;
 }
+
+export type { Confine } from "../dsh-plugin/policy.mjs";
+import type { Confine } from "../dsh-plugin/policy.mjs";
 
 export type HarnessEvent =
   | { type: "user"; id: string; text: string }

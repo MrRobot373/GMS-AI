@@ -15,6 +15,15 @@ describe("files a request asks for", () => {
     expect(namedFiles("Read https://example.com/a.pdf and save the summary to out/summary.docx")).toEqual(["summary.docx"]);
   });
 
+  it("leaves out files the person gives: a missing one is for the agent to say, not to make", () => {
+    // The missing-attachment eval: the reminder sent the agent off to build sales.xlsx after it had said, rightly, that none was attached.
+    expect(namedFiles("Summarize the attached sales.xlsx in three bullet points.")).toEqual([]);
+    expect(namedFiles("Use data from motor_log.csv and save the chart as chart.png")).toEqual(["chart.png"]);
+    expect(namedFiles("Check my report.docx with the document checks.")).toEqual([]);
+    expect(namedFiles("Make a summary table of these pumps in summary.xlsx here.")).toEqual(["summary.xlsx"]);
+    expect(namedFiles("Fix the bug and write the result to fixed.csv")).toEqual(["fixed.csv"]);
+  });
+
   it("says which are missing from the folder (any case, a few levels down)", async () => {
     const d = await mkdtemp(join(tmpdir(), "nf-"));
     await mkdir(join(d, "out"));

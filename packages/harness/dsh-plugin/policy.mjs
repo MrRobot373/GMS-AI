@@ -5,6 +5,8 @@
  * Modes: "never" (sandbox only), "risky" (default: destructive, privileged, network, outbound
  * messages and connector tools), "always" (every action that changes something).
  */
+import { existsSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 const RISKY_COMMANDS = [
   [/(^|[\s;&|(])(rm|rmdir|shred|unlink)\s/, "Deletes files"],
@@ -19,6 +21,17 @@ const RISKY_COMMANDS = [
   [/--trusted-host\b|--no-check-certificates?\b/, "Turns off certificate checks"],
   [/\bverify\s*=\s*False\b|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0|GIT_SSL_NO_VERIFY\b|\bsslVerify\s*=?\s*false\b|\bstrict-ssl\s*(=\s*)?false\b|PYTHONHTTPSVERIFY\s*=\s*['"]?0/i, "Turns off certificate checks"],
   [/\bPIP_TRUSTED_HOST\s*=|\bglobal\.trusted-host\b|_create_unverified_context\b|\brejectUnauthorized\s*:\s*false\b|--no-verify-ssl\b|\bssl_verify\s*(=\s*|\s+)(false|no|0)\b/i, "Turns off certificate checks"],
+  // PowerShell, which Work AI and Agent AI run on Windows: its cmdlets, their usual aliases, and cmd's.
+  // The short aliases count only before something path-like (a dot, slash, wildcard, quote, $ or a switch), so Python's
+  // `del x` or `move = 3` in a `python -c` doesn't.
+  [/\b(Remove-Item|Remove-ItemProperty|Clear-RecycleBin)\b|(^|[\n;&|({]\s*)(ri|del|erase|rd)\s+[^\s=]*[.\\/*"'$-]|\[(System\.)?IO\.(File|Directory)\]::Delete\b/i, "Deletes files"],
+  [/\.Delete\(\s*(\$true)?\s*\)/, "Deletes files"],
+  [/\b(Clear-Content|Clear-Item)\b/i, "Empties files"],
+  [/\b(Move-Item|Rename-Item)\b|(^|[\n;&|({]\s*)(mi|move|rni|ren|rename)\s+[^\s=]*[.\\/*"'$-]|\[(System\.)?IO\.(File|Directory)\]::Move\b/i, "Moves or renames files"],
+  [/\b(Set-Acl|Grant-SmbShareAccess|icacls|takeown)\b/i, "Changes file permissions"],
+  [/\b(Stop-Process|Stop-Service|Restart-Service|Set-Service|Restart-Computer|Stop-Computer|Set-ExecutionPolicy|Format-Volume|Clear-Disk|Remove-Partition)\b|(^|[\n;&|({]\s*)(spps|taskkill)\s|\breg(\.exe)?\s+(delete|add|import)\b/i, "Runs a system-level command"],
+  [/\bSend-MailMessage\b/i, "Sends an email"],
+  [/-SkipCertificateCheck\b|ServerCertificateValidationCallback|TrustAllCertsPolicy|CertificatePolicy\s*=/i, "Turns off certificate checks"],
 ];
 
 /**
@@ -34,6 +47,9 @@ const NETWORK_COMMANDS = [
   [/\b(pip3?|npm|pnpm|yarn|gem|cargo|go)\s+(install|add|i|get|publish)\b/, "Downloads or publishes packages"],
   [/\b(apt|apt-get|apk|yum|dnf|brew)\s+(install|add|update|upgrade)\b/, "Installs system packages"],
   [/\bgit\s+(clone|fetch|pull)\b/, "Downloads from a git server"],
+  // PowerShell's own ways to the network and to packages.
+  [/\b(Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|Test-NetConnection|Send-?TcpRequest)\b|(^|[\n;&|({]\s*)(iwr|irm)\s|Net\.WebClient|\.Download(File|String|Data)(Async)?\(|Net\.Http\.HttpClient|Net\.Sockets\.TcpClient/i, "Uses the network"],
+  [/\b(Install-Module|Install-Package|Install-Script|Save-Module|Update-Module)\b|\b(winget|choco|scoop)\s+(install|upgrade|update)\b/i, "Downloads or publishes packages"],
 ];
 
 const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?|0\.0\.0\.0)$/i;
@@ -105,4 +121,122 @@ export function classifyRisk(call, policy) {
       for (const [re, reason] of NETWORK_COMMANDS) if (re.test(cmd) && !(reason === "Uses the network" && loopbackOnly(cmd))) return reason;
   }
   return null;
+}
+
+/* ───────────── Where a task may go ───────────── */
+
+const IS_WIN = process.platform === "win32";
+const SHELLS = new Set(["bash", "pwsh", "powershell", "shell"]);
+/** File tools (Work AI's, Claude Code's as Work AI names them, opencode's) and the arguments that name a path. */
+const FILE_TOOLS = new Set(["read", "write", "edit", "multiedit", "read_image", "glob", "grep", "list", "ls", "view", "notebook_edit", "patch"]);
+const PATH_ARGS = ["file_path", "filePath", "path", "notebook_path", "filename", "directory", "dir", "cwd", "workdir"];
+
+/**
+ * A path as the disk knows it: links followed, and on Windows short names (YASHBA~1) made long. A file that isn't
+ * there yet is its nearest existing folder's real path plus the rest as written.
+ */
+const norm = (p) => {
+  let dir = resolve(p);
+  const tail = [];
+  let real = null;
+  for (;;) {
+    try {
+      real = realpathSync.native(dir);
+      break;
+    } catch {
+      const up = dirname(dir);
+      if (up === dir) break;
+      tail.unshift(basename(dir));
+      dir = up;
+    }
+  }
+  const r = join(real ?? dir, ...tail);
+  return IS_WIN ? r.toLowerCase() : r;
+};
+const within = (p, root) => p === root || p.startsWith(root.endsWith(sep) ? root : root + sep);
+const rootsCache = new WeakMap();
+function prepared(confine) {
+  let r = rootsCache.get(confine);
+  if (!r) {
+    const list = (a) => (a ?? []).filter(Boolean).map(norm);
+    r = { own: list(confine.roots), protected: list(confine.protected), system: list(confine.system) };
+    rootsCache.set(confine, r);
+  }
+  return r;
+}
+
+/** Where a path is: the task's own ("own"), Aatmiq's own data ("protected"), a system or program folder ("system"), or elsewhere. */
+export function placeOf(path, confine) {
+  const r = prepared(confine);
+  const p = norm(isAbsolute(path) ? path : resolve(confine.roots[0] ?? ".", path));
+  if (r.own.some((x) => within(p, x))) return { place: "own", path: p };
+  if (r.protected.some((x) => within(p, x))) return { place: "protected", path: p };
+  if (r.system.some((x) => within(p, x))) return { place: "system", path: p };
+  return { place: "outside", path: p };
+}
+
+/** Paths a shell command names: quoted or bare absolute paths (C:\…, \\server\…, /…) and ones that climb out with "..". */
+export function commandPaths(cmd) {
+  const out = new Set();
+  const add = (s) => {
+    const t = s.replace(/[)\]}>,;]+$/, "");
+    if (t.length > 1) out.add(t);
+  };
+  for (const m of cmd.matchAll(/"([^"\n]*)"|'([^'\n]*)'/g)) {
+    const s = (m[1] ?? m[2] ?? "").trim();
+    if (/^[A-Za-z]:[\\/]|^\\\\[^\\]/.test(s) || (!IS_WIN && /^\/[\w.-]/.test(s) && existsSync(`/${s.split("/")[1]}`)) || /(^|[\\/])\.\.([\\/]|$)/.test(s)) add(s);
+  }
+  const bare = cmd.replace(/"[^"\n]*"|'[^'\n]*'/g, " ");
+  for (const m of bare.matchAll(/(?:^|[\s=(,;|&>])([A-Za-z]:[\\/][^\s"'`|;&<>]*|\\\\[^\\\s][^\s"'`|;&<>]*)/g)) add(m[1]);
+  if (!IS_WIN)
+    for (const m of bare.matchAll(/(?:^|[\s=(,;|&>])(\/[\w.-][^\s"'`|;&<>]*)/g)) {
+      // Only a path whose first folder exists: "a /b" in a calculation is not a path.
+      const first = m[1].split("/")[1];
+      if (first && existsSync(`/${first}`)) add(m[1]);
+    }
+  for (const m of bare.matchAll(/(?:^|[\s=(,;|&>])((?:[\w.-]+[\\/])*\.\.(?:[\\/][^\s"'`|;&<>]*)?)(?=$|[\s"'`|;&<>)])/g)) add(m[1]);
+  return [...out];
+}
+
+/** The paths a call touches, by tool. */
+function pathsOf(call) {
+  const name = String(call.name ?? "").toLowerCase();
+  const a = call.args && typeof call.args === "object" ? call.args : {};
+  if (SHELLS.has(name)) {
+    const cmd = String(a.command ?? a.cmd ?? "");
+    const dirs = [a.workdir, a.cwd, a.directory].filter((x) => typeof x === "string" && x);
+    return [...dirs, ...commandPaths(cmd)];
+  }
+  if (FILE_TOOLS.has(name)) {
+    const ps = PATH_ARGS.map((k) => a[k]).filter((x) => typeof x === "string" && x.trim());
+    // A glob or grep pattern that is itself a path ("E:\data\**\*.csv").
+    if ((name === "glob" || name === "grep") && typeof a.pattern === "string" && (isAbsolute(a.pattern) || /^\.\.[\\/]/.test(a.pattern))) ps.push(a.pattern);
+    if (Array.isArray(a.edits)) for (const e of a.edits) if (typeof e?.file_path === "string") ps.push(e.file_path);
+    return ps.map((p) => p.replace(/[*?[{].*$/, "") || ".");
+  }
+  return [];
+}
+
+/** What the agent is told about Aatmiq's own data. */
+export const PROTECTED_DENIAL =
+  "That is Aatmiq's own data (other tasks, chats, uploads or the server's files). A task can't read or change it, and no one can approve that. Work in your folder; if you need a file from elsewhere, ask the person to add it.";
+
+/**
+ * Whether a call stays in the task's folders. `confine`: { roots: [working folder, the task's own folder…],
+ * protected: [Aatmiq's data and the server's folder], system: [program and system folders] }.
+ * Returns { deny } for Aatmiq's own data (never allowed, whatever the approvals), { ask } for anywhere else
+ * outside the task's folders, or null.
+ */
+export function checkPlace(call, confine) {
+  if (!confine?.roots?.length) return null;
+  let outside = null;
+  for (const p of pathsOf(call)) {
+    const where = placeOf(p, confine);
+    if (where.place === "protected") return { deny: PROTECTED_DENIAL, path: where.path };
+    if (where.place === "outside" && !outside) outside = where.path;
+  }
+  if (!outside) return null;
+  const name = String(call.name).toLowerCase();
+  const verb = ["write", "edit", "multiedit", "notebook_edit", "patch"].includes(name) ? "Changes" : SHELLS.has(name) ? "Reaches" : "Reads";
+  return { ask: `${verb} outside the task's folder: ${outside.length > 120 ? `…${outside.slice(-117)}` : outside}` };
 }

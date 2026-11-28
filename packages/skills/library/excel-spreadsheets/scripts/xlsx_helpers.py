@@ -9,6 +9,7 @@ Every sheet gets: a styled, frozen header row, an autofilter, sized columns and 
 `totals` adds a bold TOTAL row with SUM formulas for those columns.
 """
 from __future__ import annotations
+import sys
 
 from datetime import date, datetime
 
@@ -95,6 +96,10 @@ def _text(v, fmt):
 
 
 if __name__ == "__main__":
+    # A Windows console's code page can't print every character (■, →, Hindi): print UTF-8, never crash on it.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     import sys
 
     if len(sys.argv) != 3:

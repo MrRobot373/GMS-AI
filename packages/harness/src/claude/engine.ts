@@ -14,9 +14,10 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { chown, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
-import { classifyRisk } from "../../dsh-plugin/policy.mjs";
+import { dirname, join, resolve, sep } from "node:path";
+import { checkPlace, classifyRisk } from "../../dsh-plugin/policy.mjs";
 import { formatPage } from "../../dsh-plugin/web.mjs";
 import { networkEnv, prependPath, windowsPathExtras } from "../dsh/engine";
 import { connectedApps } from "../dsh/patch";
@@ -164,6 +165,54 @@ export function windowsEnv(spec: { homeDir: string }, source: NodeJS.ProcessEnv 
   return { ...out, USERPROFILE: spec.homeDir, APPDATA: w("AppData", "Roaming"), LOCALAPPDATA: w("AppData", "Local"), TEMP: w("tmp"), TMP: w("tmp"), HOMEDRIVE: spec.homeDir.slice(0, 2), HOMEPATH: spec.homeDir.slice(2) };
 }
 
+/**
+ * On Windows, Claude Code runs commands in Git Bash when it finds it, else in Windows PowerShell 5.1. In 5.1 a
+ * program's error output (`2>&1`) becomes an error record and exit code 1 even when the program worked, and a failed
+ * command can lose its output: Super AI then retries working commands for an hour. So it gets Git Bash where Git is
+ * installed (AATMIQ_GIT_BASH, else bash.exe beside git on the PATH, else Git's usual places).
+ */
+export function gitBashEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const found = findGitBash(env);
+  return found ? { CLAUDE_CODE_GIT_BASH_PATH: found, CLAUDE_CODE_USE_POWERSHELL_TOOL: "0" } : {};
+}
+function findGitBash(env: NodeJS.ProcessEnv): string | null {
+  if (env.AATMIQ_GIT_BASH) return existsSync(env.AATMIQ_GIT_BASH) ? env.AATMIQ_GIT_BASH : null;
+  const tries: string[] = [];
+  for (const d of (env.PATH ?? env.Path ?? "").split(";").filter(Boolean)) if (existsSync(join(d, "git.exe"))) tries.push(join(dirname(d), "bin", "bash.exe"));
+  for (const root of [env.ProgramFiles, env["ProgramFiles(x86)"], env.LOCALAPPDATA && join(env.LOCALAPPDATA, "Programs")]) if (root) tries.push(join(root, "Git", "bin", "bash.exe"));
+  return tries.find((p) => existsSync(p)) ?? null;
+}
+
+/** What an approval shows the person: the call's input as the agent wrote it (file contents left out, long text cut). */
+export function approvalDetail(args: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (!args || typeof args !== "object") return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (k === "content" || k === "new_string" || k === "old_string" || k === "edits") continue;
+    out[k] = typeof v === "string" && v.length > 2000 ? `${v.slice(0, 2000)}…` : v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+type Policy = Parameters<typeof classifyRisk>[1];
+/**
+ * Claude Code's PreToolUse hook: Aatmiq's own data is refused, and a call Aatmiq's rules would ask about is sent on to
+ * canUseTool (which asks the person), even where Claude Code would have let it through on its own.
+ */
+export function preToolUse(spec: Pick<TaskSpec, "confine">, policy: Policy) {
+  return async (input: { tool_name?: string; tool_input?: unknown }) => {
+    const name = String(input.tool_name ?? "");
+    const mapped = toolName(name);
+    const args = (input.tool_input && typeof input.tool_input === "object" ? input.tool_input : {}) as Record<string, unknown>;
+    const decide = (permissionDecision: "deny" | "ask", permissionDecisionReason: string) => ({ hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision, permissionDecisionReason } });
+    const place = checkPlace({ name: mapped, args }, spec.confine);
+    if (place && "deny" in place) return decide("deny", place.deny);
+    if (place && "ask" in place) return decide("ask", place.ask);
+    const risk = classifyRisk({ name: mapped, args }, policy);
+    return risk ? decide("ask", risk) : {};
+  };
+}
+
 /** The environment of the Claude Code process: its settings, the person's task folder as home, and nothing of the server's. */
 async function claudeEnv(spec: TaskSpec, configDir: string): Promise<Record<string, string>> {
   const sep_ = process.platform === "win32" ? ";" : ":";
@@ -176,6 +225,7 @@ async function claudeEnv(spec: TaskSpec, configDir: string): Promise<Record<stri
     PYTHONUTF8: "1",
     CLAUDE_CONFIG_DIR: configDir,
     ...(process.platform === "win32" ? windowsEnv(spec) : {}),
+    ...(process.platform === "win32" ? gitBashEnv() : {}),
     ...claudeSettings(spec),
     ...extraSettings(),
     ...(await networkEnv({ uid: spec.uid, gid: spec.gid, dir: join(spec.homeDir, "ca") })),
@@ -296,9 +346,9 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
         tools.push(sdk.tool(t.name, t.description, zodShape(z, t.parameters), (a, extra) => runDshTool(t, a as Record<string, unknown>, extra?.signal)));
 
       /** Ask a person in Aatmiq and wait for the decision (a refusal, an expiry or a failure all mean no). */
-      const ask = async (call: { name: string }, reason: string, signal: AbortSignal): Promise<"yes" | "no" | "unavailable"> => {
+      const ask = async (call: { name: string; args?: Record<string, unknown> }, reason: string, signal: AbortSignal): Promise<"yes" | "no" | "unavailable"> => {
         try {
-          const { id } = await api("/approvals", { method: "POST", body: JSON.stringify({ callId: null, toolName: call.name, reason }) }, signal);
+          const { id } = await api("/approvals", { method: "POST", body: JSON.stringify({ callId: null, toolName: call.name, reason, detail: approvalDetail(call.args) }) }, signal);
           for (;;) {
             if (signal.aborted) return "unavailable";
             const r = await api(`/approvals/${encodeURIComponent(id)}?wait=25`, {}, signal);
@@ -317,15 +367,18 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
         if (name === "AskUserQuestion")
           return { behavior: "deny" as const, message: "There is no dialog to answer in here. Put your question in your reply and stop: the person's answer arrives as the next message." };
         const target = typeof input.file_path === "string" ? input.file_path : typeof input.notebook_path === "string" ? input.notebook_path : null;
+        // Aatmiq's own data is never reachable; anywhere else outside the task's folders, the person decides.
+        const place = checkPlace({ name: mapped, args: input }, spec.confine);
+        if (place && "deny" in place) return { behavior: "deny" as const, message: place.deny };
         // Claude Code asks before it changes anything outside its folder, and so do we (the person decides).
         const outside = (mapped === "write" || mapped === "edit") && !!target && !(await inside(spec.workdir, target));
         // Plan mode: the plan is shown for approval, as it would be in the terminal.
         const plan = name === "ExitPlanMode" ? String(input.plan ?? "").replace(/\s+/g, " ").trim().slice(0, 400) : null;
-        const reason = plan !== null ? `Plan ready for review: ${plan}` : outside ? "Changes a file outside the task's folder" : classifyRisk({ name: mapped, args: input }, policy);
+        const reason = plan !== null ? `Plan ready for review: ${plan}` : place && "ask" in place ? place.ask : outside ? "Changes a file outside the task's folder" : classifyRisk({ name: mapped, args: input }, policy);
         if (!reason) return { behavior: "allow" as const, updatedInput: input };
         // A reviewer never waits for a person; everyone else is asked.
         if (spec.review) return { behavior: "deny" as const, message: `Not allowed in a review (${reason}).` };
-        const answer = await ask({ name: mapped }, reason, o.signal);
+        const answer = await ask({ name: mapped, args: input }, reason, o.signal);
         return answer === "yes"
           ? { behavior: "allow" as const, updatedInput: input }
           : { behavior: "deny" as const, message: answer === "no" ? (plan !== null ? "The person wants changes to the plan: ask what to change." : "The person said no to this action.") : "No one was available to approve this action." };
@@ -344,6 +397,10 @@ export function createClaudeEngine(opts: { loadSdk?: () => Promise<ClaudeSdk> } 
         skills: "all",
         permissionMode: "default",
         canUseTool,
+        // Claude Code doesn't consult canUseTool about calls it thinks are safe (reads anywhere, commands it sees as read
+        // only). This runs before every call: Aatmiq's own data is refused, and whatever Aatmiq's rules would ask about
+        // goes on to canUseTool, and so to the person.
+        hooks: { PreToolUse: [{ hooks: [preToolUse(spec, policy)] }] },
         // Only what can't work here: Anthropic-hosted search, and a fetch that would bypass the private one (our web_search
         // and web_fetch replace them); scheduling that needs a session that outlives the task's idle time; and the
         // code-review reporter, which has no screen to report to. Everything else of Claude Code is on.

@@ -55,6 +55,10 @@ def css_pairs(path):
 
 
 if __name__ == "__main__":
+    # A Windows console's code page can't print every character (■, →, Hindi): print UTF-8, never crash on it.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     args = sys.argv[1:]
     if len(args) == 2 and args[0] == "--css":
         bad = 0

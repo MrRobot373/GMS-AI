@@ -716,7 +716,7 @@ d("Phase B", () => {
     const parent = (id?: string) => full.json.messages.find((m: { id: string }) => m.id === id).parentId;
     expect(parent(ids.bUser)).toBe(ids.a);
     expect(parent(ids.b2User)).toBe(ids.a);
-  });
+  }, 15_000);
 
   it("regenerating adds a sibling answer without repeating the question", async () => {
     const r = await say(undefined, { regenerateOf: ids.b2User });

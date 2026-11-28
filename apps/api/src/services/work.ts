@@ -35,7 +35,7 @@ import {
   type DB,
   type WorkVerification,
 } from "@aatmiq/db";
-import { SUPER_AI_MIN_WINDOW, containerLauncher, createClaudeEngine, createComputerEngine, createDshEngine, createOpencodeEngine, egressToken, removeStaleContainers, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
+import { SUPER_AI_MIN_WINDOW, containerLauncher, createClaudeEngine, createComputerEngine, createDshEngine, createOpencodeEngine, egressToken, removeStaleContainers, type Confine, type ConnectorSpec, type HarnessEngine, type HarnessEvent, type TaskRuntime } from "@aatmiq/harness";
 import { DEFAULT_WORK_SETTINGS, estimateTokens, isOrgAdmin, PRODUCT_NAME, type WorkSettingsValue } from "@aatmiq/shared";
 import { librarySkills, shipsFile, type LibraryCategory } from "@aatmiq/skills";
 import { getGemSettings, workWebSearchDeps } from "./gem";
@@ -59,6 +59,25 @@ import {
 import { ACCEPTANCE_FILE, acceptanceBrief, checklistText, CHECKLIST_RULES, isBuildRequest, loadAcceptance, planAcceptance, saveAcceptance, type Acceptance } from "./work-spec";
 import { webSearchReady } from "./web-search";
 
+/** The server's own folder (the workspace root, where its .env and code are): the nearest folder above with pnpm-workspace.yaml. */
+function appRoot(): string | null {
+  for (let d = process.cwd(); ; d = dirname(d)) {
+    if (existsSync(join(d, "pnpm-workspace.yaml"))) return d;
+    if (dirname(d) === d) return null;
+  }
+}
+
+/**
+ * What makes two approval requests the same action (a command or a file action, with its labels and time limits left
+ * out), or null for what is never approved again on its own: a connector call, a plan, an action with nothing to compare.
+ */
+export function repeatKey(toolName: string, reason: string | null, detail: Record<string, unknown> | null | undefined): string | null {
+  if (!detail || toolName.startsWith("mcp__") || /^Plan ready/i.test(reason ?? "")) return null;
+  const what = detail.command ?? detail.cmd ?? detail.file_path ?? detail.filePath ?? detail.path ?? detail.url;
+  if (typeof what !== "string" || !what.trim()) return null;
+  return JSON.stringify([toolName, reason ?? "", what.replace(/\s+/g, " ").trim()]);
+}
+
 const CODE_LIBRARY: readonly LibraryCategory[] = ["Software development", "Data", "Apps", "Platform"];
 
 /** What a person sees when the server died mid-task. Saved files stay in the folder either way. */
@@ -69,7 +88,9 @@ export function restartNote(saved: string[]): string {
 }
 import { randomBytes } from "node:crypto";
 import { appendFile, chmod, chown, cp, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { notify, type AppContext } from "../context";
 import { msg } from "../i18n";
 import { availableModels, resolveModel } from "./models";
@@ -706,6 +727,25 @@ export class WorkRunner {
       forbidden: [this.dir, cfg.storageDir, cfg.chatDir ?? ".data/chat", cfg.codeDir ?? ".data/code", ".data"].filter(Boolean).map((p) => resolve(p)),
     };
   }
+  /**
+   * Where a task may go (TaskSpec.confine): its working folder and its own task folder (runtime, skills, a project
+   * copy) and its caches; never Aatmiq's data (other tasks, chats, uploads, Code workspaces) or the server's own
+   * folder with its .env; program and system folders without asking; anywhere else after a person approves.
+   */
+  confineFor(taskId: string, workdir: string): Confine {
+    const cfg = this.ctx.cfg;
+    const env = process.env;
+    const pathDirs = (env.PATH ?? env.Path ?? "").split(process.platform === "win32" ? ";" : ":").map((p) => p.trim()).filter((p) => p && isAbsolute(p));
+    const system =
+      process.platform === "win32"
+        ? [env.SystemRoot ?? "C:\\Windows", env.ProgramFiles, env["ProgramFiles(x86)"], env.ProgramW6432]
+        : ["/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/opt", "/etc", "/proc", "/sys", "/dev"];
+    return {
+      roots: [workdir, this.taskDir(taskId), join(tmpdir(), `aatmiq-task-${taskId}`)],
+      protected: [this.dir, cfg.storageDir, cfg.chatDir ?? ".data/chat", cfg.codeDir ?? ".data/code", ".data", appRoot()].filter(Boolean).map((p) => resolve(p!)),
+      system: [...system.filter((p): p is string => !!p), ...pathDirs],
+    };
+  }
   taskDir(taskId: string) {
     return join(this.dir, taskId);
   }
@@ -1052,6 +1092,8 @@ export class WorkRunner {
           connectors: await this.connectorSpecs(task.userId, token, l.connectorIds ?? null),
           productName: org?.productName ?? PRODUCT_NAME,
           sandbox: inContainer ? "off" : (this.ctx.cfg.workSandbox ?? "on"),
+          // In a container only its own folder is there; everywhere else the engines check where each call goes.
+          ...(inContainer ? {} : { confine: this.confineFor(taskId, workdir) }),
           ...(inContainer
             ? { container: { cpus: settings.containerCpus, memoryMb: settings.containerMemoryMb, pidsLimit: 1024, network: settings.containerNetwork } }
             : {}),
@@ -1825,12 +1867,12 @@ export class WorkRunner {
     if (l) l.lastError = null;
   }
 
-  async requestApproval(taskId: string, a: { callId: string | null; toolName: string; reason: string | null }) {
+  async requestApproval(taskId: string, a: { callId: string | null; toolName: string; reason: string | null; detail?: Record<string, unknown> | null }) {
     const { db } = this.ctx;
     // The tool call itself may still be on its way to the timeline.
     await this.writes.get(taskId)?.catch(() => undefined);
-    let detail: Record<string, unknown> | null = null;
-    if (a.callId) {
+    let detail: Record<string, unknown> | null = a.detail ?? null;
+    if (a.callId && !detail) {
       const calls = await db
         .select({ data: workEvent.data })
         .from(workEvent)
@@ -1838,6 +1880,26 @@ export class WorkRunner {
         .orderBy(desc(workEvent.seq))
         .limit(20);
       detail = (calls.find((c) => c.data.callId === a.callId)?.data.args as Record<string, unknown> | undefined) ?? null;
+    }
+    // The same command or file action the person already approved in this task is approved again without asking: an
+    // agent retrying an install asked fifteen times. Never a connector call or a plan, and never after a "no".
+    const key = repeatKey(a.toolName, a.reason, detail);
+    if (key) {
+      const earlier = await db
+        .select({ status: workApproval.status, toolName: workApproval.toolName, reason: workApproval.reason, detail: workApproval.detail, decidedBy: workApproval.decidedBy })
+        .from(workApproval)
+        .where(and(eq(workApproval.taskId, taskId), eq(workApproval.toolName, a.toolName), inArray(workApproval.status, ["approved", "rejected"])))
+        .orderBy(desc(workApproval.createdAt))
+        .limit(50);
+      const same = earlier.find((e) => repeatKey(e.toolName, e.reason, e.detail) === key);
+      if (same?.status === "approved") {
+        const [row] = await db
+          .insert(workApproval)
+          .values({ taskId, callId: a.callId, toolName: a.toolName, reason: a.reason, detail, status: "approved", decidedBy: same.decidedBy, decidedAt: new Date() })
+          .returning();
+        await this.record(taskId, "approval", { id: row!.id, callId: a.callId, toolName: a.toolName, reason: a.reason, detail, status: "approved", repeat: true });
+        return row!;
+      }
     }
     const [row] = await db
       .insert(workApproval)
@@ -1991,13 +2053,30 @@ export function namedFiles(request: string): string[] {
   // A request that also deletes, moves or renames things names files that shouldn't exist at the end: no reminder.
   if (/\b(delete|deleting|remove|removing|rm|erase|move|rename|clean ?up|get rid of)\b/i.test(request)) return [];
   const out: string[] = [];
-  for (const word of request.split(/\s+/)) {
-    const w = word.replace(/^["'`(\[<]+|["'`)\]>,;:!?.]+$/g, "");
+  const words = request.split(/\s+/);
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!.replace(/^["'`(\[<]+|["'`)\]>,;:!?.]+$/g, "");
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(w)) continue;
     const name = w.split(/[\\/]/).at(-1) ?? "";
-    if (/^[\w][\w.-]*\.(md|xlsx|xls|docx|pptx|pdf|csv|png|jpe?g|svg|html|txt|json)$/i.test(name) && !out.includes(name)) out.push(name);
+    if (!/^[\w][\w.-]*\.(md|xlsx|xls|docx|pptx|pdf|csv|png|jpe?g|svg|html|txt|json)$/i.test(name) || out.includes(name)) continue;
+    // A file the person gives ("the attached sales.xlsx", "summarize report.pdf") is an input, not a result: if it's
+    // missing, the agent should say so, not be told to make it.
+    if (givenFile(words.slice(Math.max(0, i - 4), i))) continue;
+    out.push(name);
   }
   return out.slice(0, 20);
+}
+
+const INPUT_CUE = /^(attached|attachment|uploaded|upload|given|provided|existing|from|read|reading|open|opening|use|using|summari[sz]e|summari[sz]ing|analy[sz]e|analy[sz]ing|check|checking|review|reviewing|based|according|compare|comparing|my|our)$/i;
+const OUTPUT_CUE = /^(save|saved|saving|as|to|into|create|creating|make|making|write|writing|produce|generate|export|named|called|new|build|output|here)$/i;
+/** Whether the words before a file name say it's one the person gives (the nearest cue wins; "in summary.xlsx here" is made). */
+function givenFile(before: string[]): boolean {
+  for (let j = before.length - 1; j >= 0; j--) {
+    const w = before[j]!.replace(/[^\p{L}]/gu, "");
+    if (OUTPUT_CUE.test(w)) return false;
+    if (INPUT_CUE.test(w)) return true;
+  }
+  return false;
 }
 
 /** Which of `names` aren't anywhere in the folder (by name, a few levels down). */

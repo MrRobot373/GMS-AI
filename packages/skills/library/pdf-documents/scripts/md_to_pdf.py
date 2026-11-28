@@ -6,6 +6,7 @@ tables (| a | b |), > notes, --- page breaks, ![](image.png), and a footer with 
 
 Usage: python3 md_to_pdf.py input.md output.pdf [--title "Title"] [--letter] [--footer "Acme · Confidential"]
 """
+import sys
 import argparse
 import html
 import os
@@ -124,6 +125,10 @@ def build(md, out, title=None, pagesize=A4, footer=None, base_dir="."):
 
 
 if __name__ == "__main__":
+    # A Windows console's code page can't print every character (■, →, Hindi): print UTF-8, never crash on it.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input")
     ap.add_argument("output")

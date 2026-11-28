@@ -144,7 +144,7 @@ export async function runTask({ client, engine, workspaceId, modelId, prompt, ti
   const result = { engine, status: "not_started", startedAt: new Date().toISOString(), notes: [], approvals: 0 };
   let events = [];
   try {
-    const created = await client.call("POST", "/api/work/tasks", { workspaceId, prompt, ...(modelId ? { modelId } : {}), ...(engine === "claude" ? { engine: "claude" } : {}) });
+    const created = await client.call("POST", "/api/work/tasks", { workspaceId, prompt, ...(modelId ? { modelId } : {}), ...(engine !== "dsh" ? { engine } : {}) });
     result.taskId = created.id;
     log(`task ${created.id}`);
     const approved = new Set();

@@ -65,6 +65,10 @@ def profile(df: pd.DataFrame):
 
 
 if __name__ == "__main__":
+    # A Windows console's code page can't print every character (■, →, Hindi): print UTF-8, never crash on it.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(2)

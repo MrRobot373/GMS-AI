@@ -170,7 +170,11 @@ export function permissionCall(p: Record<string, any>, workdir: string, connecto
   const meta = (p.metadata ?? {}) as Record<string, any>;
   const patterns: string[] = Array.isArray(p.patterns) ? p.patterns : p.pattern ? [].concat(p.pattern) : [];
   if (kind === "bash") return { name: "bash", args: { command: String(meta.command ?? patterns.join(" ")) }, outside: false, loop: false };
-  if (kind === "external_directory") return { name: "read", args: {}, outside: true, loop: false };
+  if (kind === "external_directory") {
+    // The folder it wants (opencode gives a glob like "E:\data\*"): so Aatmiq's own data can be refused outright.
+    const dir = String(meta.filepath ?? meta.filePath ?? meta.parentDir ?? patterns[0] ?? "").replace(/[\\/]?\*+$/, "");
+    return { name: "read", args: dir ? { path: dir } : {}, outside: true, loop: false };
+  }
   if (kind === "doom_loop") return { name: String(meta.tool ?? "tool"), args: {}, outside: false, loop: true };
   if (kind === "edit" || kind === "write") {
     const file = String(meta.filepath ?? meta.filePath ?? patterns[0] ?? "");

@@ -18,6 +18,7 @@ Use --- only where a new page is really wanted (not before every section: that l
 Usage: python3 md_to_docx.py input.md output.docx [--title "Document title"] [--font Calibri] [--size 11]
                              [--cover] [--no-header] [--no-footer]
 """
+import sys
 import argparse
 import os
 import re
@@ -389,6 +390,10 @@ def page_numbers(docx_path, entries):
 
 
 if __name__ == "__main__":
+    # A Windows console's code page can't print every character (■, →, Hindi): print UTF-8, never crash on it.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input")
     ap.add_argument("output")

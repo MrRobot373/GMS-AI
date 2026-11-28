@@ -24,7 +24,7 @@ import { recallTools } from "./recall.mjs";
 import { calculatorTools } from "./calculators.mjs";
 import { documentTools } from "./documents.mjs";
 import { editHint, repairEdit } from "./editfix.mjs";
-import { classifyRisk, reviewDenial } from "./policy.mjs";
+import { checkPlace, classifyRisk, reviewDenial } from "./policy.mjs";
 import { cleanArgs, planReminder } from "./tooling.mjs";
 import { SEARCH_CITE_LINE, SEARCH_READ_LINE, WEB_GUIDANCE, webTools } from "./web.mjs";
 
@@ -95,7 +95,12 @@ export function apply(ctx, config) {
   ctx.on("tools/pre-execute", async (exec, next) => {
     const decision = await next();
     if (decision.kind !== "allow") return decision;
-    const reason = classifyRisk({ name: exec.name, args: cleanArgs(exec.name, exec.arguments, SANDBOX_MODE) }, policy);
+    const args = cleanArgs(exec.name, exec.arguments, SANDBOX_MODE);
+    // Where it goes first: Aatmiq's own data never, anywhere else outside the task's folders after a person says yes
+    // (whatever the approval mode: where commands can't be confined, nothing else keeps a task in its folder).
+    const place = checkPlace({ name: exec.name, args }, config.confine);
+    if (place?.deny) return { kind: "deny", reason: place.deny };
+    const reason = place?.ask ?? classifyRisk({ name: exec.name, args }, policy);
     if (!reason) return decision;
     // A reviewer never waits for a person: what would need approval is refused, with the reason.
     return config.review ? { kind: "deny", reason: reviewDenial(reason) } : { kind: "ask", reason };

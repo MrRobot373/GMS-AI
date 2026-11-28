@@ -61,6 +61,15 @@ POST /api/internal/work/llm/v1/chat/completions  the existing gateway route: mod
 * A context that doesn't fit makes the gateway answer "prompt is too long: …", which Claude Code reads as
   its cue to condense and retry.
 
+## On Windows
+
+Claude Code runs commands in Git Bash when it finds it, else in Windows PowerShell 5.1, where a program's error output
+(`2>&1`) turns into exit code 1 even when the program worked and a failed command can lose its output (the agent test:
+a `pip install` retried 26 times, 3 M tokens). Aatmiq points it at Git Bash (`AATMIQ_GIT_BASH`, else `bash.exe` beside
+`git` on the PATH, else Git's usual folder). A `PreToolUse` hook runs before every call, because Claude Code doesn't ask
+`canUseTool` about calls it thinks are safe: Aatmiq's own data is refused there and anything Aatmiq's rules ask about
+goes on to the person ([06](06-work-ai.md#working-in-a-folder)).
+
 ## Turning it on
 
 1. Install the SDK where the server runs: in a checkout it is a dev dependency of `packages/harness`; in the

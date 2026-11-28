@@ -39,6 +39,7 @@ import { getGemSettings, workWebSearchDeps } from "../services/gem";
 import { fetchPage, PageRefused, webSearch, WebSearchError, webSearchReady } from "../services/web-search";
 import { upstreamProxyFromEnv } from "../services/egress";
 import { RECALL_KINDS, recall } from "../services/work-recall";
+import { dropImages, hasImages, IMAGE_LOAD_FAILED, normalizeImages } from "../services/model-images";
 
 const BASE = "/api/internal/work";
 /** Statuses worth retrying: the server is busy or briefly broken, not refusing the request. */
@@ -231,9 +232,21 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
       }
       return { upstream, networkError };
     };
+    // Pictures in formats a model server may not read (Work AI sends charts as WebP) go as PNG.
+    await normalizeImages(body.messages);
     const first = await connect();
     let upstream = first.upstream;
     if (!upstream) return refuse(502, `The model server couldn't be reached (${first.networkError}).`);
+    if (!upstream.ok && upstream.status === 400 && hasImages(body.messages)) {
+      // A picture the server still can't load: once more without the pictures, so the agent carries on.
+      const detail = await upstream.text().catch(() => "");
+      if (IMAGE_LOAD_FAILED.test(detail)) {
+        dropImages(body.messages);
+        const retry = await connect();
+        if (!retry.upstream) return refuse(502, `The model server couldn't be reached (${retry.networkError}).`);
+        upstream = retry.upstream;
+      } else upstream = new Response(detail, { status: upstream.status });
+    }
     if (!upstream.ok || !upstream.body) {
       const detail = (await upstream.text().catch(() => "")).slice(0, 300);
       await meter({ inputTokens: 0, outputTokens: 0, estimated: true }, "error");
@@ -383,11 +396,14 @@ export async function workInternalRoutes(app: FastifyInstance, ctx: AppContext) 
     callId: z.string().max(200).nullable().optional(),
     toolName: z.string().min(1).max(200),
     reason: z.string().max(500).nullable().optional(),
+    /** What the call would do, for engines that ask before the call is on the timeline (Super AI, Agent AI). */
+    detail: z.record(z.string(), z.unknown()).nullable().optional(),
   });
   app.post(`${BASE}/approvals`, internal, async (req) => {
     const t = taskOf(req);
     const b = parse(approvalSchema, req.body);
-    const a = await work.requestApproval(t.taskId, { callId: b.callId ?? null, toolName: b.toolName, reason: b.reason ?? null });
+    const detail = b.detail && JSON.stringify(b.detail).length <= 20_000 ? b.detail : null;
+    const a = await work.requestApproval(t.taskId, { callId: b.callId ?? null, toolName: b.toolName, reason: b.reason ?? null, detail });
     return { id: a.id };
   });
 

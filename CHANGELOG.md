@@ -9,6 +9,26 @@ without one.
 
 ## Unreleased
 
+- **Agents stay out of other people's things.** On Windows (or with the sandbox off) nothing confined a task: in the agent
+  test all three engines read this server's code and plans, other tasks' folders and chat uploads, and could have read
+  `.env`. Now every engine checks where each call goes, file tools and the paths a command names alike: Aatmiq's own
+  data (other tasks, chats, uploads, Code workspaces, the server's folder) is refused and no approval can open it; any
+  other place outside the task's folder asks first, saying where; program and system folders are fine.
+- **PowerShell asks too.** `Remove-Item`, `del`, `Move-Item`, `Invoke-WebRequest`, `Install-Module`, `Stop-Process`,
+  `-SkipCertificateCheck` and their kin now ask like `rm`, `curl` and `pip install` do (they deleted files without asking).
+- **An approval says what it's for, once.** Super AI's and Agent AI's approvals now show the command or file. The same
+  command approved once in a task isn't asked again (one install asked 26 times); a refused one still asks.
+- **Charts don't stop Work AI.** Its runtime sent charts as WebP, which the model server couldn't load, and the task
+  failed. Pictures go to the model as PNG, and one a server still can't read is replaced by a note.
+- **Agent AI asks in its reply.** Its question dialog, which no one could see, is gone; the agent asks in its answer.
+  It's also told Aatmiq's tools by the names it sees (`aatmiq_web_search`): told `web_search`, the model server failed.
+- **Super AI uses Git Bash on Windows** where Git is installed: in Windows PowerShell 5.1 working commands came back as
+  "Exit code 1" with no output, and it retried them for half an hour.
+- **A file you attach isn't one to make.** "Summarize the attached sales.xlsx" with nothing attached: Work AI said so,
+  then its completion check sent it off to build `sales.xlsx`. Files the request gives are no longer counted as results.
+- **Skill scripts print UTF-8**, so a Windows console no longer crashes them on `■` or Hindi text.
+- **Work AI had no browser on Windows dev setups** started through `dsh-node-wrapper.mjs`: fixed.
+
 - **Access taken away closes the chat, even your own.** Someone removed from a project kept reading and writing their
   chats in it (with the project's material), and someone removed from a workspace kept opening their chats there. A
   chat now opens only while its owner is still in its workspace and, for a project chat, in the project; it can still

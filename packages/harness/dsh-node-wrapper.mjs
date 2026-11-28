@@ -34,5 +34,10 @@ function findDshBin() {
 }
 
 const binPath = findDshBin();
+// Run as the DSH CLI itself: Aatmiq's plugin finds DSH's own packages (its tools, and with them the browser)
+// next to process.argv[1], and from this wrapper's folder pnpm doesn't let them be found.
+process.argv[1] = binPath;
 const { runCli } = await import(pathToFileURL(binPath).href);
-await runCli();
+// On a Node without import.meta.main (before 22.18), patches/ makes the CLI see itself in argv and start on import;
+// starting it a second time here would leave a second, uninitialized server ("SDK server is not initialized").
+if (typeof import.meta.main === "boolean") await runCli();

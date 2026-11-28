@@ -53,6 +53,14 @@ and changes files there, and its Files panel lists that folder.
 - **Where the folder is.** It is a path on the machine Aatmiq runs on. On your own PC that is your PC's folder; on a shared
   server it must be on the server or on a network share it mounts, so team projects can live in one folder everyone uses.
 
+**Where a task may go.** Every engine checks each call before it runs: file tools by their path, commands by the paths
+they name (`C:\…`, `/home/…`, `..\..`). The task's working folder and its own task folder are free; program and system
+folders (Windows, Program Files, the folders on the server's PATH, `/usr`…) are fine; **Aatmiq's own data** (other tasks'
+folders, chat uploads, stored files, Code workspaces, the server's own folder with its `.env`) is refused, and no approval
+can open it; anywhere else asks the person first, naming the place. This matters most where programs can't be confined
+(Windows, `WORK_SANDBOX=off`): there it is what keeps one person's task out of another's files. A command can still reach
+a place through a variable (`$env:TEMP`), so on a shared server use Linux with the sandbox, or containers.
+
 **Undo.** Before the task starts, its folder's state is kept privately (a Git copy in the task's own folder, nothing is
 added to yours; `node_modules`, virtual environments and caches aren't kept). The Files panel then lists what the task
 changed (added, changed, deleted) with **Undo all** and a per-file undo, once the task has stopped working. Only its owner
@@ -80,7 +88,10 @@ run at all stops after 3 tries and says why.
   `git push`/`reset --hard`, sending mail, commands that switch certificate checks off
   (`pip --trusted-host`, `curl -k`/`--insecure`, `wget --no-check-certificate`, `verify=False`,
   `NODE_TLS_REJECT_UNAUTHORIZED=0`…), and (unless network use is allowed) commands that use the
-  network or install packages, plus connector tools that match the connector's rule.
+  network or install packages, plus connector tools that match the connector's rule. PowerShell's own commands count
+  the same (`Remove-Item`/`del`, `Move-Item`, `Invoke-WebRequest`/`iwr`, `Install-Module`, `winget install`,
+  `Stop-Process`, `-SkipCertificateCheck`…). An approval shows the command or file; the same command approved once in
+  a task is approved again without asking (never a connector call, and not after a "no").
 - **Web search**: the URL of your SearXNG server, with a test button. Empty turns web search off.
   Searches go only to that server (D27).
 - **Browser** (on by default): the agent can open pages in a real browser, click, type and choose

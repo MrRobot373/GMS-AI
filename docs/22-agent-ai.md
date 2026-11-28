@@ -32,6 +32,14 @@ same job.
 Nothing leaves the server on its own: the model and tools are Aatmiq's, and opencode is started without plugins and
 without proxy settings.
 
+## Questions and tool names
+
+opencode's `question` tool opens a dialog no one sees in a task, and it was answered "dismissed": the agent then guessed
+or stopped. It's turned off; the agent asks in its reply and the person's answer is the next message, as in the other
+engines. Aatmiq's tools reach opencode as `aatmiq_web_search`, `aatmiq_browser_open`…; the brief uses those names, since
+a model told `web_search` starts a call no tool matches and a model server that holds tool calls to a grammar fails the
+request ("Unexpected empty grammar stack after accepting piece: web").
+
 ## For admins
 
 - **Admin → Work AI → Agent AI → Offer Agent AI** (on by default when installed).

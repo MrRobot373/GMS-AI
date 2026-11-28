@@ -7,7 +7,7 @@
  *   node scripts/eval-run.mjs --selftest           # grades the graders: needs no server, no model
  *
  * Options:
- *   --engine dsh|claude|both   Work AI, Super AI or both (default dsh)
+ *   --engine dsh|claude|opencode|both|all   Work AI, Super AI, Agent AI; both = Work AI and Super AI; all = the three (default dsh)
  *   --model <name>             the Work AI model under test (default: the workspace's)
  *   --judge-model <name>       a chat model that judges the criteria a program can't check (one judge for every run)
  *   --task a,b                 task ids, categories or tags (default all)
@@ -72,9 +72,9 @@ const EMAIL = process.env.AATMIQ_EMAIL;
 const PASSWORD = process.env.AATMIQ_PASSWORD;
 if (!EMAIL || !PASSWORD) die("set AATMIQ_EMAIL and AATMIQ_PASSWORD in the environment (never on the command line).");
 const engineArg = opt("engine") ?? "dsh";
-if (!["dsh", "claude", "both"].includes(engineArg)) die('--engine must be "dsh", "claude" or "both".');
-const engines = engineArg === "both" ? ["dsh", "claude"] : [engineArg];
-const NAMES = { dsh: "Work AI", claude: "Super AI" };
+if (!["dsh", "claude", "opencode", "both", "all"].includes(engineArg)) die('--engine must be "dsh", "claude", "opencode", "both" or "all".');
+const engines = engineArg === "both" ? ["dsh", "claude"] : engineArg === "all" ? ["dsh", "claude", "opencode"] : [engineArg];
+const NAMES = { dsh: "Work AI", claude: "Super AI", opencode: "Agent AI" };
 const attempts = Math.max(1, Number(opt("attempts") ?? 1));
 const approve = !flag("no-approve");
 const outRoot = resolve(opt("out") ?? join("eval-out", new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)));
@@ -90,6 +90,7 @@ const info = await client.info(workspace.id).catch(() => ({}));
 const admin = await client.call("GET", "/api/admin/work").catch(() => null);
 if (admin) info.browser = !!admin.settings?.browser && !!admin.browserInstalled;
 if (engines.includes("claude") && !info.superAi) die("Super AI is off or not installed on this server (Admin → Work AI).");
+if (engines.includes("opencode") && !info.agentAi) die("Agent AI is off or not installed on this server (Admin → Work AI).");
 if (flag("no-judge")) tasks = tasks.filter((t) => !t.judged.length);
 else if (!judgeModel && tasks.some((t) => t.judged.length)) log("note: no --judge-model, so tasks with judged criteria will count as errors (or leave them out with --no-judge).");
 log(`workspace ${workspace.name}; model ${model?.displayName ?? "the workspace default"}; judge ${judgeModel?.displayName ?? "none"}; ${tasks.length} task(s) x ${engines.map((e) => NAMES[e]).join(", ")} x ${attempts}`);

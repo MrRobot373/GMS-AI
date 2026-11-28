@@ -197,6 +197,7 @@ export function buildPatch(spec: TaskSpec): string {
         browser: !!spec.browser,
         calculators: !!spec.calculators,
         connectors: spec.connectors.map((c) => ({ name: c.name, approveTools: c.approveTools })),
+        ...(spec.confine ? { confine: spec.confine } : {}),
       },
     },
     ...spec.connectors.map((c) => ({

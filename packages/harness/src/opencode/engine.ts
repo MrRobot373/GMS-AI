@@ -18,9 +18,9 @@ import { chown, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { briefFor } from "../claude/engine";
+import { approvalDetail, briefFor } from "../claude/engine";
 import { harnessFile, resolveFromHarness } from "../files";
-import { classifyRisk } from "../policy";
+import { checkPlace, classifyRisk } from "../policy";
 import type { HarnessEngine, HarnessEvent, TaskRuntime, TaskSpec } from "../types";
 import { mapOpencodeEvent, newOpencodeState, permissionCall, type OpencodeEvent } from "./map";
 
@@ -79,8 +79,10 @@ export function opencodeConfig(spec: TaskSpec, mcpEnv: Record<string, string>): 
     model: `${PROVIDER}/${MODEL}`,
     small_model: `${PROVIDER}/${MODEL}`,
     // Everything asks, and Aatmiq's rules answer (see the engine). Its own web tools would bypass the organization's
-    // private search; web_search and web_fetch replace them.
-    permission: { "*": "ask", webfetch: "deny", websearch: "deny", codesearch: "deny" },
+    // private search; web_search and web_fetch replace them. Its question tool opens a dialog no one sees in a task:
+    // without it the agent asks in its reply, and the person's answer is the next message.
+    permission: { "*": "ask", webfetch: "deny", websearch: "deny", codesearch: "deny", question: "deny" },
+    tools: { question: false, webfetch: false, websearch: false, codesearch: false },
     mcp: {
       aatmiq: { type: "local", command: [process.execPath, harnessFile("opencode/mcp.mjs")], environment: mcpEnv, enabled: true, timeout: 120_000 },
       ...Object.fromEntries(spec.connectors.map((c) => [c.name, { type: "remote", url: c.url, enabled: true, oauth: false, ...(c.headers && Object.keys(c.headers).length ? { headers: c.headers } : {}) }])),
@@ -92,6 +94,12 @@ export function opencodeConfig(spec: TaskSpec, mcpEnv: Record<string, string>): 
 function cacheDir(spec: TaskSpec) {
   return join(tmpdir(), `aatmiq-task-${basename(dirname(spec.homeDir))}`);
 }
+
+/** Aatmiq's tool names as opencode lists them (aatmiq_web_search), in text written for the other engines. */
+export const opencodeNames = (text: string): string =>
+  text.replace(/(?<![\w-])(web_search|web_fetch|browser_[a-z_]+|documents_[a-z_]+|calculators_[a-z_]+|task_recall)\b/g, "aatmiq_$1");
+
+const call_args = (a: Record<string, unknown> | undefined) => (a && typeof a === "object" ? a : undefined);
 
 export function createOpencodeEngine(opts: { bin?: string } = {}): HarnessEngine {
   return {
@@ -193,7 +201,7 @@ export function createOpencodeEngine(opts: { bin?: string } = {}): HarnessEngine
       const abort = new AbortController();
 
       /** Ask a person in Aatmiq (a refusal, an expiry or a failure all mean no). */
-      const ask = async (name: string, reason: string): Promise<"yes" | "no" | "unavailable"> => {
+      const ask = async (name: string, reason: string, args?: Record<string, unknown>): Promise<"yes" | "no" | "unavailable"> => {
         const control = async (path: string, init: RequestInit = {}) => {
           const res = await fetch(`${spec.controlUrl}${path}`, { ...init, signal: abort.signal, headers: { authorization: `Bearer ${spec.token}`, "content-type": "application/json" } });
           const body = (await res.json().catch(() => ({}))) as Record<string, any>;
@@ -201,7 +209,7 @@ export function createOpencodeEngine(opts: { bin?: string } = {}): HarnessEngine
           return body;
         };
         try {
-          const { id } = await control("/approvals", { method: "POST", body: JSON.stringify({ callId: null, toolName: name, reason }) });
+          const { id } = await control("/approvals", { method: "POST", body: JSON.stringify({ callId: null, toolName: name, reason, detail: approvalDetail(call_args(args)) }) });
           for (;;) {
             if (abort.signal.aborted) return "unavailable";
             const r = await control(`/approvals/${encodeURIComponent(id)}?wait=25`);
@@ -216,14 +224,19 @@ export function createOpencodeEngine(opts: { bin?: string } = {}): HarnessEngine
 
       const answerPermission = async (p: Record<string, any>) => {
         const call = permissionCall(p, spec.workdir, connectorNames);
-        let reason = call.outside ? "Works outside the task's folder" : call.loop ? "The agent is repeating the same step" : classifyRisk({ name: call.name, args: call.args }, policy);
+        // Aatmiq's own data is never reachable, whatever anyone approves; elsewhere outside the folder the person decides.
+        const place = checkPlace({ name: call.name, args: call.args }, spec.confine);
+        let reason = place && "ask" in place ? place.ask : call.outside ? "Works outside the task's folder" : call.loop ? "The agent is repeating the same step" : classifyRisk({ name: call.name, args: call.args }, policy);
         if (spec.review && reason) reason = null;
         let reply: "once" | "reject" = "once";
         let message: string | undefined;
-        if (reason) {
+        if (place && "deny" in place) {
+          reply = "reject";
+          message = place.deny;
+        } else if (reason) {
           if (spec.review) reply = "reject";
           else {
-            const a = await ask(call.name, reason);
+            const a = await ask(call.name, reason, call.args as Record<string, unknown>);
             if (a !== "yes") {
               reply = "reject";
               message = a === "no" ? "The person said no to this action." : "No one was available to approve this action.";
@@ -290,8 +303,10 @@ export function createOpencodeEngine(opts: { bin?: string } = {}): HarnessEngine
         onEvent({ type: "exit", code, ...(code ? { error: `Agent AI stopped (exit ${code}).${stderr ? `\n${stderr.trim().split("\n").slice(-4).join("\n")}` : ""}` } : {}) });
       });
 
-      // The folder's full path, stated plainly: without it the model guesses one and writes beside the folder.
-      const brief = `Your working folder is ${spec.workdir} (this is the current directory). Save every file you make inside it, using paths relative to it; never write above it.\n\n${briefFor(spec)}`;
+      // The folder's full path, stated plainly: without it the model guesses one and writes beside the folder. And the
+      // tools by the names opencode gives them: told "web_search", a model starts a call no tool matches, and a model
+      // server that holds tool calls to a grammar fails the whole request ("empty grammar stack after accepting piece: web").
+      const brief = `Your working folder is ${spec.workdir} (this is the current directory). Save every file you make inside it, using paths relative to it; never write above it.\n\n${opencodeNames(briefFor(spec))}\n- Here ${spec.productName}'s own tools are named with the aatmiq_ prefix (aatmiq_web_search, aatmiq_web_fetch, aatmiq_browser_open, aatmiq_documents_search…): call them by those names.`;
       const runtime: TaskRuntime = {
         sessionId: sid,
         get alive() {

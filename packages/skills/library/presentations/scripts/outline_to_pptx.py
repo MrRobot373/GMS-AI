@@ -20,6 +20,7 @@ warns about slides with no notes, too many bullets, or a visual that has too lit
 
 Usage: python3 outline_to_pptx.py outline.md deck.pptx [--accent 0072B2] [--font "Calibri"]
 """
+import sys
 import argparse
 import os
 import re
@@ -302,6 +303,10 @@ def build(deck, out, accent="0072B2", font="Calibri"):
 
 
 if __name__ == "__main__":
+    # A Windows console's code page can't print every character (■, →, Hindi): print UTF-8, never crash on it.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("outline")
     ap.add_argument("output")
